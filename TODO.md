@@ -107,9 +107,10 @@ The effectful interfaces (`model.Client`, `device.Validator`, planned `VCS`,
 `internal/<dependency>` adapter. Keep the policy cores (gate, oracle+invariant,
 defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
 
-- [x] State writes are now atomic (temp file + rename). Still to offload:
-      `google/renameio` (fsync durability) and `gofrs/flock` (cross-process
-      locking) once the parallel manager writes one workspace from many arcs.
+- [x] State writes are atomic and fsync-durable via the locally vendored
+      `internal/atomicfile` (Tailscale, BSD-3-Clause; temp file + fsync + rename).
+      Still to offload: `gofrs/flock` (cross-process locking) once the parallel
+      manager writes one workspace from many arcs.
 - [ ] `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
       counting → the official SDKs (`anthropic-sdk-go`, `openai-go`). Never a
       hand-rolled HTTP/retry layer.
