@@ -27,7 +27,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/reject"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/run"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/step"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/toolcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
 )
@@ -57,6 +59,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	device.New(r)
 	contextcmd.New(r)
 	toolcmd.New(r)
+	step.New(r)
+	run.New(r)
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
