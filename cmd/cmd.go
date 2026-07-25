@@ -19,6 +19,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/approve"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/arc"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/autonomy"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
@@ -27,6 +28,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/reject"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/toolcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
 )
 
@@ -53,6 +55,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	oracle.New(r)
 	proof.New(r)
 	device.New(r)
+	contextcmd.New(r)
+	toolcmd.New(r)
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
