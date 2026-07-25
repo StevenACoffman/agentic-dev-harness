@@ -6,16 +6,24 @@ package closecmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
+	metricslib "github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
 	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
+
+// metricsFile is the effectiveness ledger the metrics command summarizes.
+const metricsFile = ".adh/metrics.json"
 
 // Config holds the configuration for the close command.
 type Config struct {
@@ -79,8 +87,59 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("close: %w", err)
 	}
+	// Effectiveness accounting (§16): record the closed arc's cost. The ship is
+	// authoritative; a metrics-write failure is surfaced, not fatal.
+	if err := recordMetric(&arc); err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: metrics not recorded: %s\n", err)
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "closed %s as %s\n", id, arc.Resolution)
 	return nil
+}
+
+// recordMetric appends the closed arc's cost to the effectiveness ledger. The
+// attention and compute figures are deterministic proxies (history length and
+// bytes) until real telemetry lands; a closed arc counts as accepted.
+func recordMetric(arc *adh.Arc) error {
+	records, err := loadMetrics()
+	if err != nil {
+		return err
+	}
+	tokens := 0
+	for _, entry := range arc.History {
+		tokens += len(entry)
+	}
+	records = append(records, metricslib.Record{
+		Arc:              arc.ID,
+		AttentionMinutes: len(arc.History),
+		ComputeTokens:    tokens,
+		Accepted:         true,
+	})
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return &adh.Error{Op: "close.recordMetric", Err: err}
+	}
+	if err := os.MkdirAll(filepath.Dir(metricsFile), 0o750); err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+	if err := atomicfile.WriteFile(metricsFile, append(data, '\n'), 0o600); err != nil {
+		return fmt.Errorf("close: write metrics: %w", err)
+	}
+	return nil
+}
+
+func loadMetrics() ([]metricslib.Record, error) {
+	data, err := os.ReadFile(metricsFile)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("close: %w", err)
+	}
+	var records []metricslib.Record
+	if err := json.Unmarshal(data, &records); err != nil {
+		return nil, fmt.Errorf("close: %w", err)
+	}
+	return records, nil
 }
 
 // readyToClose checks the arc is parked, approved, at the ops gate. A blocked

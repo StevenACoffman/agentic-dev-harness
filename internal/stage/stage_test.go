@@ -57,6 +57,17 @@ func TestExecuteAdvances(t *testing.T) {
 	}
 }
 
+func TestExecuteModelGate(t *testing.T) {
+	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Status: adh.StatusOpen}
+	err := stage.Execute(context.Background(), model.Mock{Class: authority.ClassFast}, &arc)
+	if adh.ErrorCode(err) != adh.EUNAUTHORIZED {
+		t.Errorf("strategy on a fast-class model = %v, want EUNAUTHORIZED", err)
+	}
+	if arc.Stage != adh.StageStrategy {
+		t.Errorf("stage advanced past a gated model call: %s", arc.Stage)
+	}
+}
+
 func TestExecuteRefusesOps(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageOps, Status: adh.StatusOpen}
 	err := stage.Execute(context.Background(), model.Mock{}, &arc)

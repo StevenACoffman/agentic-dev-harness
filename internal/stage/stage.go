@@ -15,9 +15,11 @@ import (
 )
 
 // Client is the model seam the stages need, declared here at the point of use
-// and satisfied by model.Mock and the real client.
+// and satisfied by model.Mock and the real client. ModelClass reports the
+// capability tier the binding runs at, so Execute can enforce the model-gate.
 type Client interface {
 	Complete(ctx context.Context, req model.Request) (model.Response, error)
+	ModelClass() authority.ModelClass
 }
 
 // AutoAdvances reports whether, after completing stage s at autonomy level lvl,
@@ -40,6 +42,10 @@ func AutoAdvances(s adh.Stage, lvl authority.Level) bool {
 func Execute(ctx context.Context, client Client, arc *adh.Arc) error {
 	if arc.Stage == adh.StageOps {
 		return &adh.Error{Code: adh.EINVALID, Message: "ops ships via close, not a model step"}
+	}
+	// Model-gate (SPEC §5.1): a judgment role must run on a reasoning-class model.
+	if err := authority.ModelGate(arc.Stage, client.ModelClass()); err != nil {
+		return fmt.Errorf("stage: %w", err)
 	}
 	resp, err := client.Complete(ctx, model.Request{Role: arc.Stage, Prompt: promptFor(arc)})
 	if err != nil {

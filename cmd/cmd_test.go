@@ -111,15 +111,16 @@ func TestCloseWithoutProofExit8(t *testing.T) {
 	}
 }
 
-func TestCloseWithProofCloses(t *testing.T) {
-	t.Chdir(t.TempDir())
-	id := parkedAtOps(t)
+// writeProof lays down a proof artifact and a matching manifest.json in the
+// working directory for the given arc.
+func writeProof(t *testing.T, arcID string) {
+	t.Helper()
 	body := "screenshot-bytes"
 	if err := os.WriteFile("proof.txt", []byte(body), 0o600); err != nil {
 		t.Fatalf("write proof artifact: %v", err)
 	}
 	pkt := proof.Packet{
-		Arc:       id,
+		Arc:       arcID,
 		Artifacts: []proof.Artifact{{Path: "proof.txt", Digest: identity.Hash(body)}},
 	}
 	data, err := json.Marshal(pkt)
@@ -129,9 +130,32 @@ func TestCloseWithProofCloses(t *testing.T) {
 	if err := os.WriteFile("manifest.json", data, 0o600); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
+}
+
+func TestCloseWithProofCloses(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := parkedAtOps(t)
+	writeProof(t, id)
 	mustRun(t, "close", "--proof", "manifest.json", id)
 	if show := mustRun(t, "arc", "show", id); !strings.Contains(show, "closed") {
 		t.Errorf("arc not closed after close with proof:\n%s", show)
+	}
+}
+
+func TestCloseRecordsMetric(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := parkedAtOps(t)
+	writeProof(t, id)
+	mustRun(t, "close", "--proof", "manifest.json", id)
+	data, err := os.ReadFile(filepath.Join(".adh", "metrics.json"))
+	if err != nil {
+		t.Fatalf("read metrics ledger: %v", err)
+	}
+	if !strings.Contains(string(data), id) {
+		t.Errorf("close did not record a metric for %s:\n%s", id, data)
+	}
+	if out := mustRun(t, "metrics"); !strings.Contains(out, "accepted:") {
+		t.Errorf("metrics summary missing the accepted line:\n%s", out)
 	}
 }
 
