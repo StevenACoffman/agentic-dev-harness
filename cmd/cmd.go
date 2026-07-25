@@ -16,9 +16,12 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/approve"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/arc"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/autonomy"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/reject"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
@@ -41,6 +44,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	arc.New(r)
 	status.New(r)
 	initcmd.New(r)
+	autonomy.New(r)
+	approve.New(r)
+	reject.New(r)
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
