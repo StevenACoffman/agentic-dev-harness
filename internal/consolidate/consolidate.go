@@ -41,14 +41,25 @@ const (
 // Split is the held-out partition a mined task belongs to.
 type Split string
 
-// Config carries the three §18.5 levers: the protected-region marker (only that
+// Config carries the §18.5 levers: the protected-region marker (only that
 // region is machine-edited), the edit budget (the learning rate — how many
-// classes become guidance per round), and the size ratio (a candidate may not
-// exceed ratio × the current artifact).
+// classes become guidance per round), the size ratio (a candidate may not
+// exceed ratio × the current artifact), and the gate metric (how a hard/soft
+// score pair projects onto one comparable number, ported from SkillOpt's
+// select_gate_score).
 type Config struct {
-	Marker     string  `json:"marker"`
-	EditBudget int     `json:"edit_budget"`
-	SizeRatio  float64 `json:"size_ratio"`
+	Marker      string      `json:"marker"`
+	EditBudget  int         `json:"edit_budget"`
+	SizeRatio   float64     `json:"size_ratio"`
+	Metric      gate.Metric `json:"metric"`
+	MixedWeight float64     `json:"mixed_weight"`
+}
+
+// SplitScore is a split's aggregate rule-judge score — the mean hard and mean
+// soft over its tasks, ported from SkillOpt's aggregate_scores (compute_score).
+type SplitScore struct {
+	Hard float64 `json:"hard"`
+	Soft float64 `json:"soft"`
 }
 
 // Signal is one harvested closed arc's learnable content.
@@ -72,6 +83,7 @@ type Diagnostic struct {
 	Task   string  `json:"task"`
 	Split  Split   `json:"split"`
 	Hard   float64 `json:"hard"`
+	Soft   float64 `json:"soft"`
 	Reason string  `json:"reason"`
 }
 
@@ -82,21 +94,23 @@ type Diagnostic struct {
 // rejected one can be remembered), the per-task diagnostics, and the evidence
 // records to append. Records carry no timestamp — the shell stamps them.
 type Cycle struct {
-	Signals   []Signal          `json:"signals"`
-	Tasks     []Task            `json:"tasks"`
-	Baseline  float64           `json:"baseline"`
-	Candidate float64           `json:"candidate"`
-	Decision  gate.Result       `json:"decision"`
-	Proposed  string            `json:"proposed,omitempty"`
-	StagingID string            `json:"staging_id,omitempty"`
-	Diags     []Diagnostic      `json:"diagnostics"`
-	Records   []evidence.Record `json:"records"`
+	Signals       []Signal          `json:"signals"`
+	Tasks         []Task            `json:"tasks"`
+	Baseline      float64           `json:"baseline"`
+	Candidate     float64           `json:"candidate"`
+	BaselineSoft  float64           `json:"baseline_soft"`
+	CandidateSoft float64           `json:"candidate_soft"`
+	Decision      gate.Result       `json:"decision"`
+	Proposed      string            `json:"proposed,omitempty"`
+	StagingID     string            `json:"staging_id,omitempty"`
+	Diags         []Diagnostic      `json:"diagnostics"`
+	Records       []evidence.Record `json:"records"`
 }
 
 // DefaultConfig returns the §18.5 defaults: the ADH:LEARNED marker, an edit
-// budget of 4, and a 1.5× size bound.
+// budget of 4, a 1.5× size bound, and the hard gate metric.
 func DefaultConfig() Config {
-	return Config{Marker: "ADH:LEARNED", EditBudget: 4, SizeRatio: 1.5}
+	return Config{Marker: "ADH:LEARNED", EditBudget: 4, SizeRatio: 1.5, Metric: gate.Hard}
 }
 
 // Harvest reduces closed arcs to their learnable signals; open arcs are skipped.
@@ -180,28 +194,38 @@ func Plan(
 ) (Cycle, error) {
 	signals := Harvest(arcs)
 	tasks := Mine(signals, cfg)
-	baseScore, baseDiags, err := scoreSplit(artifact, tasks, SplitSelection)
+	baseSplit, baseDiags, err := scoreSplit(artifact, tasks, SplitSelection)
+	if err != nil {
+		return Cycle{}, err
+	}
+	baseScore, err := metricScore(cfg, baseSplit)
 	if err != nil {
 		return Cycle{}, err
 	}
 	cycle := Cycle{
-		Signals:   signals,
-		Tasks:     tasks,
-		Baseline:  baseScore,
-		Candidate: baseScore,
-		Decision:  gate.Evaluate(baseScore, baseScore, baseScore, 0, 0),
-		Diags:     baseDiags,
+		Signals:      signals,
+		Tasks:        tasks,
+		Baseline:     baseScore,
+		Candidate:    baseScore,
+		BaselineSoft: baseSplit.Soft,
+		Decision:     gate.Evaluate(baseScore, baseScore, baseScore, 0, 0),
+		Diags:        baseDiags,
 	}
 	candidate, note, proceed := proposal(artifact, learned, rejected, cfg)
 	if !proceed {
 		cycle.Records = record(cycle.Decision, baseScore, baseScore, evidence.StatusBaseline, note)
 		return cycle, nil
 	}
-	candScore, candDiags, err := scoreSplit(candidate, tasks, SplitSelection)
+	candSplit, candDiags, err := scoreSplit(candidate, tasks, SplitSelection)
+	if err != nil {
+		return Cycle{}, err
+	}
+	candScore, err := metricScore(cfg, candSplit)
 	if err != nil {
 		return Cycle{}, err
 	}
 	cycle.Candidate = candScore
+	cycle.CandidateSoft = candSplit.Soft
 	cycle.Decision = harness.Accept(candScore, baseScore, baseScore)
 	cycle.Diags = candDiags
 	// A scored candidate is identified by its content hash whatever the verdict,
@@ -244,13 +268,15 @@ func proposal(
 	}
 }
 
-// scoreSplit is the mean hard rule-judge score over the tasks in split, plus a
-// per-task diagnostic. An empty split scores 0 with no diagnostics.
-func scoreSplit(artifact string, tasks []Task, split Split) (float64, []Diagnostic, error) {
+// scoreSplit is the split's aggregate score — the mean hard and mean soft
+// rule-judge score over its tasks (SkillOpt's aggregate_scores) — plus a
+// per-task diagnostic. An empty split scores zero with no diagnostics.
+func scoreSplit(artifact string, tasks []Task, split Split) (SplitScore, []Diagnostic, error) {
 	var (
-		diags []Diagnostic
-		sum   float64
-		count int
+		diags   []Diagnostic
+		sumHard float64
+		sumSoft float64
+		count   int
 	)
 	for i := range tasks {
 		if tasks[i].Split != split {
@@ -259,20 +285,37 @@ func scoreSplit(artifact string, tasks []Task, split Split) (float64, []Diagnost
 		count++
 		result, err := judge.Score(artifact, tasks[i].Checks)
 		if err != nil {
-			return 0, nil, &adh.Error{Op: "consolidate.scoreSplit", Err: err}
+			return SplitScore{}, nil, &adh.Error{Op: "consolidate.scoreSplit", Err: err}
 		}
-		sum += result.Hard
+		sumHard += result.Hard
+		sumSoft += result.Soft
 		diags = append(diags, Diagnostic{
 			Task:   tasks[i].ID,
 			Split:  split,
 			Hard:   result.Hard,
+			Soft:   result.Soft,
 			Reason: reasonFor(result.Hard),
 		})
 	}
 	if count == 0 {
-		return 0, diags, nil
+		return SplitScore{}, diags, nil
 	}
-	return sum / float64(count), diags, nil
+	return SplitScore{Hard: sumHard / float64(count), Soft: sumSoft / float64(count)}, diags, nil
+}
+
+// metricScore projects a split score onto the single comparable number the
+// ratchet uses, via the configured metric (SkillOpt's select_gate_score). An
+// unset metric defaults to hard.
+func metricScore(cfg Config, score SplitScore) (float64, error) {
+	metric := cfg.Metric
+	if metric == "" {
+		metric = gate.Hard
+	}
+	projected, err := gate.SelectScore(score.Hard, score.Soft, metric, cfg.MixedWeight)
+	if err != nil {
+		return 0, &adh.Error{Op: "consolidate.metricScore", Err: err}
+	}
+	return projected, nil
 }
 
 // record builds the single evidence line for a cycle outcome. Timestamp is left

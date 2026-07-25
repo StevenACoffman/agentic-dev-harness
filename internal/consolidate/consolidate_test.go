@@ -116,6 +116,52 @@ func TestPlanAcceptsImprovement(t *testing.T) {
 	}
 }
 
+func TestPlanReportsSoftScores(t *testing.T) {
+	class := selectionClass(t)
+	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}
+	learned := consolidate.Propose(consolidate.Harvest(arcs), consolidate.DefaultConfig())
+	cycle, err := consolidate.Plan(
+		realisticArtifact,
+		learned,
+		arcs,
+		nil,
+		consolidate.DefaultConfig(),
+	)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	// A single-check task makes per-task soft == hard, so the split's mean soft
+	// tracks its mean hard: the baseline misses the assertion, the candidate meets it.
+	if cycle.BaselineSoft != 0 || cycle.CandidateSoft != 1 {
+		t.Errorf("soft scores = base %.3f cand %.3f, want 0 then 1",
+			cycle.BaselineSoft, cycle.CandidateSoft)
+	}
+}
+
+func TestPlanSoftMetricAccepts(t *testing.T) {
+	class := selectionClass(t)
+	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}
+	cfg := consolidate.DefaultConfig()
+	cfg.Metric = gate.Soft
+	learned := consolidate.Propose(consolidate.Harvest(arcs), cfg)
+	cycle, err := consolidate.Plan(realisticArtifact, learned, arcs, nil, cfg)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if cycle.Decision.Action == gate.Reject {
+		t.Errorf("soft-metric gate rejected a soft improvement: %+v", cycle.Decision)
+	}
+}
+
+func TestPlanInvalidMetric(t *testing.T) {
+	cfg := consolidate.DefaultConfig()
+	cfg.Metric = "bogus"
+	arcs := []adh.Arc{closedArc("arc-0001", "missing boundary")}
+	if _, err := consolidate.Plan(realisticArtifact, "x", arcs, nil, cfg); err == nil {
+		t.Error("Plan with an unknown gate metric should return an error")
+	}
+}
+
 func TestPlanRejectsNoImprovement(t *testing.T) {
 	// A closed arc with no failure in its history yields no task and no proposal.
 	arcs := []adh.Arc{
