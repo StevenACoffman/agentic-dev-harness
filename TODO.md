@@ -96,19 +96,26 @@ around them is partial.
 
 ## End-to-end lifecycle wiring
 
-The tested cores are not yet composed into a working loop.
+The arc lifecycle now runs end to end:
+`arc new → run` (relays the stages, parks blocked at the ops gate) `→ approve →
+close` (verifies proof, ships).
 
-- [ ] Strategy never sets an arc's `Resolution` (§12); set it so `CanClose` has
-  something to check.
-- [ ] `CanClose`/NO-PROOF-NO-CLOSE is implemented and tested but not invoked at
-  `ops`/close — arcs currently close without a proof-verify gate.
-- [ ] Add `arc close --as <resolution>` enforcing the resolution-matched proof
-  contract.
-- [ ] Nothing sets an arc to `StatusBlocked`, so the `approve`/`reject`
-  human-gate loop is never exercised end to end.
-- [ ] The cores `harness`, `lesson`, `context`, `tool`, `loop`, `worker`,
-  `metrics` are standalone commands/logic — not yet called by the stage or
-  sleep loop.
+- [x] Strategy chooses the resolution (§12): `stage.Execute` defaults an unset
+  one to a code change; `adh.ParseResolution` validates it.
+- [x] `close` invokes `adh.CanClose` + `proof.Verify` — NO-PROOF-NO-CLOSE is
+  enforced at the ship (exit 8 on a missing/mismatched proof).
+- [x] `close --as <resolution> --proof <manifest>` ships an approved arc under
+  the resolution-matched proof contract.
+- [x] The `run` relay parks the arc at `StatusBlocked` at the ops gate (and a
+  sub-ops gate below L2), so the `approve`/`reject` loop is exercised end to end.
+- [x] Two cores wired into the loop: `authority.ModelGate` (enforced in
+  `stage.Execute` — a judgment role on a fast-class model is EUNAUTHORIZED) and
+  `metrics` (a `close` records the shipped arc's cost to the ledger the
+  `metrics` command summarizes).
+- [ ] Still standalone (not force-fit into the single-arc ship path):
+  `lesson`, `context`, `tool`, `loop`, `worker`. `harness`/consolidate is wired
+  through `sleep`. A real evaluation stage that fails an arc back to execution
+  is modeled (`StatusFailed`) but the mock never triggers it.
 
 ## Offload to a mature library (undifferentiated heavy lifting)
 
