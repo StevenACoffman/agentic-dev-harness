@@ -50,8 +50,14 @@ import (
 // underscores.
 //
 // Flags supplied on the command line always take precedence over env vars.
-func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	r := root.New(stdin, stdout, stderr)
+func Run(
+	ctx context.Context,
+	args []string,
+	getenv func(string) string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+) error {
+	r := root.New(getenv, stdin, stdout, stderr)
 	version.New(r)
 	gate.New(r)
 	// register new commands here

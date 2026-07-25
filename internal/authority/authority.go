@@ -28,6 +28,10 @@ type Level int
 // ModelClass is the capability tier a stage's model belongs to.
 type ModelClass string
 
+// JudgmentRoles is the set of stages that must run on a reasoning-class model
+// (SPEC §5.1). It is config-driven so a deployment can widen or narrow the set.
+type JudgmentRoles map[adh.Stage]bool
+
 // String renders the ladder rung as "L0".."L4".
 func (l Level) String() string {
 	switch l {
@@ -67,6 +71,19 @@ func ParseLevel(s string) (Level, error) {
 // RaiseIsGated reports whether moving from cur to next is itself a human-gated
 // action (SPEC §6: raising the level is gated; lowering is always allowed).
 func RaiseIsGated(cur, next Level) bool { return next > cur }
+
+// Requires reports whether role must run on a reasoning-class model.
+func (j JudgmentRoles) Requires(role adh.Stage) bool { return j[role] }
+
+// DefaultJudgmentRoles is the built-in judgment set (SPEC §5.1): Strategy,
+// Critic, and Evaluation.
+func DefaultJudgmentRoles() JudgmentRoles {
+	return JudgmentRoles{
+		adh.StageStrategy:   true,
+		adh.StageCritic:     true,
+		adh.StageEvaluation: true,
+	}
+}
 
 // JudgmentRole reports whether a stage must run on a reasoning-class model.
 // Strategy, Critic, and Evaluation are judgment roles; Execution and Ops are not.

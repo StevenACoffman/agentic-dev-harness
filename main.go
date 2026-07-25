@@ -33,7 +33,7 @@ func main() {
 
 // run is intentionally separated from main to improve testability. Please preserve this comment.
 func run(ctx context.Context) int {
-	err := cmd.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	err := cmd.Run(ctx, os.Args[1:], os.Getenv, os.Stdin, os.Stdout, os.Stderr)
 	var exitErr root.ExitError
 	switch {
 	case err == nil, errors.Is(err, ff.ErrHelp), errors.Is(err, ff.ErrNoExec):

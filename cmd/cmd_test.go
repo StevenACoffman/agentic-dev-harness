@@ -67,8 +67,16 @@ func TestHarnessUnknownVerb(t *testing.T) {
 
 func run(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return runWithEnv(t, nil, args...)
+}
+
+// runWithEnv drives cmd.Run with an injected environment (nil = empty), so a
+// test can exercise ADH_* config precedence without touching the process env.
+func runWithEnv(t *testing.T, env map[string]string, args ...string) (string, error) {
+	t.Helper()
+	getenv := func(key string) string { return env[key] }
 	var out, errb bytes.Buffer
-	err := cmd.Run(context.Background(), args, strings.NewReader(""), &out, &errb)
+	err := cmd.Run(context.Background(), args, getenv, strings.NewReader(""), &out, &errb)
 	return out.String(), err
 }
 

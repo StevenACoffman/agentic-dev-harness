@@ -14,12 +14,13 @@ import (
 // default "error: ..." printer.
 type ExitError int
 
-// Config holds shared I/O writers and the root ff.Command.
-// All subcommand configs embed *Config to inherit these.
+// Config holds shared I/O writers, the injected environment accessor, and the
+// root ff.Command. All subcommand configs embed *Config to inherit these.
 type Config struct {
 	Stdin   io.Reader
 	Stdout  io.Writer
 	Stderr  io.Writer
+	Getenv  func(string) string
 	Flags   *ff.FlagSet
 	Command *ff.Command
 }
@@ -28,12 +29,14 @@ type Config struct {
 // command can request a specific exit code without printing an "error: ..." line.
 func (e ExitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
 
-// New returns a new root Config with the given I/O writers.
-func New(stdin io.Reader, stdout, stderr io.Writer) *Config {
+// New returns a new root Config with the given I/O writers and environment
+// accessor. getenv is injected (not os.Getenv) so config precedence is testable.
+func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) *Config {
 	var cfg Config
 	cfg.Stdin = stdin
 	cfg.Stdout = stdout
 	cfg.Stderr = stderr
+	cfg.Getenv = getenv
 	// No shared flags — cfg.Flags is nil; ff provides --help automatically.
 	// Subcommands call SetParent(parent.Flags)
 	// which is a no-op here; add shared flags (e.g. BoolVar) to activate.
