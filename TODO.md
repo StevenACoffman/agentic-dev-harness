@@ -76,13 +76,24 @@ around them is partial.
 
 ## Config wiring
 
-- [ ] No `.adh/config.toml` precedence loader (flags > env `ADH_*` > repo config
-  > defaults), the Phase 0 item that was deferred. Consequences:
-  - [ ] `run` hard-codes autonomy `L2` instead of reading `.adh/autonomy`.
-  - [ ] Per-role model classes are not config-driven (the model-gate has no real
-    routing to enforce).
-  - [ ] The approval phrase is the arc ID (placeholder); make it configurable.
-  - [ ] `worker requalify`'s baseline models are a placeholder map.
+- [x] `internal/config` precedence loader (SPEC §3): defaults → user config →
+  repo `.adh/config.toml` → `.adh/autonomy` runtime override → `ADH_AUTONOMY`.
+  `resolve` is a pure TOML overlay (BurntSushi/toml); `Load` is the file/env
+  shell; `getenv` is injected from the composition root so precedence is tested
+  without touching the process env. A malformed config is a wrapped error.
+  - [x] `run` and `autonomy` resolve the autonomy level from config
+    (`AutonomyLevel`); the relay parks earlier below L2.
+  - [x] The model-gate judgment set is config-driven (`[models.gate]
+    judgment_roles` → `authority.ModelGate`, enforced in `stage.Execute`).
+  - [x] The approval phrase is a single-owner policy
+    (`authority.RequiredApprovalPhrase` = arc id), deliberately never sourced
+    from config/env (`ADH_APPROVAL_PHRASE` ignored) so the gate stays structural
+    (§5.2) — a config-settable phrase would be a self-grant route.
+  - [x] `worker requalify` binds the per-role baseline from `[models]`
+    (`config.BaselineModels`); editing `[models]` opens a new epoch (§14).
+  - [ ] Deferred: the `--profile` layer (SPEC §3 tier 3) and the global
+    `--config`/`--profile`/`--repo` flags (tracked under Command surface); no
+    `adh init` writing a starter `.adh/config.toml`; secrets stay env-only.
 
 ## Effectful seams still mocked
 
