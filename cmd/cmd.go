@@ -24,6 +24,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/lessoncmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/loopcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/metricscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/proof"
@@ -35,6 +36,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/step"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/toolcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/workercmd"
 )
 
 // Run parses args and dispatches to the matching command.
@@ -67,6 +69,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	lessoncmd.New(r)
 	metricscmd.New(r)
 	sleep.New(r)
+	loopcmd.New(r)
+	workercmd.New(r)
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
