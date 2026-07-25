@@ -76,6 +76,36 @@ The tested cores are not yet composed into a working loop.
   `metrics` are standalone commands/logic — not yet called by the stage or
   sleep loop.
 
+## Offload to a mature library (undifferentiated heavy lifting)
+
+Necessary but edge-case-heavy plumbing that is not adh's differentiated value.
+The effectful interfaces (`model.Client`, `device.Validator`, planned `VCS`,
+`Clock`) are the slot points: keep the mock for tests, wrap the library in an
+`internal/<dependency>` adapter. Keep the policy cores (gate, oracle+invariant,
+defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
+
+- [x] State writes are now atomic (temp file + rename). Still to offload:
+      `google/renameio` (fsync durability) and `gofrs/flock` (cross-process
+      locking) once the parallel manager writes one workspace from many arcs.
+- [ ] `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
+      counting → the official SDKs (`anthropic-sdk-go`, `openai-go`). Never a
+      hand-rolled HTTP/retry layer.
+- [ ] `VCS` (git branch/commit/merge/revert, protected path) → shell out to the
+      `git` binary for mutations; `go-git` for read-only inspection.
+- [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
+- [ ] `.adh/config.toml` + precedence → ff/v4's own config providers
+      (`fftoml`/`ffyaml`), or `knadh/koanf`. Avoid Viper (package globals fight
+      go-advice §1/§3).
+- [ ] Structured logging (§14) → stdlib `log/slog`.
+- [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
+      not hand-grown regexes.
+- [ ] Scheduling (`sleep schedule`, loops §15) → system crontab, or
+      `robfig/cron` in-process.
+
+Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
+(the "parse at the boundary" idiom), JSON via `encoding/json`, hashing via
+`crypto/sha256`, and CLI/flags via ff/v4 + climax (already offloaded).
+
 ## Housekeeping
 
 - [ ] No CI workflow to run `golangci-lint` + `go test` on push.

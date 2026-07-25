@@ -109,7 +109,26 @@ func (s *Store) write(op string, arc *adh.Arc) error {
 	if err != nil {
 		return &adh.Error{Op: op, Err: err}
 	}
-	if err := os.WriteFile(s.path(arc.ID), append(data, '\n'), 0o600); err != nil {
+	// Write atomically: a temp file in the same directory, then rename over the
+	// target. A crash or a concurrent writer mid-write leaves the temp file, never
+	// a truncated arc. (renameio + flock would add fsync durability and
+	// cross-process locking; see TODO.md.)
+	tmp, err := os.CreateTemp(s.dir, "."+arc.ID+"-*.tmp")
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return &adh.Error{Op: op, Err: err}
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return &adh.Error{Op: op, Err: err}
+	}
+	if err := os.Rename(tmpName, s.path(arc.ID)); err != nil {
+		_ = os.Remove(tmpName)
 		return &adh.Error{Op: op, Err: err}
 	}
 	return nil
