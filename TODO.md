@@ -20,9 +20,9 @@ Remaining wiring for these:
 - [x] A `harness eval` command that scores an artifact with `rubric` and its
       behavioral checks with `judge` (the floor + judge-boundary surface).
       `cmd/harnesscmd` via `internal/harness.Eval`; `--checks`/`--output`/
-      `--json`. Still owed: a `--min` gate flag (exit non-zero below a floor).
-- [ ] Use `edit.WithinSizeBudget`/`IsNoOp` and `evidence` inside the real
-      `harness`/`sleep` consolidate loop once it exists (see below).
+      `--json`/`--min` (below-floor exits 1; `harness --min N eval <artifact>`).
+- [x] Use `edit.WithinSizeBudget`/`IsNoOp` and `evidence` inside the real
+      `sleep` consolidate loop — now wired through `internal/consolidate.Plan`.
 
 ## Disposition
 
@@ -36,9 +36,12 @@ decision cores (gate ratchet, score projection, content hash, defect/lapse,
 independent invariant checker, gate self-test) are faithful; the orchestration
 around them is partial.
 
-- [ ] `sleep` is a bounded mock: no real `harvest → mine → reflect →
-  consolidate → stage → adopt`, no train/val split in code, no persisted
-  rejected-edit buffer; `sleep adopt` is a stub.
+- [x] `sleep` runs the real `harvest → mine → reflect+gate → stage → adopt`
+  cycle (`internal/consolidate` + `cmd/sleep`): stable held-out splits, the
+  edit guards, a persisted rejected-edit buffer, staged proposals under
+  `.adh/sleep/staging/<id>/`, and `sleep adopt` applying with a backup.
+  Remaining: the optimizer is the deterministic mock `Propose` (no model
+  backend); staged text is not yet secret-redacted (§18.4); no `sleep schedule`.
 - [ ] Not ported from SkillOpt: `compute_score` (mean hard/soft over rollouts),
   success+failure mode extraction, longitudinal improved/regressed/persistent
   pairs, slow-update/meta-skill, and the LR-scheduler / edit-budget /
