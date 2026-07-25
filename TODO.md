@@ -42,12 +42,23 @@ around them is partial.
   `.adh/sleep/staging/<id>/`, and `sleep adopt` applying with a backup.
   Remaining: the optimizer is the deterministic mock `Propose` (no model
   backend); staged text is not yet secret-redacted (§18.4); no `sleep schedule`.
-- [ ] Not ported from SkillOpt: `compute_score` (mean hard/soft over rollouts),
-  success+failure mode extraction, longitudinal improved/regressed/persistent
-  pairs, slow-update/meta-skill, and the LR-scheduler / edit-budget /
-  `rank_and_select` machinery.
-- [ ] Oracle is one-dimensional (rows only); the original is two-dimensional
-  (rows + columns). Disclosed reduction — port the column pass for full parity.
+- [x] Ported from SkillOpt into `internal/consolidate`: `compute_score`
+  (`scoreSplit` aggregates mean hard **and** soft), `select_gate_score`
+  projection wired into the ratchet (`Config.Metric`/`MixedWeight`),
+  success+failure mode extraction (`Reflect`, failure wins a conflict),
+  `rank_and_select` (modes ranked by recurrence, budget clips), longitudinal
+  improved/regressed/persistent categories (`Categorize`), the slow-update /
+  meta guidance (`SlowGuidance`, staged as `longitudinal.md`), and the
+  LR-scheduler (`Config.Round` + `effectiveBudget`, linear decay).
+  Remaining: multi-rollout contrastive reflection (`rollouts_k>1`) stays
+  mock-single — adh has no live worker to run K attempts; and the slow guidance
+  is staged as cross-cycle memory, not written into a live protected region (the
+  gated candidate stays the single LEARNED region so a score change is
+  attributable). With single-check tasks per-task soft equals hard, so the dual
+  aggregate is structural until multi-check mining diverges them.
+- [x] Oracle is two-dimensional (rows + columns): `internal/oracle` resolves a
+  `Board` with independent React/Native enumeration and an independent invariant
+  checker; the planted `Buggy` resolver is caught by both nets.
 - Deliberately omitted: `select_gate_score`'s optional semantic-density bonus (a
   gameable proxy). Not a defect.
 
