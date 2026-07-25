@@ -46,6 +46,10 @@ const (
 	KindSuccess ModeKind = "success"
 )
 
+// longitudinalLineCap bounds the number of regressed/persistent lines carried in
+// a Longitudinal summary, keeping the slow-update guidance short.
+const longitudinalLineCap = 8
+
 // Split is the held-out partition a mined task belongs to.
 type Split string
 
@@ -66,6 +70,18 @@ type Mode struct {
 type Reflection struct {
 	Failure []Mode `json:"failure"`
 	Success []Mode `json:"success"`
+}
+
+// Longitudinal compares a task's outcome under the previous artifact against the
+// candidate (§18.3, SkillOpt's slow-update summary): how many improved,
+// regressed, stayed green, or kept failing. Regressed is the highest priority,
+// so Lines leads with regressions ahead of persistent failures.
+type Longitudinal struct {
+	Improved       int      `json:"improved"`
+	Regressed      int      `json:"regressed"`
+	StableSuccess  int      `json:"stable_success"`
+	PersistentFail int      `json:"persistent_fail"`
+	Lines          []string `json:"lines,omitempty"`
 }
 
 // Config carries the §18.5 levers: the protected-region marker (only that
@@ -133,6 +149,8 @@ type Cycle struct {
 	Proposed      string            `json:"proposed,omitempty"`
 	StagingID     string            `json:"staging_id,omitempty"`
 	Diags         []Diagnostic      `json:"diagnostics"`
+	Longitudinal  Longitudinal      `json:"longitudinal"`
+	SlowGuidance  string            `json:"slow_guidance,omitempty"`
 	Records       []evidence.Record `json:"records"`
 }
 
@@ -292,6 +310,9 @@ func Plan(
 	}
 	candidate, note, proceed := proposal(artifact, learned, rejected, cfg)
 	if !proceed {
+		if err := cycle.setLongitudinal(artifact, artifact, tasks); err != nil {
+			return Cycle{}, err
+		}
 		cycle.Records = record(cycle.Decision, baseScore, baseScore, evidence.StatusBaseline, note)
 		return cycle, nil
 	}
@@ -307,6 +328,9 @@ func Plan(
 	cycle.CandidateSoft = candSplit.Soft
 	cycle.Decision = harness.Accept(candScore, baseScore, baseScore)
 	cycle.Diags = candDiags
+	if err := cycle.setLongitudinal(artifact, candidate, tasks); err != nil {
+		return Cycle{}, err
+	}
 	// A scored candidate is identified by its content hash whatever the verdict,
 	// so the shell can remember a rejected one in the negative-feedback buffer
 	// (§18.3); only an accepted candidate is proposed for staging.
@@ -320,6 +344,84 @@ func Plan(
 	cycle.Records = record(cycle.Decision, baseScore, candScore, evidence.StatusKeep,
 		fmt.Sprintf("candidate improved selection %.3f -> %.3f", baseScore, candScore))
 	return cycle, nil
+}
+
+// setLongitudinal scores both artifacts over the report-only test split and
+// records the longitudinal categories plus the durable slow-update guidance
+// (§18.3). The test split never gates; it is compared for regressions.
+func (c *Cycle) setLongitudinal(before, after string, tasks []Task) error {
+	_, beforeDiags, err := scoreSplit(before, tasks, SplitTest)
+	if err != nil {
+		return err
+	}
+	_, afterDiags, err := scoreSplit(after, tasks, SplitTest)
+	if err != nil {
+		return err
+	}
+	c.Longitudinal = Categorize(beforeDiags, afterDiags)
+	c.SlowGuidance = SlowGuidance(c.Longitudinal)
+	return nil
+}
+
+// Categorize compares each task's hard outcome under the previous artifact
+// against the candidate, counting improved/regressed/stable/persistent-fail
+// (SkillOpt's slow-update summary). Lines leads with regressions — the highest
+// priority — then persistent failures, capped for brevity.
+func Categorize(prev, curr []Diagnostic) Longitudinal {
+	prevHard := make(map[string]float64, len(prev))
+	for i := range prev {
+		prevHard[prev[i].Task] = prev[i].Hard
+	}
+	var (
+		long       Longitudinal
+		regressed  []string
+		persistent []string
+	)
+	for i := range curr {
+		before, ok := prevHard[curr[i].Task]
+		if !ok {
+			continue
+		}
+		switch after := curr[i].Hard; {
+		case after > before:
+			long.Improved++
+		case after < before:
+			long.Regressed++
+			regressed = append(regressed, "[regressed] "+curr[i].Task)
+		case after >= 1.0:
+			long.StableSuccess++
+		default:
+			long.PersistentFail++
+			persistent = append(persistent, "[persistent-fail] "+curr[i].Task)
+		}
+	}
+	long.Lines = capLines(append(regressed, persistent...), longitudinalLineCap)
+	return long
+}
+
+// SlowGuidance renders durable cross-cycle guidance from the longitudinal
+// categories (§18.3, SkillOpt's slow update) — deterministic, no backend.
+func SlowGuidance(long Longitudinal) string {
+	var b strings.Builder
+	_, _ = fmt.Fprintf(&b,
+		"Longitudinal: %d improved, %d regressed, %d stable, %d persistent-fail.\n",
+		long.Improved, long.Regressed, long.StableSuccess, long.PersistentFail)
+	if long.StableSuccess > 0 {
+		_, _ = fmt.Fprintf(&b, "Preserve the %d behaviors that stayed green.\n", long.StableSuccess)
+	}
+	for _, line := range long.Lines {
+		b.WriteString("- avoid: ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func capLines(lines []string, limit int) []string {
+	if len(lines) > limit {
+		return lines[:limit]
+	}
+	return lines
 }
 
 // proposal builds the candidate artifact and reports whether the cycle should

@@ -198,6 +198,58 @@ func TestPlanInvalidMetric(t *testing.T) {
 	}
 }
 
+func TestCategorizeRegressedHighestPriority(t *testing.T) {
+	prev := []consolidate.Diagnostic{
+		{Task: "a", Hard: 1}, {Task: "b", Hard: 0}, {Task: "c", Hard: 1}, {Task: "d", Hard: 0},
+	}
+	curr := []consolidate.Diagnostic{
+		{Task: "a", Hard: 0}, // regressed
+		{Task: "b", Hard: 1}, // improved
+		{Task: "c", Hard: 1}, // stable success
+		{Task: "d", Hard: 0}, // persistent fail
+	}
+	long := consolidate.Categorize(prev, curr)
+	if long.Regressed != 1 || long.Improved != 1 || long.StableSuccess != 1 ||
+		long.PersistentFail != 1 {
+		t.Fatalf("counts = %+v, want one of each", long)
+	}
+	if len(long.Lines) == 0 || !strings.HasPrefix(long.Lines[0], "[regressed]") {
+		t.Errorf("Lines = %v, want a regression first", long.Lines)
+	}
+}
+
+func TestSlowGuidanceMentionsCounts(t *testing.T) {
+	g := consolidate.SlowGuidance(
+		consolidate.Longitudinal{Improved: 2, Regressed: 1, StableSuccess: 3},
+	)
+	if !strings.Contains(g, "2 improved") || !strings.Contains(g, "1 regressed") {
+		t.Errorf("slow guidance = %q, want the counts named", g)
+	}
+}
+
+func TestPlanFillsLongitudinal(t *testing.T) {
+	class := selectionClass(t)
+	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}
+	learned := consolidate.Propose(consolidate.Harvest(arcs), consolidate.DefaultConfig())
+	cycle, err := consolidate.Plan(
+		realisticArtifact,
+		learned,
+		arcs,
+		nil,
+		consolidate.DefaultConfig(),
+	)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	// The candidate only adds guidance, so the test split never regresses.
+	if cycle.Longitudinal.Regressed != 0 {
+		t.Errorf("candidate regressed a test task: %+v", cycle.Longitudinal)
+	}
+	if cycle.SlowGuidance == "" {
+		t.Error("accepted cycle produced no slow-update guidance")
+	}
+}
+
 func TestPlanRejectsNoImprovement(t *testing.T) {
 	// A closed arc with no failure in its history yields no task and no proposal.
 	arcs := []adh.Arc{
