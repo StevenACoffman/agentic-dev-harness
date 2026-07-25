@@ -42,6 +42,11 @@ func Execute(ctx context.Context, client Client, arc *adh.Arc) error {
 		return fmt.Errorf("stage: %w", err)
 	}
 	arc.History = append(arc.History, string(arc.Stage)+": "+resp.Text)
+	// Strategy chooses the resolution (§12); the mock defaults an unset one to a
+	// code change so a downstream close has a proof contract to check.
+	if arc.Stage == adh.StageStrategy && arc.Resolution == "" {
+		arc.Resolution = adh.ResolutionChange
+	}
 	if next, ok := adh.NextStage(arc.Stage); ok {
 		arc.Stage = next
 		return nil

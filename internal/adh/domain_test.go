@@ -6,6 +6,21 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
+func TestParseResolution(t *testing.T) {
+	for _, res := range []adh.Resolution{
+		adh.ResolutionChange, adh.ResolutionInvestigation,
+		adh.ResolutionExperiment, adh.ResolutionDecision,
+	} {
+		got, err := adh.ParseResolution(string(res))
+		if err != nil || got != res {
+			t.Errorf("ParseResolution(%q) = %q, %v; want %q, nil", res, got, err, res)
+		}
+	}
+	if _, err := adh.ParseResolution("bogus"); adh.ErrorCode(err) != adh.EINVALID {
+		t.Errorf("ParseResolution(bogus) code = %q, want EINVALID", adh.ErrorCode(err))
+	}
+}
+
 func TestNextStage(t *testing.T) {
 	tests := []struct {
 		name  string

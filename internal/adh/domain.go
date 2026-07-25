@@ -80,6 +80,17 @@ func (r Resolution) ProofKind() string {
 	}
 }
 
+// ParseResolution validates a resolution string, returning the typed value or
+// EINVALID for an unknown one. The known resolutions are exactly the four that
+// carry a proof contract (ProofKind).
+func ParseResolution(s string) (Resolution, error) {
+	res := Resolution(s)
+	if res.ProofKind() == "" {
+		return "", &Error{Code: EINVALID, Message: "unknown resolution: " + s}
+	}
+	return res, nil
+}
+
 // CanClose reports whether an arc may close under NO-PROOF-NO-CLOSE (SPEC §5.4):
 // an arc closes only with resolution-matched proof present. It returns EINVALID
 // when the resolution is unset or unknown and ECONFLICT when proof is missing.

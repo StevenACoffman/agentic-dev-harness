@@ -52,6 +52,9 @@ func TestExecuteAdvances(t *testing.T) {
 	if len(arc.History) != 1 {
 		t.Errorf("history len = %d, want 1", len(arc.History))
 	}
+	if arc.Resolution != adh.ResolutionChange {
+		t.Errorf("resolution after strategy = %q, want change (strategy chooses)", arc.Resolution)
+	}
 }
 
 func TestExecuteOpsCloses(t *testing.T) {
