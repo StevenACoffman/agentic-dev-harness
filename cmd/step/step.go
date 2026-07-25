@@ -52,6 +52,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if arc.Status != adh.StatusOpen {
 		return fmt.Errorf("step: arc %s is not open (status %s)", arc.ID, arc.Status)
 	}
+	if arc.Stage == adh.StageOps {
+		return fmt.Errorf("step: arc %s is at ops; ship it with `close`", arc.ID)
+	}
 	if err := stage.Execute(ctx, model.Mock{}, &arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}

@@ -103,6 +103,40 @@ func TestUnknownVerb(t *testing.T) {
 	}
 }
 
+func TestRunBlocksAtOpsGate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out, err := run(t, "arc", "new", "ship me")
+	if err != nil {
+		t.Fatalf("arc new: %v", err)
+	}
+	id := strings.TrimSpace(out)
+	if _, err := run(t, "run", id); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	show, err := run(t, "arc", "show", id)
+	if err != nil {
+		t.Fatalf("arc show: %v", err)
+	}
+	if !strings.Contains(show, "blocked") || !strings.Contains(show, "ops") {
+		t.Errorf("arc after run =\n%s\nwant blocked at ops", show)
+	}
+}
+
+func TestStepRefusesOps(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out, _ := run(t, "arc", "new", "ship me")
+	id := strings.TrimSpace(out)
+	if _, err := run(t, "run", id); err != nil { // relay parks it at the ops gate
+		t.Fatalf("run: %v", err)
+	}
+	if _, err := run(t, "approve", "--phrase", id, id); err != nil { // unblock, still at ops
+		t.Fatalf("approve: %v", err)
+	}
+	if _, err := run(t, "step", id); err == nil {
+		t.Errorf("step at ops should refuse (ship via close)")
+	}
+}
+
 // selectionFailure returns a failure class that hashes to the selection split,
 // so a seeded arc's mined task is held out for acceptance. Deterministic.
 func selectionFailure(t *testing.T) string {

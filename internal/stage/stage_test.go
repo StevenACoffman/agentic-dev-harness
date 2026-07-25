@@ -57,12 +57,13 @@ func TestExecuteAdvances(t *testing.T) {
 	}
 }
 
-func TestExecuteOpsCloses(t *testing.T) {
+func TestExecuteRefusesOps(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageOps, Status: adh.StatusOpen}
-	if err := stage.Execute(context.Background(), model.Mock{}, &arc); err != nil {
-		t.Fatalf("Execute: %v", err)
+	err := stage.Execute(context.Background(), model.Mock{}, &arc)
+	if adh.ErrorCode(err) != adh.EINVALID {
+		t.Errorf("Execute at ops = %v, want EINVALID (ops ships via close)", err)
 	}
-	if arc.Status != adh.StatusClosed {
-		t.Errorf("status after ops = %s, want closed", arc.Status)
+	if arc.Status != adh.StatusOpen {
+		t.Errorf("status after refused ops = %s, want unchanged (open)", arc.Status)
 	}
 }

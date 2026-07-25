@@ -52,6 +52,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("run: %w", err)
 	}
 	for arc.Status == adh.StatusOpen {
+		if arc.Stage == adh.StageOps {
+			return cfg.block(store, &arc, "ops is the ship gate; approve then `close`")
+		}
 		from := arc.Stage
 		if err := stage.Execute(ctx, model.Mock{}, &arc); err != nil {
 			return fmt.Errorf("run: %w", err)
@@ -60,11 +63,22 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 			return fmt.Errorf("run: %w", err)
 		}
 		_, _ = fmt.Fprintf(cfg.Stdout, "ran %s\n", from)
-		if arc.Status == adh.StatusOpen && !stage.AutoAdvances(from, authority.L2) {
-			_, _ = fmt.Fprintf(cfg.Stdout, "stopped: %s requires a human gate\n", arc.Stage)
-			return nil
+		if !stage.AutoAdvances(from, authority.L2) {
+			return cfg.block(store, &arc, string(arc.Stage)+" requires a human gate")
 		}
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "arc %s %s\n", arc.ID, arc.Status)
+	return nil
+}
+
+// block parks the arc at a human gate (StatusBlocked) and records why, so the
+// approve/reject loop can act on it. Blocking at a gate is not an error.
+func (cfg *Config) block(store *state.Store, arc *adh.Arc, reason string) error {
+	arc.Status = adh.StatusBlocked
+	arc.History = append(arc.History, "blocked: "+reason)
+	if err := store.Save(arc); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "blocked at %s: %s\n", arc.Stage, reason)
 	return nil
 }

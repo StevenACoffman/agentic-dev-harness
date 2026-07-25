@@ -34,9 +34,13 @@ func AutoAdvances(s adh.Stage, lvl authority.Level) bool {
 }
 
 // Execute runs the arc's current stage through client, appends the output to the
-// arc's history, and advances the arc to the next stage — or marks it closed
-// once ops completes. It mutates arc in place.
+// arc's history, and advances the arc to the next stage. It mutates arc in place.
+// Ops is not a model step — it is the human-gated ship, performed by the close
+// command — so Execute refuses it (EINVALID) and never auto-closes an arc.
 func Execute(ctx context.Context, client Client, arc *adh.Arc) error {
+	if arc.Stage == adh.StageOps {
+		return &adh.Error{Code: adh.EINVALID, Message: "ops ships via close, not a model step"}
+	}
 	resp, err := client.Complete(ctx, model.Request{Role: arc.Stage, Prompt: promptFor(arc)})
 	if err != nil {
 		return fmt.Errorf("stage: %w", err)
@@ -47,11 +51,8 @@ func Execute(ctx context.Context, client Client, arc *adh.Arc) error {
 	if arc.Stage == adh.StageStrategy && arc.Resolution == "" {
 		arc.Resolution = adh.ResolutionChange
 	}
-	if next, ok := adh.NextStage(arc.Stage); ok {
-		arc.Stage = next
-		return nil
-	}
-	arc.Status = adh.StatusClosed
+	next, _ := adh.NextStage(arc.Stage) // always present: ops is refused above
+	arc.Stage = next
 	return nil
 }
 
