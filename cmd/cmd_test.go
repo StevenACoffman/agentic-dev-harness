@@ -208,6 +208,19 @@ func TestSleepRunNoImprovement(t *testing.T) {
 	}
 }
 
+func TestSleepRunReportsLongitudinal(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedSleepWorkspace(t, selectionFailure(t))
+	out, _ := run(t, "sleep", "run") // stages (ExitError(14))
+	if !strings.Contains(out, "longitudinal") {
+		t.Errorf("run summary = %q, want a longitudinal report", out)
+	}
+	guidance := filepath.Join(".adh", "sleep", "staging", stagedIDs(t)[0], "longitudinal.md")
+	if _, err := os.Stat(guidance); err != nil {
+		t.Errorf("slow-update guidance not staged: %v", err)
+	}
+}
+
 func TestSleepUnknownVerb(t *testing.T) {
 	if _, err := run(t, "sleep", "frobnicate"); err == nil {
 		t.Errorf("unknown sleep verb should return an error")

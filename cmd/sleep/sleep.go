@@ -104,8 +104,12 @@ func (cfg *Config) run() error {
 	if err != nil {
 		return err
 	}
-	learned := consolidate.Propose(consolidate.Harvest(arcs), consolidate.DefaultConfig())
-	cycle, err := consolidate.Plan(artifact, learned, arcs, rejected, consolidate.DefaultConfig())
+	// The learning rate anneals across cycles: each prior staged proposal counts
+	// as a round, so later cycles make smaller, more attributable edits.
+	ccfg := consolidate.DefaultConfig()
+	ccfg.Round = priorCycles()
+	learned := consolidate.Propose(consolidate.Harvest(arcs), ccfg)
+	cycle, err := consolidate.Plan(artifact, learned, arcs, rejected, ccfg)
 	if err != nil {
 		return fmt.Errorf("sleep: %w", err)
 	}
@@ -149,9 +153,18 @@ func (cfg *Config) settle(cycle *consolidate.Cycle, rejected map[string]bool) er
 	if err := writeStaging(cfg.Artifact, cycle); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout,
-		"staged %s (selection %.3f -> %.3f); adopt with: adh sleep adopt %s\n",
-		cycle.StagingID, cycle.Baseline, cycle.Candidate, cycle.StagingID)
+	long := cycle.Longitudinal
+	_, _ = fmt.Fprintf(
+		cfg.Stdout,
+		"staged %s (selection %.3f -> %.3f; longitudinal %di/%dr/%dp); adopt with: adh sleep adopt %s\n",
+		cycle.StagingID,
+		cycle.Baseline,
+		cycle.Candidate,
+		long.Improved,
+		long.Regressed,
+		long.PersistentFail,
+		cycle.StagingID,
+	)
 	return root.ExitError(14)
 }
 
@@ -248,7 +261,34 @@ func writeStaging(livePath string, cycle *consolidate.Cycle) error {
 	if err := writeJSON(filepath.Join(dir, "report.json"), cycle); err != nil {
 		return err
 	}
+	// The slow-update guidance is durable cross-cycle memory (§18.3); it is
+	// staged alongside the proposal, not written into the gated live artifact.
+	if cycle.SlowGuidance != "" {
+		if err := atomicfile.WriteFile(
+			filepath.Join(dir, "longitudinal.md"),
+			[]byte(cycle.SlowGuidance),
+			0o600,
+		); err != nil {
+			return fmt.Errorf("sleep: write longitudinal: %w", err)
+		}
+	}
 	return appendEvidence(filepath.Join(dir, "evidence.jsonl"), cycle.Records)
+}
+
+// priorCycles counts the staged proposals so far — the round index that anneals
+// the edit budget. Deterministic (a directory count, no clock).
+func priorCycles() int {
+	entries, err := os.ReadDir(stagingRoot)
+	if err != nil {
+		return 0
+	}
+	rounds := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			rounds++
+		}
+	}
+	return rounds
 }
 
 func backupLive(id, livePath string) error {

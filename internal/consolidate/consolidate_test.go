@@ -124,6 +124,29 @@ func TestProposeClipsToBudget(t *testing.T) {
 	}
 }
 
+func TestBudgetDecaysWithRound(t *testing.T) {
+	signals := []consolidate.Signal{
+		{Failures: []string{"a fail", "b fail", "c fail", "d fail"}},
+	}
+	cfg := consolidate.DefaultConfig() // budget 4
+	tests := []struct {
+		round, want int
+	}{
+		{round: 0, want: 4},  // full budget
+		{round: 2, want: 2},  // 4 - 2
+		{round: 10, want: 1}, // floored at 1
+	}
+	for _, tt := range tests {
+		cfg.Round = tt.round
+		if got := strings.Count(
+			consolidate.Propose(signals, cfg),
+			"- Guard against:",
+		); got != tt.want {
+			t.Errorf("round %d: proposed %d bullets, want %d", tt.round, got, tt.want)
+		}
+	}
+}
+
 func TestPlanAcceptsImprovement(t *testing.T) {
 	class := selectionClass(t)
 	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}

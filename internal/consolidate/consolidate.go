@@ -96,6 +96,7 @@ type Config struct {
 	SizeRatio   float64     `json:"size_ratio"`
 	Metric      gate.Metric `json:"metric"`
 	MixedWeight float64     `json:"mixed_weight"`
+	Round       int         `json:"round"`
 }
 
 // SplitScore is a split's aggregate rule-judge score — the mean hard and mean
@@ -160,6 +161,17 @@ func DefaultConfig() Config {
 	return Config{Marker: "ADH:LEARNED", EditBudget: 4, SizeRatio: 1.5, Metric: gate.Hard}
 }
 
+// effectiveBudget anneals the edit budget across cycles — the learning-rate
+// schedule (SkillOpt's lr_scheduler): a linear decay of one edit per round with
+// a floor of 1, so later cycles make smaller, more attributable changes. A
+// non-positive base budget means unlimited and is left untouched.
+func (c Config) effectiveBudget() int {
+	if c.EditBudget <= 0 {
+		return c.EditBudget
+	}
+	return max(1, c.EditBudget-c.Round)
+}
+
 // Harvest reduces closed arcs to their learnable signals; open arcs are skipped.
 func Harvest(arcs []adh.Arc) []Signal {
 	signals := make([]Signal, 0, len(arcs))
@@ -220,7 +232,7 @@ func Reflect(signals []Signal) Reflection {
 // nothing to learn.
 func Propose(signals []Signal, cfg Config) string {
 	reflection := Reflect(signals)
-	budget := cfg.EditBudget
+	budget := cfg.effectiveBudget()
 	var b strings.Builder
 	used := 0
 	render := func(modes []Mode, lead string) {
