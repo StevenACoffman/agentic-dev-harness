@@ -8,12 +8,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 )
+
+const evidenceFile = ".adh/sleep/evidence.jsonl"
 
 // Config holds the configuration for the sleep command.
 type Config struct {
@@ -61,9 +67,34 @@ func (cfg *Config) run() error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "gate self-test failed: %s\n", err)
 		return root.ExitError(15)
 	}
+	if err := appendEvidence(&evidence.Record{
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Status:     evidence.StatusBaseline,
+		GateAction: "reject",
+		Note:       "mock backend proposed no strict held-out improvement",
+	}); err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintln(
 		cfg.Stdout,
 		"gate self-test passed; mock backend proposed no strict held-out improvement; nothing staged",
 	)
+	return nil
+}
+
+// appendEvidence records one line of the night's evidentiary chain. The file
+// open/append is the imperative shell around the pure evidence.Append.
+func appendEvidence(rec *evidence.Record) error {
+	if err := os.MkdirAll(filepath.Dir(evidenceFile), 0o750); err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	file, err := os.OpenFile(evidenceFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	if err := evidence.Append(file, *rec); err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
 	return nil
 }
