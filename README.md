@@ -75,3 +75,26 @@ The same operator + harness, on public work you can check:
 - Cold, independent review beats a model grading its own homework.
 - Autonomy is safe when the gates sit on the irreversible steps — not on the competence.
 - Build to ship: the gates exist so speed doesn't cost you correctness.
+
+## The `adh` CLI
+
+This repo also contains a Go implementation of the harness as a command-line
+tool, `adh`, specified in [`SPEC.md`](./SPEC.md) and [`SPEC-ADDITIONS.md`](./SPEC-ADDITIONS.md)
+and built to the plan in [`PLAN.md`](./PLAN.md). It follows a functional
+core / imperative shell split: pure decision logic in `internal/` (the gate
+ratchet, arc state machine, differential oracle, proof verification, authority
+gates, effectiveness metrics, lessons) with thin `cmd/` shells over ff/v4.
+Effectful work (model, adb device, git) sits behind interfaces with
+deterministic mock backends, so the whole tool builds and tests without an API
+key or hardware.
+
+```sh
+go build -o adh .          # build
+go test ./...              # unit + dispatcher integration tests
+golangci-lint run ./...    # the project's strict linters, unrelaxed
+
+adh init                   # scaffold the .adh workspace
+adh arc new "fix the crash"
+adh run arc-0001           # relay through the stages to a gate or closure
+adh oracle selftest        # prove the differential oracle catches a planted bug
+```
