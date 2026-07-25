@@ -23,8 +23,8 @@ formatters:
     paths:
       - generated
       - node_modules
-      # internal/atomicfile is vendored third-party code (upstream google/renameio
-      # style, with its own LICENSE and syscall variants). Not adh's to restyle.
+      # internal/atomicfile is vendored third-party code (Tailscale, BSD-3-Clause,
+      # with its own windows/notwindows syscall variants). Not adh's to restyle.
       - internal/atomicfile
 
 linters:
@@ -433,9 +433,9 @@ linters:
           disabled: false
 
   exclusions:
-    # internal/atomicfile is vendored third-party code (upstream google/renameio
-    # style, own LICENSE + windows/notwindows syscall variants). We do not hold it
-    # to adh's house rules; skip linting it entirely rather than relaxing any rule.
+    # internal/atomicfile is vendored third-party code (Tailscale, BSD-3-Clause,
+    # own windows/notwindows syscall variants). We do not hold it to adh's house
+    # rules; skip linting it entirely rather than relaxing any rule.
     paths:
       - internal/atomicfile
     rules:
