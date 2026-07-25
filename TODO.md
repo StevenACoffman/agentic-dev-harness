@@ -4,6 +4,24 @@ Tracks what remains after Phases 0–9 (see [`PLAN.md`](./PLAN.md)). Everything
 committed passes the phase gate: `golangci-lint run ./...` clean and
 `go test ./...` green.
 
+## Ported from skillsaw (done)
+
+- [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus
+      `cmd/judge`. Retargeted, adh.Error-ized, tested.
+- [x] `internal/edit` — `WithinSizeBudget` + `IsNoOp` (via `identity.Hash`).
+- [x] `internal/evidence` — append-only JSONL audit log (validate-on-write,
+      corruption-is-a-hard-error), wired into `sleep run`.
+- [x] `internal/rubric` — the DET.SCORE floor + NeedsJudge + weighted total +
+      Diagnose pattern, with adh's own dimensions (no SKILL.md/markdown/
+      neutrality parts).
+
+Remaining wiring for these:
+
+- [ ] A `harness eval` command that scores an artifact with `rubric` and its
+      behavioral checks with `judge` (the floor + judge-boundary surface).
+- [ ] Use `edit.WithinSizeBudget`/`IsNoOp` and `evidence` inside the real
+      `harness`/`sleep` consolidate loop once it exists (see below).
+
 ## Disposition
 
 - [ ] Branch `implement/adh-spec` is unpushed; upstream PRs are owner-only.
