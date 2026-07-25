@@ -4,12 +4,35 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 )
+
+func TestHarnessEvalDispatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "skill.md")
+	doc := "# Skill\nIf the build fails, retry.\n## Boundary\nNot for zero-to-one work.\n"
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	out, err := run(t, "harness", "eval", path)
+	if err != nil {
+		t.Fatalf("harness eval returned error: %v", err)
+	}
+	if !strings.Contains(out, "det score: 100.0/100") {
+		t.Errorf("harness eval output = %q, want a full det score", out)
+	}
+}
+
+func TestHarnessUnknownVerb(t *testing.T) {
+	if _, err := run(t, "harness", "frobnicate"); err == nil {
+		t.Errorf("unknown harness verb should return an error")
+	}
+}
 
 func run(t *testing.T, args ...string) (string, error) {
 	t.Helper()

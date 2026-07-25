@@ -22,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/harnesscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/judgecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/lessoncmd"
@@ -73,6 +74,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	loopcmd.New(r)
 	workercmd.New(r)
 	judgecmd.New(r)
+	harnesscmd.New(r)
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
