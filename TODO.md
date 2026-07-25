@@ -17,8 +17,10 @@ committed passes the phase gate: `golangci-lint run ./...` clean and
 
 Remaining wiring for these:
 
-- [ ] A `harness eval` command that scores an artifact with `rubric` and its
+- [x] A `harness eval` command that scores an artifact with `rubric` and its
       behavioral checks with `judge` (the floor + judge-boundary surface).
+      `cmd/harnesscmd` via `internal/harness.Eval`; `--checks`/`--output`/
+      `--json`. Still owed: a `--min` gate flag (exit non-zero below a floor).
 - [ ] Use `edit.WithinSizeBudget`/`IsNoOp` and `evidence` inside the real
       `harness`/`sleep` consolidate loop once it exists (see below).
 
