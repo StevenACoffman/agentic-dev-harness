@@ -17,9 +17,10 @@ import (
 const corpusSeed uint64 = 1234
 
 const (
-	corpusRows = 3000
-	corpusLen  = 6
-	corpusHues = 3
+	corpusBoards = 3000
+	corpusRows   = 4
+	corpusCols   = 4
+	corpusHues   = 3
 )
 
 // Config holds the configuration for the oracle command.
@@ -63,9 +64,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 }
 
 func (cfg *Config) diff() error {
-	rows := oraclelib.GenerateRows(corpusSeed, corpusRows, corpusLen, corpusHues)
-	div := oraclelib.Diverges(oraclelib.React, oraclelib.Native, rows)
-	rep := oraclelib.Report{Rows: len(rows), Divergent: div}
+	boards := oraclelib.GenerateBoards(corpusSeed, corpusBoards, corpusRows, corpusCols, corpusHues)
+	div := oraclelib.Diverges(oraclelib.React, oraclelib.Native, boards)
+	rep := oraclelib.Report{Boards: len(boards), Divergent: div}
 	_, _ = fmt.Fprintln(cfg.Stdout, rep.String())
 	if div != nil {
 		return root.ExitError(5)
@@ -74,14 +75,14 @@ func (cfg *Config) diff() error {
 }
 
 func (cfg *Config) invariants() error {
-	rows := oraclelib.GenerateRows(corpusSeed, corpusRows, corpusLen, corpusHues)
-	for _, row := range rows {
-		if !oraclelib.InvariantsHold(row, oraclelib.Native(row)) {
-			_, _ = fmt.Fprintf(cfg.Stderr, "invariant violated at row %v\n", row)
+	boards := oraclelib.GenerateBoards(corpusSeed, corpusBoards, corpusRows, corpusCols, corpusHues)
+	for _, board := range boards {
+		if !oraclelib.InvariantsHold(board, oraclelib.Native(board)) {
+			_, _ = fmt.Fprintf(cfg.Stderr, "invariant violated at board %v\n", board)
 			return root.ExitError(6)
 		}
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "invariants hold over %d rows\n", len(rows))
+	_, _ = fmt.Fprintf(cfg.Stdout, "invariants hold over %d boards\n", len(boards))
 	return nil
 }
 
