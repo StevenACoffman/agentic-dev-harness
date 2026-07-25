@@ -21,7 +21,9 @@ import (
 // automatically, and it is read from build info at startup. Override at link
 // time only if the auto-detected value is incorrect:
 //
-//	go build -ldflags "-X 'github.com/StevenACoffman/agentic-dev-harness/cmd/version.Version=v1.2.3'"
+//	go build -ldflags "-X
+//
+// 'github.com/StevenACoffman/agentic-dev-harness/cmd/version.Version=v1.2.3'"
 var Version = "dev"
 
 // Option can be used to customize the Info after it is gathered from the
