@@ -12,6 +12,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	workerlib "github.com/StevenACoffman/agentic-dev-harness/internal/worker"
 )
@@ -73,25 +74,17 @@ func (cfg *Config) show() error {
 }
 
 func (cfg *Config) requalify() error {
-	models := baselineModels()
+	conf, err := config.Load(cfg.Getenv)
+	if err != nil {
+		return fmt.Errorf("worker: %w", err)
+	}
+	models := conf.BaselineModels()
 	epoch := workerlib.Epoch{ID: identity.Hash(canonical(models)), Models: models}
 	if err := workerlib.Save(stateFile, epoch); err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "requalified: epoch %s (%d roles)\n", epoch.ID, len(models))
 	return nil
-}
-
-// baselineModels is the per-role model binding recorded at requalification. It
-// is a placeholder until model config lands; the epoch mechanism is real.
-func baselineModels() map[string]string {
-	return map[string]string{
-		"strategy":   "reasoning",
-		"execution":  "fast",
-		"critic":     "reasoning",
-		"evaluation": "reasoning",
-		"ops":        "fast",
-	}
 }
 
 func canonical(models map[string]string) string {

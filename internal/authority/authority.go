@@ -117,6 +117,12 @@ func ModelGate(role adh.Stage, class ModelClass, judgment JudgmentRoles) error {
 	return nil
 }
 
+// RequiredApprovalPhrase is the phrase a human must type to satisfy an arc's
+// safety gate (SPEC §5.2), derived from the arc id. It is deliberately NOT
+// sourced from config or the environment: a config- or env-settable phrase would
+// be a self-grant route, since the agent can read both. The gate is structural.
+func RequiredApprovalPhrase(arcID string) string { return arcID }
+
 // GateSatisfied reports whether a human safety gate (SPEC §5.2) is satisfied.
 // Only a non-empty phrase that exactly matches the required phrase satisfies it,
 // and never under a dry run. The agent has no code route to self-grant: callers

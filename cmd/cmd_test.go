@@ -209,6 +209,33 @@ func TestUnknownVerb(t *testing.T) {
 	}
 }
 
+func TestWorkerRequalifyUsesConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	body := "[models]\nreasoning = \"strong\"\nfast = \"quick\"\n"
+	if err := os.WriteFile(filepath.Join(".adh", "config.toml"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	mustRun(t, "worker", "requalify")
+	show := mustRun(t, "worker", "show")
+	if !strings.Contains(show, "strong") || !strings.Contains(show, "quick") {
+		t.Errorf("worker epoch should bind the configured models:\n%s", show)
+	}
+}
+
+func TestApproveRequiresPhrase(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := strings.TrimSpace(mustRun(t, "arc", "new", "x"))
+	mustRun(t, "run", id) // blocked at ops
+	_, err := run(t, "approve", id)
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 4 {
+		t.Fatalf("approve without --phrase = %v, want ExitError(4)", err)
+	}
+}
+
 func TestRunBlocksAtOpsGate(t *testing.T) {
 	t.Chdir(t.TempDir())
 	out, err := run(t, "arc", "new", "ship me")

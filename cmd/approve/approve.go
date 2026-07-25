@@ -77,8 +77,13 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if arc.Status != adh.StatusBlocked {
 		return fmt.Errorf("approve: arc %s is not waiting at a gate (status %s)", id, arc.Status)
 	}
-	if !authority.GateSatisfied(id, cfg.Phrase, cfg.DryRun) {
-		_, _ = fmt.Fprintf(cfg.Stderr, "gate not satisfied: pass --phrase %s to approve\n", id)
+	required := authority.RequiredApprovalPhrase(id)
+	if !authority.GateSatisfied(required, cfg.Phrase, cfg.DryRun) {
+		_, _ = fmt.Fprintf(
+			cfg.Stderr,
+			"gate not satisfied: pass --phrase %s to approve\n",
+			required,
+		)
 		return root.ExitError(4)
 	}
 	arc.Status = adh.StatusOpen
