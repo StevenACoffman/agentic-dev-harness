@@ -12,10 +12,8 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 )
-
-const selfTestSeed uint64 = 99
 
 // Config holds the configuration for the sleep command.
 type Config struct {
@@ -56,9 +54,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 }
 
 func (cfg *Config) run() error {
-	// The negative control proves the gate has teeth before the loop is trusted:
-	// a planted regression must be rejected (SPEC-ADDITIONS §18.4).
-	if err := oracle.SelfTest(selfTestSeed); err != nil {
+	// The negative control proves the self-optimization gate has teeth before the
+	// loop is trusted: a planted non-improving candidate must be rejected by the
+	// ratchet (SPEC-ADDITIONS §18.4), mirroring SkillOpt's harmful-edit probe.
+	if err := harness.SelfTest(); err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "gate self-test failed: %s\n", err)
 		return root.ExitError(15)
 	}

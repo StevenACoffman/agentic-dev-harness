@@ -54,3 +54,33 @@ func TestSelfTestCatchesPlantedBug(t *testing.T) {
 		t.Errorf("SelfTest should pass (both nets catch the bug): %v", err)
 	}
 }
+
+func TestInvariantsAreIndependent(t *testing.T) {
+	row := []int{1, 1, 1} // one run of length 3: no special, cleared {0,1,2}
+
+	// A hand-crafted correct result — no resolver produced it — must pass, which
+	// shows the checker recomputes the rules itself rather than deferring.
+	correct := oracle.Result{Cleared: map[int]bool{0: true, 1: true, 2: true}, Specials: 0}
+	if !oracle.InvariantsHold(row, correct) {
+		t.Errorf("independent checker rejected a rule-correct result")
+	}
+
+	// A special awarded for a run of 3 violates the special-source rule.
+	tooManySpecials := oracle.Result{Cleared: map[int]bool{0: true, 1: true, 2: true}, Specials: 1}
+	if oracle.InvariantsHold(row, tooManySpecials) {
+		t.Errorf("checker must convict a special awarded for a run of 3")
+	}
+
+	// A wrong cleared set violates the cleared-cell rule.
+	wrongCleared := oracle.Result{Cleared: map[int]bool{0: true}, Specials: 0}
+	if oracle.InvariantsHold(row, wrongCleared) {
+		t.Errorf("checker must convict a wrong cleared set")
+	}
+}
+
+func TestInvariantsCatchBuggy(t *testing.T) {
+	row := []int{2, 2, 2} // Buggy awards a special here; the real rule does not
+	if oracle.InvariantsHold(row, oracle.Buggy(row)) {
+		t.Errorf("independent checker should convict the buggy resolver on a run of 3")
+	}
+}

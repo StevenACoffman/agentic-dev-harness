@@ -16,6 +16,12 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestSelfTest(t *testing.T) {
+	if err := harness.SelfTest(); err != nil {
+		t.Errorf("SelfTest should pass (the ratchet rejects non-improving candidates): %v", err)
+	}
+}
+
 func TestAccept(t *testing.T) {
 	tests := []struct {
 		name                string

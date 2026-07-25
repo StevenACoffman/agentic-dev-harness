@@ -28,6 +28,13 @@ type Report struct {
 	Divergent []int
 }
 
+// run is a maximal same-color run of length >= 3, used by the independent
+// invariant recomputation.
+type run struct {
+	start  int
+	length int
+}
+
 // Equal reports whether two results are identical — the exact match the
 // differential oracle leans on.
 func (r Result) Equal(other Result) bool {
@@ -121,11 +128,61 @@ func Buggy(row []int) Result {
 	return res
 }
 
-// InvariantsHold checks the governing rules directly, independent of how result
-// was produced: only a run of length >= 4 awards a special, and the cleared set
-// equals the union of runs of length >= 3.
+// InvariantsHold checks the governing rules directly, recomputing the runs
+// itself so it never defers to a resolver and can therefore convict a result
+// that both implementations agree on. It asserts three rules (a port of
+// evals-differential-oracle's check_all): a special is awarded only by a run of
+// length >= 4, the cleared set equals the union of runs of length >= 3, and the
+// special count stays within [0, number of runs].
 func InvariantsHold(row []int, result Result) bool {
-	return result.Equal(React(row)) // React is the reference recomputation
+	runs := runsOf(row)
+	specials4 := 0
+	cleared := make(map[int]bool)
+	for _, r := range runs {
+		if r.length >= 4 {
+			specials4++
+		}
+		for k := r.start; k < r.start+r.length; k++ {
+			cleared[k] = true
+		}
+	}
+	if result.Specials != specials4 || !equalSet(result.Cleared, cleared) {
+		return false
+	}
+	return result.Specials >= 0 && result.Specials <= len(runs)
+}
+
+// runsOf returns the maximal same-color runs of length >= 3 in row. It is an
+// independent scan — it calls no resolver.
+func runsOf(row []int) []run {
+	var runs []run
+	for i := 0; i < len(row); {
+		if row[i] == 0 {
+			i++
+			continue
+		}
+		start := i
+		for i < len(row) && row[i] == row[start] {
+			i++
+		}
+		if length := i - start; length >= 3 {
+			runs = append(runs, run{start: start, length: length})
+		}
+	}
+	return runs
+}
+
+// equalSet reports whether two cleared-cell sets are identical.
+func equalSet(a, b map[int]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }
 
 // Diverges runs both resolvers over generated rows and returns the first row on
