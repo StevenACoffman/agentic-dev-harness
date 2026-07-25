@@ -17,6 +17,7 @@ package consolidate
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -38,8 +39,34 @@ const (
 	SplitTrain     Split = "train"
 )
 
+// Mode kinds classify a reflected class (§18.3): a failure mode to avoid or a
+// success mode to reinforce.
+const (
+	KindFailure ModeKind = "failure"
+	KindSuccess ModeKind = "success"
+)
+
 // Split is the held-out partition a mined task belongs to.
 type Split string
+
+// ModeKind is whether a reflected class is a failure or a success mode.
+type ModeKind string
+
+// Mode is one reflected class and how often it recurred — the recurrence Count
+// is the ranking key the edit budget clips against (rank_and_select).
+type Mode struct {
+	Class string   `json:"class"`
+	Kind  ModeKind `json:"kind"`
+	Count int      `json:"count"`
+}
+
+// Reflection is the optimizer's read of the harvested history (§18.3): failure
+// modes to avoid and success modes to reinforce, each ranked by recurrence.
+// Failure modes win a conflict — a class that is both is kept only as a failure.
+type Reflection struct {
+	Failure []Mode `json:"failure"`
+	Success []Mode `json:"success"`
+}
 
 // Config carries the §18.5 levers: the protected-region marker (only that
 // region is machine-edited), the edit budget (the learning rate — how many
@@ -62,11 +89,13 @@ type SplitScore struct {
 	Soft float64 `json:"soft"`
 }
 
-// Signal is one harvested closed arc's learnable content.
+// Signal is one harvested closed arc's learnable content: the misses to avoid
+// and the affirmative outcomes to reinforce.
 type Signal struct {
 	Arc        string   `json:"arc"`
 	Resolution string   `json:"resolution,omitempty"`
 	Failures   []string `json:"failures,omitempty"`
+	Successes  []string `json:"successes,omitempty"`
 }
 
 // Task is a mined, checkable assertion about the artifact, assigned a stable
@@ -124,6 +153,7 @@ func Harvest(arcs []adh.Arc) []Signal {
 			Arc:        arcs[i].ID,
 			Resolution: string(arcs[i].Resolution),
 			Failures:   failureLines(arcs[i].History),
+			Successes:  successLines(arcs[i].History),
 		})
 	}
 	return signals
@@ -146,21 +176,70 @@ func Mine(signals []Signal, _ Config) []Task {
 	return tasks
 }
 
-// Propose is the mock optimizer: it renders the distilled failure classes as
-// guidance bullets for the protected region, clipping to the edit budget (the
-// learning rate). An empty result means there was nothing to learn.
+// Reflect reads the harvested signals into ranked failure and success modes
+// (§18.3): each class is ranked by recurrence (rank_and_select), and a class
+// that recurs as both a failure and a success is kept only as a failure —
+// failure modes win the conflict.
+func Reflect(signals []Signal) Reflection {
+	failure := modesFrom(collectFailures(signals), KindFailure)
+	inFailure := make(map[string]bool, len(failure))
+	for i := range failure {
+		inFailure[failure[i].Class] = true
+	}
+	var success []Mode
+	for _, mode := range modesFrom(collectSuccesses(signals), KindSuccess) {
+		if !inFailure[mode.Class] {
+			success = append(success, mode)
+		}
+	}
+	return Reflection{Failure: failure, Success: success}
+}
+
+// Propose is the mock optimizer: it renders the reflected modes as guidance
+// bullets for the protected region — failure modes ("Guard against") first so
+// they win the edit budget, then success modes ("Keep doing"). The budget (the
+// learning rate) clips the ranked remainder. An empty result means there was
+// nothing to learn.
 func Propose(signals []Signal, cfg Config) string {
-	lessons := lesson.Distill(collectFailures(signals))
-	if cfg.EditBudget > 0 && len(lessons) > cfg.EditBudget {
-		lessons = lessons[:cfg.EditBudget]
-	}
+	reflection := Reflect(signals)
+	budget := cfg.EditBudget
 	var b strings.Builder
-	for i := range lessons {
-		b.WriteString("- Guard against: ")
-		b.WriteString(lessons[i].Class)
-		b.WriteString("\n")
+	used := 0
+	render := func(modes []Mode, lead string) {
+		for i := range modes {
+			if budget > 0 && used >= budget {
+				return
+			}
+			b.WriteString(lead)
+			b.WriteString(modes[i].Class)
+			b.WriteString("\n")
+			used++
+		}
 	}
+	render(reflection.Failure, "- Guard against: ")
+	render(reflection.Success, "- Keep doing: ")
 	return b.String()
+}
+
+// modesFrom distills items into classes and ranks them by recurrence descending,
+// ties broken by class name for determinism.
+func modesFrom(items []string, kind ModeKind) []Mode {
+	lessons := lesson.Distill(items)
+	modes := make([]Mode, 0, len(lessons))
+	for i := range lessons {
+		modes = append(modes, Mode{
+			Class: lessons[i].Class,
+			Kind:  kind,
+			Count: len(lessons[i].Instances),
+		})
+	}
+	sort.SliceStable(modes, func(i, j int) bool {
+		if modes[i].Count != modes[j].Count {
+			return modes[i].Count > modes[j].Count
+		}
+		return modes[i].Class < modes[j].Class
+	})
+	return modes
 }
 
 // SplitFor maps a task id to its stable split by hashing the id, so a real
@@ -341,6 +420,41 @@ func collectFailures(signals []Signal) []string {
 		all = append(all, signals[i].Failures...)
 	}
 	return all
+}
+
+func collectSuccesses(signals []Signal) []string {
+	var all []string
+	for i := range signals {
+		all = append(all, signals[i].Successes...)
+	}
+	return all
+}
+
+// successLines keeps affirmative history entries (a resolved outcome to
+// reinforce), stripping the optional "stage: " prefix. A line that reads as a
+// miss is never a success — failure wins at the line level too.
+func successLines(history []string) []string {
+	var out []string
+	for _, line := range history {
+		text := line
+		if i := strings.Index(line, ": "); i >= 0 {
+			text = strings.TrimSpace(line[i+2:])
+		}
+		if !looksLikeFailure(text) && looksLikeSuccess(text) {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func looksLikeSuccess(s string) bool {
+	low := strings.ToLower(s)
+	for _, kw := range []string{"pass", "ok", "clean", "merged", "shipped", "verified", "green"} {
+		if strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // failureLines keeps the history entries that read as a miss, stripping an

@@ -88,6 +88,42 @@ func TestSplitStable(t *testing.T) {
 	}
 }
 
+func TestReflectFailureWinsConflict(t *testing.T) {
+	signals := []consolidate.Signal{
+		{Failures: []string{"flaky retries"}, Successes: []string{"flaky retries", "clean merge"}},
+	}
+	r := consolidate.Reflect(signals)
+	if len(r.Failure) != 1 || r.Failure[0].Class != "flaky retries" {
+		t.Errorf("failure modes = %+v, want [flaky retries]", r.Failure)
+	}
+	for _, m := range r.Success {
+		if m.Class == "flaky retries" {
+			t.Errorf("class present as both — failure must win, got success mode %q", m.Class)
+		}
+	}
+}
+
+func TestReflectRanksByRecurrence(t *testing.T) {
+	signals := []consolidate.Signal{
+		{Failures: []string{"rare gap", "common gap", "common gap", "common gap"}},
+	}
+	r := consolidate.Reflect(signals)
+	if len(r.Failure) != 2 || r.Failure[0].Class != "common gap" || r.Failure[0].Count != 3 {
+		t.Errorf("ranking = %+v, want common gap (3) first", r.Failure)
+	}
+}
+
+func TestProposeClipsToBudget(t *testing.T) {
+	signals := []consolidate.Signal{
+		{Failures: []string{"a fail", "b fail", "c fail", "d fail", "e fail"}},
+	}
+	cfg := consolidate.DefaultConfig() // budget 4
+	out := consolidate.Propose(signals, cfg)
+	if got := strings.Count(out, "- Guard against:"); got != cfg.EditBudget {
+		t.Errorf("proposed %d bullets, want the budget %d", got, cfg.EditBudget)
+	}
+}
+
 func TestPlanAcceptsImprovement(t *testing.T) {
 	class := selectionClass(t)
 	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}
