@@ -77,8 +77,9 @@ type Diagnostic struct {
 
 // Cycle is the pure outcome of one consolidation pass: the harvested signals,
 // the mined tasks, the baseline and candidate selection scores, the gate
-// decision, the proposed artifact (empty when nothing is staged), its
-// content-addressed staging id, the per-task diagnostics, and the evidence
+// decision, the proposed artifact (set only on acceptance), the candidate's
+// content-addressed staging id (set whenever a candidate was scored, so a
+// rejected one can be remembered), the per-task diagnostics, and the evidence
 // records to append. Records carry no timestamp — the shell stamps them.
 type Cycle struct {
 	Signals   []Signal          `json:"signals"`
@@ -203,13 +204,16 @@ func Plan(
 	cycle.Candidate = candScore
 	cycle.Decision = harness.Accept(candScore, baseScore, baseScore)
 	cycle.Diags = candDiags
+	// A scored candidate is identified by its content hash whatever the verdict,
+	// so the shell can remember a rejected one in the negative-feedback buffer
+	// (§18.3); only an accepted candidate is proposed for staging.
+	cycle.StagingID = identity.Hash(candidate)
 	if cycle.Decision.Action == gate.Reject {
 		cycle.Records = record(cycle.Decision, baseScore, candScore, evidence.StatusBaseline,
 			fmt.Sprintf("candidate %.3f did not beat baseline %.3f", candScore, baseScore))
 		return cycle, nil
 	}
 	cycle.Proposed = candidate
-	cycle.StagingID = identity.Hash(candidate)
 	cycle.Records = record(cycle.Decision, baseScore, candScore, evidence.StatusKeep,
 		fmt.Sprintf("candidate improved selection %.3f -> %.3f", baseScore, candScore))
 	return cycle, nil
