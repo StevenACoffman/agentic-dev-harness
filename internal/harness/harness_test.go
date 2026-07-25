@@ -45,6 +45,30 @@ func TestEvalFailingChecks(t *testing.T) {
 	}
 }
 
+func TestMeetsFloor(t *testing.T) {
+	rep, err := harness.Eval(evalDoc, "", nil) // scores 100
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	tests := []struct {
+		name string
+		min  float64
+		want bool
+	}{
+		{name: "disabled by zero", min: 0, want: true},
+		{name: "disabled by negative", min: -5, want: true},
+		{name: "at the floor", min: 100, want: true},
+		{name: "below the floor", min: 100.1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rep.MeetsFloor(tt.min); got != tt.want {
+				t.Errorf("MeetsFloor(%v) = %v, want %v", tt.min, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassify(t *testing.T) {
 	if got := harness.Classify(true); got != harness.Lapse {
 		t.Errorf("Classify(ruleExists=true) = %q, want lapse", got)

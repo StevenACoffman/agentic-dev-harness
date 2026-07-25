@@ -25,6 +25,7 @@ type Config struct {
 	*root.Config
 	Checks  string
 	Output  string
+	Min     float64
 	JSON    bool
 	Flags   *ff.FlagSet
 	Command *ff.Command
@@ -43,10 +44,17 @@ func New(parent *root.Config) *Config {
 		"",
 		"output to judge against --checks (default: stdin)",
 	)
+	cfg.Flags.Float64Var(
+		&cfg.Min,
+		'm',
+		"min",
+		0,
+		"exit non-zero when the deterministic score is below this floor (0 = no floor)",
+	)
 	cfg.Flags.BoolVar(&cfg.JSON, 0, "json", "emit the report as JSON")
 	cfg.Command = &ff.Command{
 		Name:      "harness",
-		Usage:     "agentic-dev-harness harness eval <artifact> [--checks c.json] [--output o.txt]",
+		Usage:     "agentic-dev-harness harness [--min N] [--checks c.json] [--output o.txt] eval <artifact>",
 		ShortHelp: "score and gate the harness artifact",
 		LongHelp:  "Score a harness guiding artifact: a deterministic floor plus judge-only dimensions (SPEC-ADDITIONS §18.2).",
 		Flags:     cfg.Flags,
@@ -84,7 +92,18 @@ func (cfg *Config) eval(args []string) error {
 	if err != nil {
 		return fmt.Errorf("harness: %w", err)
 	}
-	return cfg.render(&report)
+	if err := cfg.render(&report); err != nil {
+		return err
+	}
+	// Render first so the operator always sees the score, then gate: a score
+	// below the --min floor exits non-zero for CI (SPEC-ADDITIONS §18.2).
+	if !report.MeetsFloor(cfg.Min) {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"harness: det score %.1f is below the --min floor %.1f\n",
+			report.Rubric.DetScore, cfg.Min)
+		return root.ExitError(1)
+	}
+	return nil
 }
 
 // behavioral loads the optional rule checks and the output under test. It

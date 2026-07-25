@@ -28,6 +28,30 @@ func TestHarnessEvalDispatch(t *testing.T) {
 	}
 }
 
+func TestHarnessEvalMinFloorPasses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "skill.md")
+	doc := "# Skill\nIf the build fails, retry.\n## Boundary\nNot for zero-to-one.\n"
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	if _, err := run(t, "harness", "--min", "50", "eval", path); err != nil {
+		t.Errorf("eval --min 50 on a 100-scoring doc should pass, got %v", err)
+	}
+}
+
+func TestHarnessEvalMinFloorFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "skill.md")
+	doc := "# Skill\nIf the build fails, retry.\n## Boundary\nNot for zero-to-one.\n"
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	_, err := run(t, "harness", "--min", "101", "eval", path)
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 1 {
+		t.Fatalf("eval below --min floor = %v, want ExitError(1)", err)
+	}
+}
+
 func TestHarnessUnknownVerb(t *testing.T) {
 	if _, err := run(t, "harness", "frobnicate"); err == nil {
 		t.Errorf("unknown harness verb should return an error")

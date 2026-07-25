@@ -32,6 +32,13 @@ type EvalReport struct {
 	Behavioral *judge.Result `json:"behavioral,omitempty"`
 }
 
+// MeetsFloor reports whether the report's deterministic score meets the minimum
+// floor. A non-positive floor disables the gate; since DetScore is always >= 0,
+// floor == 0 is equivalent to "no floor".
+func (r *EvalReport) MeetsFloor(floor float64) bool {
+	return floor <= 0 || r.Rubric.DetScore >= floor
+}
+
 // Classify decides whether a miss is a harness defect or an execution lapse
 // (§18.3). When a correct rule already exists but was not followed, it is a
 // lapse; the artifact is protected. When uncertain, callers pass ruleExists as
