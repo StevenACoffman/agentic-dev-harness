@@ -19,6 +19,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/approve"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/arc"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/autonomy"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/closecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
@@ -61,6 +62,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	autonomy.New(r)
 	approve.New(r)
 	reject.New(r)
+	closecmd.New(r)
 	oracle.New(r)
 	proof.New(r)
 	device.New(r)

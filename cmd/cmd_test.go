@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
@@ -67,6 +70,77 @@ func run(t *testing.T, args ...string) (string, error) {
 	var out, errb bytes.Buffer
 	err := cmd.Run(context.Background(), args, strings.NewReader(""), &out, &errb)
 	return out.String(), err
+}
+
+// mustRun runs a command expected to succeed, returning its stdout.
+func mustRun(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := run(t, args...)
+	if err != nil {
+		t.Fatalf("%v: %v", args, err)
+	}
+	return out
+}
+
+// parkedAtOps creates an arc, relays it to the ops gate, and approves it, so it
+// is open at ops ready to close. It returns the arc id.
+func parkedAtOps(t *testing.T) string {
+	t.Helper()
+	id := strings.TrimSpace(mustRun(t, "arc", "new", "ship me"))
+	mustRun(t, "run", id)                     // parks at the ops gate (blocked)
+	mustRun(t, "approve", "--phrase", id, id) // unblocks: open at ops
+	return id
+}
+
+func TestCloseBeforeApproveFails(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := strings.TrimSpace(mustRun(t, "arc", "new", "x"))
+	mustRun(t, "run", id) // blocked at ops, not approved
+	if _, err := run(t, "close", id); err == nil {
+		t.Errorf("close of a blocked (unapproved) arc should fail")
+	}
+}
+
+func TestCloseWithoutProofExit8(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := parkedAtOps(t)
+	_, err := run(t, "close", id) // no --proof
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 8 {
+		t.Fatalf("close without proof = %v, want ExitError(8) (NO-PROOF-NO-CLOSE)", err)
+	}
+}
+
+func TestCloseWithProofCloses(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := parkedAtOps(t)
+	body := "screenshot-bytes"
+	if err := os.WriteFile("proof.txt", []byte(body), 0o600); err != nil {
+		t.Fatalf("write proof artifact: %v", err)
+	}
+	pkt := proof.Packet{
+		Arc:       id,
+		Artifacts: []proof.Artifact{{Path: "proof.txt", Digest: identity.Hash(body)}},
+	}
+	data, err := json.Marshal(pkt)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile("manifest.json", data, 0o600); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	mustRun(t, "close", "--proof", "manifest.json", id)
+	if show := mustRun(t, "arc", "show", id); !strings.Contains(show, "closed") {
+		t.Errorf("arc not closed after close with proof:\n%s", show)
+	}
+}
+
+func TestCloseBadResolutionFails(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := parkedAtOps(t)
+	if _, err := run(t, "close", "--as", "bogus", id); err == nil {
+		t.Errorf("close --as bogus should fail on an unknown resolution")
+	}
 }
 
 func TestGateAcceptDispatch(t *testing.T) {
