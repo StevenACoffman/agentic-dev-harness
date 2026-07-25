@@ -20,26 +20,26 @@ const (
 // Dimension is one rubric axis. NeedsJudge marks a dimension whose base quality
 // is an irreducible textual judgment a model must supply.
 type Dimension struct {
-	Key        string
-	Name       string
-	Weight     int
-	NeedsJudge bool
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	Weight     int    `json:"weight"`
+	NeedsJudge bool   `json:"needs_judge"`
 }
 
 // DimScore is a dimension's outcome: a 0..1 deterministic factor (1.0 = no
 // detectable defect) and the reason.
 type DimScore struct {
 	Dimension
-	Deterministic float64
-	Reason        string
+	Deterministic float64 `json:"deterministic"`
+	Reason        string  `json:"reason"`
 }
 
 // Report is the rubric outcome: per-dimension scores, the weighted deterministic
 // total (judge dims assumed perfect), and which dimensions still need a model.
 type Report struct {
-	Dims       []DimScore
-	DetScore   float64
-	NeedsJudge []string
+	Dims       []DimScore `json:"dims"`
+	DetScore   float64    `json:"det_score"`
+	NeedsJudge []string   `json:"needs_judge"`
 }
 
 // Evaluate scores doc. Judge dimensions assume a perfect base for the floor;

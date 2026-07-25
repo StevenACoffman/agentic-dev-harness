@@ -5,7 +5,45 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 )
+
+const evalDoc = "# Skill\nIf the build fails, open an early PR.\n## Boundary\nNot for zero-to-one work.\n"
+
+func TestEvalRubricOnly(t *testing.T) {
+	rep, err := harness.Eval(evalDoc, "", nil)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if rep.Behavioral != nil {
+		t.Errorf("Behavioral = %+v, want nil with no checks", rep.Behavioral)
+	}
+	if rep.Rubric.DetScore != 100 {
+		t.Errorf("DetScore = %v, want 100", rep.Rubric.DetScore)
+	}
+}
+
+func TestEvalPassingChecks(t *testing.T) {
+	checks := []judge.Check{{Op: judge.OpSectionPresent, Arg: "Boundary"}}
+	rep, err := harness.Eval(evalDoc, evalDoc, checks)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if rep.Behavioral == nil || rep.Behavioral.Hard != 1.0 {
+		t.Errorf("Behavioral = %+v, want hard 1", rep.Behavioral)
+	}
+}
+
+func TestEvalFailingChecks(t *testing.T) {
+	checks := []judge.Check{{Op: judge.OpContains, Arg: "zzz"}}
+	rep, err := harness.Eval(evalDoc, "abc", checks)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	if rep.Behavioral == nil || rep.Behavioral.Hard != 0.0 {
+		t.Errorf("Behavioral = %+v, want hard 0", rep.Behavioral)
+	}
+}
 
 func TestClassify(t *testing.T) {
 	if got := harness.Classify(true); got != harness.Lapse {

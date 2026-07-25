@@ -5,8 +5,12 @@
 package harness
 
 import (
+	"fmt"
+
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/rubric"
 )
 
 // Disposition values classify a miss.
@@ -17,6 +21,16 @@ const (
 
 // Disposition is how the reflect step treats a miss.
 type Disposition string
+
+// EvalReport is the outcome of scoring a harness guiding artifact (§18.2): the
+// rubric's deterministic floor and judge-only dimensions, the recommendation of
+// what to fix first, and an optional behavioral rule-judge result. Behavioral is
+// nil when no checks were supplied.
+type EvalReport struct {
+	Rubric     rubric.Report `json:"rubric"`
+	Diagnosis  string        `json:"diagnosis"`
+	Behavioral *judge.Result `json:"behavioral,omitempty"`
+}
 
 // Classify decides whether a miss is a harness defect or an execution lapse
 // (§18.3). When a correct rule already exists but was not followed, it is a
@@ -35,6 +49,23 @@ func Classify(ruleExists bool) Disposition {
 // for a single-shot consolidation.
 func Accept(candidate, current, best float64) gate.Result {
 	return gate.Evaluate(candidate, current, best, 0, 0)
+}
+
+// Eval scores a harness guiding artifact: the rubric's deterministic floor and
+// judge-only dimensions (§18.2), the fix-this-first diagnosis, and — when checks
+// are supplied — a behavioral rule-judge pass over output (§11). It is pure; the
+// command shell reads the artifact and checks and passes them in.
+func Eval(doc, output string, checks []judge.Check) (EvalReport, error) {
+	report := rubric.Evaluate(doc)
+	result := EvalReport{Rubric: report, Diagnosis: rubric.Diagnose(report)}
+	if len(checks) > 0 {
+		behavioral, err := judge.Score(output, checks)
+		if err != nil {
+			return EvalReport{}, fmt.Errorf("harness.Eval: %w", err)
+		}
+		result.Behavioral = &behavioral
+	}
+	return result, nil
 }
 
 // SelfTest is the negative control for the self-optimization gate
