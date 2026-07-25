@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 )
 
 const stateFile = ".adh/autonomy"
@@ -48,7 +48,11 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "show":
-		_, _ = fmt.Fprintln(cfg.Stdout, cfg.load().String())
+		conf, err := config.Load(cfg.Getenv)
+		if err != nil {
+			return fmt.Errorf("autonomy: %w", err)
+		}
+		_, _ = fmt.Fprintln(cfg.Stdout, conf.AutonomyLevel().String())
 		return nil
 	case "set":
 		return cfg.set(args[1:])
@@ -65,7 +69,11 @@ func (cfg *Config) set(args []string) error {
 	if err != nil {
 		return fmt.Errorf("autonomy: %w", err)
 	}
-	cur := cfg.load()
+	conf, err := config.Load(cfg.Getenv)
+	if err != nil {
+		return fmt.Errorf("autonomy: %w", err)
+	}
+	cur := conf.AutonomyLevel()
 	if authority.RaiseIsGated(cur, next) {
 		_, _ = fmt.Fprintf(
 			cfg.Stderr,
@@ -82,18 +90,4 @@ func (cfg *Config) set(args []string) error {
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "autonomy set to %s\n", next)
 	return nil
-}
-
-// load returns the persisted level, defaulting to L2 when the file is absent or
-// unreadable (SPEC §6 default).
-func (cfg *Config) load() authority.Level {
-	data, err := os.ReadFile(stateFile)
-	if err != nil {
-		return authority.L2
-	}
-	lvl, err := authority.ParseLevel(strings.TrimSpace(string(data)))
-	if err != nil {
-		return authority.L2
-	}
-	return lvl
 }

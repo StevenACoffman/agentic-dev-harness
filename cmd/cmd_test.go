@@ -228,6 +228,34 @@ func TestRunBlocksAtOpsGate(t *testing.T) {
 	}
 }
 
+func TestRunHonorsAutonomyEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := strings.TrimSpace(mustRun(t, "arc", "new", "gated"))
+	// At L1 the relay stops after the first stage (AutoAdvances(strategy, L1) is
+	// false), parking blocked at execution rather than relaying to the ops gate.
+	if _, err := runWithEnv(t, map[string]string{"ADH_AUTONOMY": "L1"}, "run", id); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	show := mustRun(t, "arc", "show", id)
+	if !strings.Contains(show, "blocked") || !strings.Contains(show, "execution") {
+		t.Errorf("ADH_AUTONOMY=L1 should park the arc blocked at execution:\n%s", show)
+	}
+}
+
+func TestAutonomySetLowersGate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	mustRun(t, "autonomy", "set", "L0")
+	if show := mustRun(t, "autonomy", "show"); !strings.Contains(show, "L0") {
+		t.Errorf("autonomy show = %q, want L0 after set", show)
+	}
+	id := strings.TrimSpace(mustRun(t, "arc", "new", "gated"))
+	mustRun(t, "run", id)
+	show := mustRun(t, "arc", "show", id)
+	if !strings.Contains(show, "blocked") || !strings.Contains(show, "execution") {
+		t.Errorf("at L0 (.adh/autonomy) the relay should block at execution:\n%s", show)
+	}
+}
+
 func TestStepRefusesOps(t *testing.T) {
 	t.Chdir(t.TempDir())
 	out, _ := run(t, "arc", "new", "ship me")

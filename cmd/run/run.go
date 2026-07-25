@@ -12,7 +12,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -46,6 +46,11 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("run: requires an arc id")
 	}
+	conf, err := config.Load(cfg.Getenv)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	level := conf.AutonomyLevel()
 	store := state.Default()
 	arc, err := store.Get(args[0])
 	if err != nil {
@@ -63,7 +68,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 			return fmt.Errorf("run: %w", err)
 		}
 		_, _ = fmt.Fprintf(cfg.Stdout, "ran %s\n", from)
-		if !stage.AutoAdvances(from, authority.L2) {
+		if !stage.AutoAdvances(from, level) {
 			return cfg.block(store, &arc, string(arc.Stage)+" requires a human gate")
 		}
 	}
