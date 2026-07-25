@@ -11,6 +11,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -55,7 +56,11 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if arc.Stage == adh.StageOps {
 		return fmt.Errorf("step: arc %s is at ops; ship it with `close`", arc.ID)
 	}
-	if err := stage.Execute(ctx, model.Mock{}, &arc); err != nil {
+	conf, err := config.Load(cfg.Getenv)
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	if err := stage.Execute(ctx, model.Mock{}, &arc, conf.JudgmentRoles()); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
 	if err := store.Save(&arc); err != nil {

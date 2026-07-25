@@ -38,13 +38,19 @@ func AutoAdvances(s adh.Stage, lvl authority.Level) bool {
 // Execute runs the arc's current stage through client, appends the output to the
 // arc's history, and advances the arc to the next stage. It mutates arc in place.
 // Ops is not a model step — it is the human-gated ship, performed by the close
-// command — so Execute refuses it (EINVALID) and never auto-closes an arc.
-func Execute(ctx context.Context, client Client, arc *adh.Arc) error {
+// command — so Execute refuses it (EINVALID) and never auto-closes an arc. The
+// judgment set (config-driven) is enforced against the model's class.
+func Execute(
+	ctx context.Context,
+	client Client,
+	arc *adh.Arc,
+	judgment authority.JudgmentRoles,
+) error {
 	if arc.Stage == adh.StageOps {
 		return &adh.Error{Code: adh.EINVALID, Message: "ops ships via close, not a model step"}
 	}
 	// Model-gate (SPEC §5.1): a judgment role must run on a reasoning-class model.
-	if err := authority.ModelGate(arc.Stage, client.ModelClass()); err != nil {
+	if err := authority.ModelGate(arc.Stage, client.ModelClass(), judgment); err != nil {
 		return fmt.Errorf("stage: %w", err)
 	}
 	resp, err := client.Complete(ctx, model.Request{Role: arc.Stage, Prompt: promptFor(arc)})

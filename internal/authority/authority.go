@@ -75,14 +75,19 @@ func RaiseIsGated(cur, next Level) bool { return next > cur }
 // Requires reports whether role must run on a reasoning-class model.
 func (j JudgmentRoles) Requires(role adh.Stage) bool { return j[role] }
 
-// DefaultJudgmentRoles is the built-in judgment set (SPEC §5.1): Strategy,
-// Critic, and Evaluation.
+// DefaultJudgmentRoles is the built-in judgment set (SPEC §5.1), derived from
+// JudgmentRole so the default has a single source of truth.
 func DefaultJudgmentRoles() JudgmentRoles {
-	return JudgmentRoles{
-		adh.StageStrategy:   true,
-		adh.StageCritic:     true,
-		adh.StageEvaluation: true,
+	roles := make(JudgmentRoles)
+	for _, role := range []adh.Stage{
+		adh.StageStrategy, adh.StageExecution, adh.StageCritic,
+		adh.StageEvaluation, adh.StageOps,
+	} {
+		if JudgmentRole(role) {
+			roles[role] = true
+		}
 	}
+	return roles
 }
 
 // JudgmentRole reports whether a stage must run on a reasoning-class model.
@@ -98,10 +103,12 @@ func JudgmentRole(role adh.Stage) bool {
 	}
 }
 
-// ModelGate enforces SPEC §5.1: a judgment role must run on a reasoning-class
-// model. It returns EUNAUTHORIZED when a judgment role would run on a fast model.
-func ModelGate(role adh.Stage, class ModelClass) error {
-	if JudgmentRole(role) && class != ClassReasoning {
+// ModelGate enforces SPEC §5.1: a role in the judgment set must run on a
+// reasoning-class model. The set is supplied by the caller (config-driven), so a
+// deployment can widen or narrow it. Returns EUNAUTHORIZED when a judgment role
+// would run on a fast model.
+func ModelGate(role adh.Stage, class ModelClass, judgment JudgmentRoles) error {
+	if judgment.Requires(role) && class != ClassReasoning {
 		return &adh.Error{
 			Code:    adh.EUNAUTHORIZED,
 			Message: "judgment role " + string(role) + " must run on a reasoning-class model",

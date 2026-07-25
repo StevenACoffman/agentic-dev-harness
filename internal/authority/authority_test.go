@@ -72,9 +72,11 @@ func TestModelGate(t *testing.T) {
 		},
 		{name: "ops on fast", role: adh.StageOps, class: authority.ClassFast, wantCode: ""},
 	}
+	judgment := authority.DefaultJudgmentRoles()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := adh.ErrorCode(authority.ModelGate(tt.role, tt.class)); got != tt.wantCode {
+			got := adh.ErrorCode(authority.ModelGate(tt.role, tt.class, judgment))
+			if got != tt.wantCode {
 				t.Errorf("ModelGate = %q, want %q", got, tt.wantCode)
 			}
 		})

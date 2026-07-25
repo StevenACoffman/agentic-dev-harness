@@ -43,7 +43,8 @@ func TestAutoAdvances(t *testing.T) {
 
 func TestExecuteAdvances(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Status: adh.StatusOpen}
-	if err := stage.Execute(context.Background(), model.Mock{}, &arc); err != nil {
+	judgment := authority.DefaultJudgmentRoles()
+	if err := stage.Execute(context.Background(), model.Mock{}, &arc, judgment); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if arc.Stage != adh.StageExecution {
@@ -59,18 +60,24 @@ func TestExecuteAdvances(t *testing.T) {
 
 func TestExecuteModelGate(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Status: adh.StatusOpen}
-	err := stage.Execute(context.Background(), model.Mock{Class: authority.ClassFast}, &arc)
+	fast := model.Mock{Class: authority.ClassFast}
+	err := stage.Execute(context.Background(), fast, &arc, authority.DefaultJudgmentRoles())
 	if adh.ErrorCode(err) != adh.EUNAUTHORIZED {
 		t.Errorf("strategy on a fast-class model = %v, want EUNAUTHORIZED", err)
 	}
 	if arc.Stage != adh.StageStrategy {
 		t.Errorf("stage advanced past a gated model call: %s", arc.Stage)
 	}
+	// A judgment set that excludes strategy lets the same fast model through.
+	loose := authority.JudgmentRoles{adh.StageCritic: true}
+	if err := stage.Execute(context.Background(), fast, &arc, loose); err != nil {
+		t.Errorf("strategy off the judgment set on a fast model = %v, want nil", err)
+	}
 }
 
 func TestExecuteRefusesOps(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageOps, Status: adh.StatusOpen}
-	err := stage.Execute(context.Background(), model.Mock{}, &arc)
+	err := stage.Execute(context.Background(), model.Mock{}, &arc, authority.DefaultJudgmentRoles())
 	if adh.ErrorCode(err) != adh.EINVALID {
 		t.Errorf("Execute at ops = %v, want EINVALID (ops ships via close)", err)
 	}

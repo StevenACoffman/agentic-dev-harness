@@ -51,6 +51,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("run: %w", err)
 	}
 	level := conf.AutonomyLevel()
+	judgment := conf.JudgmentRoles()
 	store := state.Default()
 	arc, err := store.Get(args[0])
 	if err != nil {
@@ -61,7 +62,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 			return cfg.block(store, &arc, "ops is the ship gate; approve then `close`")
 		}
 		from := arc.Stage
-		if err := stage.Execute(ctx, model.Mock{}, &arc); err != nil {
+		if err := stage.Execute(ctx, model.Mock{}, &arc, judgment); err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
 		if err := store.Save(&arc); err != nil {
