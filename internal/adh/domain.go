@@ -72,6 +72,10 @@ type Arc struct {
 	// them but routes nothing records a routing gap (§19.1).
 	Labels []string `json:"labels,omitempty"`
 	Paths  []string `json:"paths,omitempty"`
+	// Context is the IDs of the context units the last stage loaded as its working
+	// set (SPEC-ADDITIONS §10.3), recorded so a self-eval can tell a missed
+	// requirement that was never routed (a context gap) from one routed and ignored.
+	Context []string `json:"context,omitempty"`
 	// Proof is the repository-relative path to the proof packet manifest the
 	// builder left (SPEC §5.4). Empty until Execution records one; the critic
 	// reviews against it when present (§19.1).

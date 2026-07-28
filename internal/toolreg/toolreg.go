@@ -5,7 +5,9 @@ package toolreg
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
@@ -89,4 +91,15 @@ func Load(path string) (Registry, error) {
 		return Registry{}, &adh.Error{Op: op, Err: err}
 	}
 	return reg, nil
+}
+
+// LoadRepo reads the registry at repoDir's DefaultRegistryFile, best-effort: an
+// absent file is an empty registry (the repository declares no tools), not an
+// error, so a caller can surface tools without requiring the file to exist.
+func LoadRepo(repoDir string) (Registry, error) {
+	path := filepath.Join(repoDir, DefaultRegistryFile)
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return Registry{}, nil
+	}
+	return Load(path)
 }

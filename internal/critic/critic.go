@@ -10,20 +10,24 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 // MaxContextUnits caps how many routed context units enter a critic's working
 // set, matching the context command's working-set size.
 const MaxContextUnits = contextstore.DefaultWorkingSet
 
-// Grounding is the critic's working set (§19.1): everything repository-owned the
-// review is judged against. It never carries the builder's transcript.
+// Grounding is a stage's repository-owned working set (§10, §19.1): the context
+// and capabilities it acts against. Strategy and Execution use the routed Context
+// and available Tools; the critic additionally reviews the Diff against the Proof
+// and AcceptanceBar. It never carries the builder's transcript.
 type Grounding struct {
 	Paths         []string            // the arc's touched repository paths
 	Diff          string              // unified diff of the change under review (§19.1)
 	AcceptanceBar string              // what the resolution's proof must show (§5.4)
 	Proof         []proof.Artifact    // the proof packet the builder left
 	Context       []contextstore.Unit // units routed for the arc's labels/paths (§10)
+	Tools         []toolreg.Tool      // capabilities available to the stage (§13)
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -34,6 +38,7 @@ type Grounding struct {
 type Inputs struct {
 	AcceptanceBar string
 	Diff          string
+	Tools         []toolreg.Tool
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -51,6 +56,7 @@ func Ground(
 		Diff:          in.Diff,
 		AcceptanceBar: in.AcceptanceBar,
 		Context:       contextstore.Route(units, arc.Labels, arc.Paths, MaxContextUnits),
+		Tools:         in.Tools,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts
@@ -95,24 +101,25 @@ func Load(arc *adh.Arc, storeDir string, in Inputs) (Grounding, error) {
 	return Ground(arc, units, pkt, in), nil
 }
 
-// ForStage returns the grounding a stage needs and whether it is a routing gap.
-// Only the critic is grounded; other stages return (nil, false, nil). A routing
-// gap (§19.1) is an arc that declared a footprint (labels or touched paths)
+// ForStage returns the working set a stage acts against and whether the arc is a
+// critic routing gap. Every stage is grounded now (§10): Strategy and Execution
+// load the routed context and available tools before acting, and the critic also
+// reviews the diff against the proof and acceptance bar. A routing gap applies only
+// to the critic (§19.1): an arc that declared a footprint (labels or touched paths)
 // against a context store that *exists* — has units — yet routes nothing, with no
-// proof: the environment is set up but did not teach this arc, so the critic would
-// fall back on its own priors. Callers surface a gap as exit 12 (§10). An empty or
-// absent store is simply ungrounded, not a gap (grounding is not configured);
-// likewise an arc that declared no footprint. The prompt says so in both cases.
+// proof, means the environment did not teach this review, so the critic would fall
+// back on its own priors; callers surface it as exit 12 (§10). An empty or absent
+// store, or an arc that declared no footprint, is simply ungrounded, not a gap.
 func ForStage(arc *adh.Arc, storeDir string, in Inputs) (*Grounding, bool, error) {
-	if arc.Stage != adh.StageCritic {
-		return nil, false, nil
-	}
 	units, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return nil, false, err
 	}
 	g := Ground(arc, units, pkt, in)
-	declared := len(arc.Labels) > 0 || len(arc.Paths) > 0
-	gap := declared && len(units) > 0 && !g.HasGrounding()
+	gap := false
+	if arc.Stage == adh.StageCritic {
+		declared := len(arc.Labels) > 0 || len(arc.Paths) > 0
+		gap = declared && len(units) > 0 && !g.HasGrounding()
+	}
 	return &g, gap, nil
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 func TestGroundRoutesAndAssembles(t *testing.T) {
@@ -69,14 +70,33 @@ func TestHasGrounding(t *testing.T) {
 	}
 }
 
-func TestForStageNonCriticIsNil(t *testing.T) {
+func TestForStageNonCriticIsGroundedNoGap(t *testing.T) {
+	// Strategy and Execution are grounded now (§10) — they load routed context and
+	// tools — but never record a routing gap (that is a cold-critic concern).
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Labels: []string{"auth"}}
-	g, gap, err := critic.ForStage(arc, t.TempDir(), critic.Inputs{AcceptanceBar: "bar"})
+	g, gap, err := critic.ForStage(arc, t.TempDir(), critic.Inputs{
+		AcceptanceBar: "bar",
+		Tools: []toolreg.Tool{
+			{ID: "oracle-diff", Run: "make oracle", Verifies: "equivalence"},
+		},
+	})
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
-	if g != nil || gap {
-		t.Errorf("ForStage at strategy = (%+v, %v), want (nil, false)", g, gap)
+	if g == nil || gap {
+		t.Fatalf("ForStage at strategy = (%+v, %v), want a grounding and no gap", g, gap)
+	}
+	if len(g.Tools) != 1 || g.Tools[0].ID != "oracle-diff" {
+		t.Errorf("strategy grounding tools = %+v, want the available tool surfaced", g.Tools)
+	}
+}
+
+func TestHasGroundingIgnoresTools(t *testing.T) {
+	// Tools are always available, so they must not count as repository grounding —
+	// otherwise they would mask the critic routing gap (§19.1).
+	g := critic.Grounding{Tools: []toolreg.Tool{{ID: "t", Run: "x", Verifies: "y"}}}
+	if g.HasGrounding() {
+		t.Error("tools alone should not count as grounding")
 	}
 }
 

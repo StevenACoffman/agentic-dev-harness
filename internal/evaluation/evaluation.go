@@ -11,9 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
@@ -88,17 +86,12 @@ func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
 	return NewRepoAdjudicator(repoDir, checks, ShellRunner{}), nil
 }
 
-// loadChecks reads the tool registry under repoDir, treating an absent file as an
-// empty registry (the repository declares no NFR checks) rather than an error.
+// loadChecks reads the tool registry under repoDir (best-effort: an absent file is
+// an empty registry, so a repo declaring no NFR checks is not an error).
 func loadChecks(repoDir string) (toolreg.Registry, error) {
-	const op = "evaluation.loadChecks"
-	path := filepath.Join(repoDir, toolreg.DefaultRegistryFile)
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return toolreg.Registry{}, nil
-	}
-	reg, err := toolreg.Load(path)
+	reg, err := toolreg.LoadRepo(repoDir)
 	if err != nil {
-		return toolreg.Registry{}, &adh.Error{Op: op, Err: err}
+		return toolreg.Registry{}, &adh.Error{Op: "evaluation.loadChecks", Err: err}
 	}
 	return reg, nil
 }
