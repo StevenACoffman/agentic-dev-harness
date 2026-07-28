@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/peterbourgon/ff/v4"
@@ -19,6 +20,7 @@ import (
 // Config holds the configuration for the arc command.
 type Config struct {
 	*root.Config
+	Labels  []string
 	Flags   *ff.FlagSet
 	Command *ff.Command
 }
@@ -28,11 +30,20 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("arc").SetParent(parent.Flags)
+	// --label seeds an arc's routing labels for finer context selection (§10);
+	// Execution later unions the areas it touched on top. ff stops flag parsing at
+	// the first positional, so the flag precedes the verb: `arc --label x new ...`.
+	cfg.Flags.StringSetVar(
+		&cfg.Labels,
+		'l',
+		"label",
+		"routing label for context selection (repeatable)",
+	)
 	cfg.Command = &ff.Command{
 		Name:      "arc",
-		Usage:     "agentic-dev-harness arc <new|list|show> [args]",
+		Usage:     "agentic-dev-harness arc [--label <l>]... <new|list|show> [args]",
 		ShortHelp: "create, list, and show work arcs",
-		LongHelp:  "Manage work arcs: 'arc new <title>', 'arc list', 'arc show <id>'.",
+		LongHelp:  "Manage work arcs: 'arc [--label <l>]... new <title>', 'arc list', 'arc show <id>'.",
 		Flags:     cfg.Flags,
 		Exec:      cfg.exec,
 	}
@@ -67,6 +78,11 @@ func (cfg *Config) newArc(store *state.Store, args []string) error {
 		return fmt.Errorf("arc: %w", err)
 	}
 	arc := adh.Arc{ID: id, Title: title, Stage: adh.StageStrategy, Status: adh.StatusOpen}
+	if len(cfg.Labels) > 0 {
+		labels := slices.Clone(cfg.Labels)
+		slices.Sort(labels)
+		arc.Labels = slices.Compact(labels)
+	}
 	if err := store.Create(&arc); err != nil {
 		return fmt.Errorf("arc: %w", err)
 	}
