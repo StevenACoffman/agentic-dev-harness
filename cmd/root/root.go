@@ -2,6 +2,7 @@
 package root
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -29,6 +30,7 @@ type Config struct {
 	Verbose    bool   // --verbose: increase log verbosity (no logging subsystem yet)
 	Quiet      bool   // --quiet: suppress non-error stdout (wired in cmd.Run)
 	NoColor    bool   // --no-color: disable ANSI color (no color output yet)
+	JSONL      bool   // --jsonl: emit machine output as JSON Lines (SPEC §8)
 	Flags      *ff.FlagSet
 	Command    *ff.Command
 }
@@ -54,6 +56,7 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 	cfg.Flags.BoolVar(&cfg.Verbose, 'v', "verbose", "increase log verbosity")
 	cfg.Flags.BoolVar(&cfg.Quiet, 'q', "quiet", "suppress non-error output")
 	cfg.Flags.BoolVar(&cfg.NoColor, 0, "no-color", "disable ANSI color")
+	cfg.Flags.BoolVar(&cfg.JSONL, 0, "jsonl", "emit machine output as JSON Lines")
 	cfg.Command = &ff.Command{
 		Name:      "agentic-dev-harness",
 		Usage:     "agentic-dev-harness [global flags] <SUBCOMMAND> ...",
@@ -61,6 +64,20 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 		Flags:     cfg.Flags,
 	}
 	return &cfg
+}
+
+// EmitJSONL writes v as one compact JSON object on its own line to stdout — a
+// single JSON Lines record (SPEC §8). A command calls it once for a single result
+// or once per record for a list, so an agent parses every command's output the
+// same way. Under --quiet stdout is io.Discard, so the record is suppressed like
+// any other stdout.
+func (c *Config) EmitJSONL(v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("emit jsonl: %w", err)
+	}
+	_, _ = fmt.Fprintln(c.Stdout, string(data))
+	return nil
 }
 
 // ConfigGetenv returns an environment accessor that honors --config: when set, it
