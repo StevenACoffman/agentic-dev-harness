@@ -67,3 +67,15 @@ func TestFindByVerifies(t *testing.T) {
 		t.Errorf("FindByVerifies found a nonexistent capability")
 	}
 }
+
+func TestFindByID(t *testing.T) {
+	reg := toolreg.Registry{Tools: []toolreg.Tool{
+		{ID: "nfr-lint", Run: "golangci-lint run", Verifies: "style floor"},
+	}}
+	if tool, ok := reg.FindByID("nfr-lint"); !ok || tool.Run != "golangci-lint run" {
+		t.Errorf("FindByID = (%q, %v), want the nfr-lint command", tool.Run, ok)
+	}
+	if _, ok := reg.FindByID("absent"); ok {
+		t.Errorf("FindByID found a nonexistent tool")
+	}
+}

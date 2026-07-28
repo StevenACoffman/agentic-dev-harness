@@ -10,6 +10,10 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
+// DefaultRegistryFile is the conventional repo path the tool registry lives under
+// (SPEC-ADDITIONS §13). It is the single owner of that path across the CLI.
+const DefaultRegistryFile = ".adh/tools.json"
+
 // Tool is one declared capability: how to run it, the shape of its result, what
 // it verifies, and the hint printed when it fails.
 type Tool struct {
@@ -56,6 +60,17 @@ func (r Registry) Validate() error {
 func (r Registry) FindByVerifies(verifies string) (Tool, bool) {
 	for _, tool := range r.Tools {
 		if tool.Verifies == verifies {
+			return tool, true
+		}
+	}
+	return Tool{}, false
+}
+
+// FindByID returns the tool with the given ID, so a caller that already knows a
+// check by name (e.g. an NFR finding's Ref, §19.2) can resolve it to a command.
+func (r Registry) FindByID(id string) (Tool, bool) {
+	for _, tool := range r.Tools {
+		if tool.ID == id {
 			return tool, true
 		}
 	}

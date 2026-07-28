@@ -13,8 +13,6 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
-const registryFile = ".adh/tools.json"
-
 // Config holds the configuration for the tool command.
 type Config struct {
 	*root.Config
@@ -43,7 +41,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("tool: expected a verb: list or doctor")
 	}
-	reg, err := toolreg.Load(registryFile)
+	reg, err := toolreg.Load(toolreg.DefaultRegistryFile)
 	if err != nil {
 		return fmt.Errorf("tool: %w", err)
 	}
