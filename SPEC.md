@@ -338,6 +338,14 @@ ______________________________________________________________________
   e.g. `reason: "at_ops"` means run `close`, `reason: "ungrounded"` is a routing
   gap (exit 12) to teach the repo. Errors that reach the dispatcher are enveloped
   the same way rather than printed as a usage banner.
+- **Diagnostics** go to **stderr** via `log/slog`, kept separate from the stdout
+  data plane: stdout carries the result (envelopes or human text), stderr carries
+  warnings and traces. `--verbose` lowers the level to Debug, `--quiet` raises it to
+  Error (non-error output suppressed), and the default shows warnings and errors.
+  The handler is JSON under `--jsonl` (so the diagnostic stream is structured too)
+  and text otherwise; each record carries an `op` and, where relevant, the `arc` as
+  a correlation key. An agent reads stdout for outcomes and may parse stderr for
+  diagnostics without the two ever interleaving.
 - All logs redact secrets and sensitive screen regions.
 - Every stage transition and gate decision is appended to an append-only audit
   log for the periodic self-eval and registry audit.

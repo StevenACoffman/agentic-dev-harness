@@ -310,9 +310,14 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       decoding with `BurntSushi/toml` behind an explicit, pure precedence overlay
       (no config-framework globals — Viper avoided per go-advice §1/§3). See the
       Config wiring section.
-- [ ] Structured logging (§14) → stdlib `log/slog`. **Deferred**: the
-      `--quiet`/`--verbose` global flags are bound now (Command surface), but there
-      is no destination/level contract yet; wire slog to those flags when it lands.
+- [x] Structured logging (§14) → stdlib `log/slog` on stderr (`root.Config.Log`,
+      built in `cmd.Run` post-parse). `--verbose`/`--quiet` set the level
+      (`root.LogLevel`: Debug/Error, else Warn) and `--jsonl` selects the JSON
+      handler, so diagnostics stay on stderr separate from the stdout data plane
+      (SPEC §8). The incidental warnings (close/reject) and a `run` stage-advance
+      trace log through it with `op`/`arc` attrs. Follow-up: broaden Info/Debug
+      tracing across the other stages/commands as needed, and redact secrets in log
+      attrs alongside the sleep-evidence work.
 - [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
       not hand-grown regexes. **Deferred**: the Go option is
       `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
