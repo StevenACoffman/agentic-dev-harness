@@ -1,5 +1,11 @@
 # PLAN — implementing adh from SPEC.md + SPEC-ADDITIONS.md
 
+> **Status: implemented.** This is the original build plan (Phases 0–9). All
+> phases are complete; it is kept as a record of how `adh` was built and why the
+> architecture is shaped the way it is. For the current state and remaining
+> follow-ups, see [`TODO.md`](./TODO.md); for what the tool does, see the
+> [README](./README.md).
+
 This plan turns the existing climax scaffold (`main.go`, `cmd/{cmd,root,version}`,
 ff/v4) into the `adh` CLI specified by [`SPEC.md`](./SPEC.md) (§1–9: arcs, the
 five stages, gates, oracle, proof, autonomy ladder) and
