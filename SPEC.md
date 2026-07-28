@@ -323,6 +323,21 @@ ______________________________________________________________________
   a list command (`arc list`, `gate list`, `failures list`) emits one object per
   record. The uniform contract — *each stdout line is a JSON object* — lets an
   agent parse every command's output the same way, whether one result or many.
+- Each line is an **outcome envelope** so success, a gate stop, and a failure all
+  share one shape:
+
+  ```json
+  {"status": "ok|blocked|error", "code": <exit code>, "reason": "<token>", "message": "<detail>", "data": {...}}
+  ```
+
+  `status` is the class the agent switches on; `code` is the process exit code
+  (`0` for `ok`); `reason` is a stable machine token on a `blocked`/`error`
+  outcome (`at_ops`, `ungrounded`, `gate`, `proof`, or a domain error code such as
+  `not_found`); `message` is the human detail; `data` carries the command payload
+  on success. An agent branches on `status`+`reason` instead of matching prose —
+  e.g. `reason: "at_ops"` means run `close`, `reason: "ungrounded"` is a routing
+  gap (exit 12) to teach the repo. Errors that reach the dispatcher are enveloped
+  the same way rather than printed as a usage banner.
 - All logs redact secrets and sensitive screen regions.
 - Every stage transition and gate decision is appended to an append-only audit
   log for the periodic self-eval and registry audit.

@@ -80,14 +80,19 @@ around them is partial.
   wired (discards stdout in `cmd.Run`); `--config` is wired (`root.ConfigGetenv`
   threaded into every `config.Load` site).
 - [x] Global `--jsonl` machine output: a single global flag on `root.Config`
-  emitting **JSON Lines** (one compact JSON object per stdout line, via
-  `root.Config.EmitJSONL`) — chosen over `--json` so the contract is uniform
-  whether a command returns one result or many. Replaced the local `--json` flags
-  (version/harness/step) that would have collided with a global one. Honored by the
-  relay/observe commands (`step`, `version`, `harness eval/gate`, `status`, `arc
-  list`, `arc show`, `gate list`, `eval`). Follow-up: the mutation commands
-  (`run`/`proof`/`approve`/`reject`/`close`) still print text — their exit code is
-  the machine signal — and a structured error envelope on stderr.
+  emitting **JSON Lines** (one compact JSON object per stdout line) — chosen over
+  `--json` so the contract is uniform whether a command returns one result or many.
+  Replaced the local `--json` flags (version/harness/step) that would have collided
+  with a global one.
+- [x] Structured outcome envelope: every `--jsonl` line is
+  `{status, code, reason, message, data}` (`root.Outcome`, `EmitOK/EmitBlocked/
+  EmitError`), so success, a gate stop, and a failure share one shape an agent
+  switches on. Wired through every command and the mutation commands
+  (`run`/`proof`/`approve`/`reject`/`close`), and the dispatcher envelopes any other
+  returned error (reason = the domain code) instead of a usage banner. Stable reason
+  tokens (`at_ops`, `ungrounded`, `gate`, `proof`) replace the relay's stderr
+  string-matching. Follow-up: structured logging (`log/slog`) on stderr keeps the
+  diagnostic stream separate from this data plane.
 - [ ] Deferred — global `--yes`/`--dry-run`: local today (approve owns them for the
   safety gate). Binding globally needs the same unification pass; lower priority
   than machine output.
