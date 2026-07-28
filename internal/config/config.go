@@ -37,6 +37,14 @@ type Config struct {
 	Models   Models `toml:"models"`
 	Gates    Gates  `toml:"gates"`
 	Critic   Critic `toml:"critic"`
+	Proof    Proof  `toml:"proof"`
+}
+
+// Proof is the proof policy (SPEC §3.1, §5.4). Contract maps each resolution to
+// the acceptance bar its proof must satisfy to close (§12); a deployment tailors
+// it per key, and any key it omits falls back to the generic built-in default.
+type Proof struct {
+	Contract map[string]string `toml:"contract"`
 }
 
 // Critic is the cold-critic policy (SPEC-ADDITIONS §19.4). GroundFrom and Deny
@@ -100,6 +108,18 @@ func (c *Config) CriticUnconfirmed() string {
 		return UnconfirmedLesson
 	}
 	return c.Critic.Unconfirmed
+}
+
+// ProofContract returns the acceptance bar a resolution's proof must satisfy to
+// close (SPEC §3.1 `[proof.contract]`, §12): the configured text when set, else
+// the resolution's generic built-in default (adh.Resolution.ProofKind), so the
+// default text has a single owner. The harness enforces that matching proof
+// exists (NO-PROOF-NO-CLOSE); this text is the bar the critic and close hold it to.
+func (c *Config) ProofContract(res adh.Resolution) string {
+	if text := c.Proof.Contract[string(res)]; text != "" {
+		return text
+	}
+	return res.ProofKind()
 }
 
 // Load resolves the configuration by precedence. getenv is injected so the

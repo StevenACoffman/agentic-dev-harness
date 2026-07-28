@@ -120,16 +120,31 @@ func NextStage(s Stage) (Stage, bool) {
 	}
 }
 
-// ProofKind names the evidence a resolution must carry to close (SPEC-ADDITIONS
-// §12). An empty return means the resolution is unset or unknown.
+// Valid reports whether r is a known resolution (SPEC-ADDITIONS §12). Validity is
+// a domain fact; the *acceptance-bar text* a resolution requires is deployment
+// policy (config `[proof.contract]`, overriding the ProofKind default), not the
+// domain's concern.
+func (r Resolution) Valid() bool {
+	switch r {
+	case ResolutionChange, ResolutionInvestigation, ResolutionExperiment, ResolutionDecision:
+		return true
+	default:
+		return false
+	}
+}
+
+// ProofKind is the built-in default acceptance-bar text a resolution's proof must
+// satisfy to close (SPEC-ADDITIONS §12). It is generic — the `change` bar is
+// code-level, not domain-specific — and a deployment overrides it per resolution
+// via config `[proof.contract]` (§SPEC 3.1). An unknown resolution has no text.
 func (r Resolution) ProofKind() string {
 	switch r {
 	case ResolutionChange:
-		return "oracle, invariant, and device proof"
+		return "the change's tests pass and its review/CI checks are green"
 	case ResolutionInvestigation:
 		return "the sources inspected and the reproducible finding"
 	case ResolutionExperiment:
-		return "the instrumentation and the readout that answers the question"
+		return "the instrumentation and the readout that answers the product question"
 	case ResolutionDecision:
 		return "the evidence and the rationale behind the call"
 	default:
@@ -138,11 +153,10 @@ func (r Resolution) ProofKind() string {
 }
 
 // ParseResolution validates a resolution string, returning the typed value or
-// EINVALID for an unknown one. The known resolutions are exactly the four that
-// carry a proof contract (ProofKind).
+// EINVALID for an unknown one.
 func ParseResolution(s string) (Resolution, error) {
 	res := Resolution(s)
-	if res.ProofKind() == "" {
+	if !res.Valid() {
 		return "", &Error{Code: EINVALID, Message: "unknown resolution: " + s}
 	}
 	return res, nil
@@ -152,14 +166,13 @@ func ParseResolution(s string) (Resolution, error) {
 // an arc closes only with resolution-matched proof present. It returns EINVALID
 // when the resolution is unset or unknown and ECONFLICT when proof is missing.
 func CanClose(arc *Arc, hasProof bool) error {
-	kind := arc.Resolution.ProofKind()
-	if kind == "" {
+	if !arc.Resolution.Valid() {
 		return &Error{Code: EINVALID, Message: "arc has no valid resolution"}
 	}
 	if !hasProof {
 		return &Error{
 			Code:    ECONFLICT,
-			Message: "no proof: " + string(arc.Resolution) + " requires " + kind,
+			Message: "no proof: " + string(arc.Resolution) + " requires matching, verified proof",
 		}
 	}
 	return nil

@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -36,6 +37,38 @@ func TestCriticDefaults(t *testing.T) {
 	}
 	if len(cfg.Critic.GroundFrom) == 0 || len(cfg.Critic.Deny) == 0 {
 		t.Errorf("default critic ground_from/deny should be populated: %+v", cfg.Critic)
+	}
+}
+
+func TestProofContractDefaultsAreGeneric(t *testing.T) {
+	cfg := config.Defaults()
+	change := cfg.ProofContract(adh.ResolutionChange)
+	if change == "" {
+		t.Fatal("default change contract is empty")
+	}
+	if strings.Contains(change, "oracle") || strings.Contains(change, "device") {
+		t.Errorf("default change contract should be generic, got %q", change)
+	}
+	if cfg.ProofContract(adh.Resolution("bogus")) != "" {
+		t.Error("unknown resolution should have no contract")
+	}
+}
+
+func TestProofContractPerKeyOverrideFallsBack(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeRepoConfig(t, "[proof.contract]\nchange = \"oracle, invariant, and on-device proof\"\n")
+	cfg, err := config.Load(noEnv)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.ProofContract(
+		adh.ResolutionChange,
+	); got != "oracle, invariant, and on-device proof" {
+		t.Errorf("change contract = %q, want the configured override", got)
+	}
+	// A key the config did not set still resolves to its built-in default.
+	if cfg.ProofContract(adh.ResolutionDecision) == "" {
+		t.Error("an unset contract key should fall back to its built-in default")
 	}
 }
 
