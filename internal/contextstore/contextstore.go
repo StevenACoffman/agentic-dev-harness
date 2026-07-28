@@ -88,6 +88,36 @@ func matchScore(unit *Unit, want map[string]bool, paths []string) int {
 	return score
 }
 
+// AreaLabels derives coarse area labels from repository paths: the top-level
+// directory of each (e.g. "cmd/step/x.go" -> "cmd"), deduplicated and sorted. A
+// top-level file (no directory) yields no label. Execution labels an arc by the
+// areas it touched so the cold critic's context can route (§19.1); this mirrors
+// the top-level-dir keying that `adh init` scaffolds context units by.
+func AreaLabels(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	labels := make([]string, 0, len(paths))
+	for _, path := range paths {
+		area := topDir(path)
+		if area == "" || seen[area] {
+			continue
+		}
+		seen[area] = true
+		labels = append(labels, area)
+	}
+	sort.Strings(labels)
+	return labels
+}
+
+// topDir returns the first path segment when path is under a directory, or "" for
+// a top-level file (which has no area).
+func topDir(path string) string {
+	path = strings.TrimPrefix(path, "./")
+	if i := strings.IndexByte(path, '/'); i >= 0 {
+		return path[:i]
+	}
+	return ""
+}
+
 // Load reads context units from JSON files under dir. An absent directory
 // yields no units and no error.
 func Load(dir string) ([]Unit, error) {

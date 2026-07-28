@@ -54,43 +54,54 @@ func (g *Grounding) HasGrounding() bool {
 	return len(g.Proof) > 0 || len(g.Context) > 0
 }
 
-// Load reads the working set from disk: the context store under storeDir and the
-// proof packet at arc.Proof when set. acceptanceBar is the configured proof
-// contract, passed through to Ground. A missing store yields no units (not an
-// error); an unreadable proof manifest propagates.
-func Load(arc *adh.Arc, storeDir, acceptanceBar string) (Grounding, error) {
-	const op = "critic.Load"
+// loadInputs reads the raw grounding inputs from disk: the context store under
+// storeDir and the proof packet at arc.Proof when set. A missing store yields no
+// units (not an error); an unreadable proof manifest propagates.
+func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Packet, error) {
+	const op = "critic.loadInputs"
 	units, err := contextstore.Load(storeDir)
 	if err != nil {
-		return Grounding{}, &adh.Error{Op: op, Err: err}
+		return nil, nil, &adh.Error{Op: op, Err: err}
 	}
 	var pkt *proof.Packet
 	if arc.Proof != "" {
 		loaded, loadErr := proof.Load(arc.Proof)
 		if loadErr != nil {
-			return Grounding{}, &adh.Error{Op: op, Err: loadErr}
+			return nil, nil, &adh.Error{Op: op, Err: loadErr}
 		}
 		pkt = &loaded
+	}
+	return units, pkt, nil
+}
+
+// Load assembles the critic's working set. acceptanceBar is the configured proof
+// contract, passed through to Ground.
+func Load(arc *adh.Arc, storeDir, acceptanceBar string) (Grounding, error) {
+	units, pkt, err := loadInputs(arc, storeDir)
+	if err != nil {
+		return Grounding{}, err
 	}
 	return Ground(arc, units, pkt, acceptanceBar), nil
 }
 
 // ForStage returns the grounding a stage needs and whether it is a routing gap.
 // Only the critic is grounded; other stages return (nil, false, nil). A routing
-// gap (§19.1) is an arc that declared a footprint — labels or touched paths —
-// yet routed no context and left no proof: the environment did not teach the
-// critic, so it would fall back on its own priors. Callers surface a gap as
-// exit 12 (§10). An arc that declared no footprint is not a gap; its critic is
-// simply ungrounded and the prompt says so.
+// gap (§19.1) is an arc that declared a footprint (labels or touched paths)
+// against a context store that *exists* — has units — yet routes nothing, with no
+// proof: the environment is set up but did not teach this arc, so the critic would
+// fall back on its own priors. Callers surface a gap as exit 12 (§10). An empty or
+// absent store is simply ungrounded, not a gap (grounding is not configured);
+// likewise an arc that declared no footprint. The prompt says so in both cases.
 func ForStage(arc *adh.Arc, storeDir, acceptanceBar string) (*Grounding, bool, error) {
 	if arc.Stage != adh.StageCritic {
 		return nil, false, nil
 	}
-	g, err := Load(arc, storeDir, acceptanceBar)
+	units, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return nil, false, err
 	}
+	g := Ground(arc, units, pkt, acceptanceBar)
 	declared := len(arc.Labels) > 0 || len(arc.Paths) > 0
-	gap := declared && !g.HasGrounding()
+	gap := declared && len(units) > 0 && !g.HasGrounding()
 	return &g, gap, nil
 }

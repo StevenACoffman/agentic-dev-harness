@@ -500,6 +500,14 @@ context boundary on the repository. A critic forced to reason from its own
 priors because the environment did not teach it records a routing gap (§10, exit
 12), not a property of cold review.
 
+A routing gap presupposes an *environment* to have failed: it applies only when a
+context store exists (holds units) yet routes nothing for a declared arc that
+also left no proof. A repository with no context store is simply ungrounded —
+grounding is not configured — and the critic runs on the change and its proof
+alone, which the prompt states plainly; this is not exit 12. `adh init`
+scaffolds a starter store so grounding is on by default, and Execution labels an
+arc by the areas it touched (§SPEC 5.4) so its context routes.
+
 ### 19.2 Finding disposition — confirm against the repository
 
 A critic emits findings. Each finding names the repository artifact that would

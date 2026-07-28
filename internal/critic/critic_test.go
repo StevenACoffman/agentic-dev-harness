@@ -73,14 +73,34 @@ func TestForStageNonCriticIsNil(t *testing.T) {
 	}
 }
 
-func TestForStageGapWhenDeclaredButUntaught(t *testing.T) {
+func TestForStageEmptyStoreIsNotGap(t *testing.T) {
+	// A declared arc against an absent/empty store is ungrounded, not a routing
+	// gap: grounding is simply not configured yet (§19.1 smoothing).
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
 	_, gap, err := critic.ForStage(arc, filepath.Join(t.TempDir(), "no-store"), "bar")
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
+	if gap {
+		t.Error("an empty/absent store should not be a routing gap")
+	}
+}
+
+func TestForStageGapWhenPopulatedStoreDoesNotMatch(t *testing.T) {
+	dir := t.TempDir()
+	unit := `{"id":"u-billing","kind":"runbook","labels":["billing"]}`
+	if err := os.WriteFile(filepath.Join(dir, "u-billing.json"), []byte(unit), 0o600); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+	// The store exists (has a unit) but nothing routes for the arc's labels — the
+	// environment is set up yet did not teach this arc: a routing gap.
+	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
+	_, gap, err := critic.ForStage(arc, dir, "bar")
+	if err != nil {
+		t.Fatalf("ForStage: %v", err)
+	}
 	if !gap {
-		t.Error("declared labels but empty store should be a routing gap")
+		t.Error("a declared arc against a populated but non-matching store should be a gap")
 	}
 }
 

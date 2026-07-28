@@ -192,13 +192,16 @@ func TestStepRelayCriticEmitCarriesGrounding(t *testing.T) {
 }
 
 func TestStepRelayCriticRoutingGapExits12(t *testing.T) {
-	t.Chdir(t.TempDir()) // no .adh/context, so a declared footprint routes nothing
+	t.Chdir(t.TempDir())
+	// The store exists (a unit) but nothing routes for the arc's labels — the
+	// environment is set up yet did not teach this arc: a routing gap (exit 12).
+	writeContextUnit(t, "u-billing", []string{"billing"})
 	id := seedCriticArc(t, []string{"auth"}, nil)
 
 	_, err := run(t, "step", "--relay", id)
 	var exit root.ExitError
 	if !errors.As(err, &exit) || int(exit) != 12 {
-		t.Fatalf("ungrounded critic = %v, want ExitError(12)", err)
+		t.Fatalf("populated non-matching store = %v, want ExitError(12)", err)
 	}
 	arc, getErr := state.Default().Get(id)
 	if getErr != nil {
@@ -206,6 +209,19 @@ func TestStepRelayCriticRoutingGapExits12(t *testing.T) {
 	}
 	if arc.Pending != nil {
 		t.Error("a routing gap must not park a pending turn")
+	}
+}
+
+func TestStepRelayCriticNoStoreEmitsUngrounded(t *testing.T) {
+	t.Chdir(t.TempDir()) // no .adh/context store: grounding not configured, not a gap
+	id := seedCriticArc(t, []string{"auth"}, nil)
+
+	got := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
+	if got.Status != "awaiting" {
+		t.Fatalf("status = %q, want awaiting (no store is not a gap)", got.Status)
+	}
+	if !strings.Contains(got.Prompt, "No repository grounding") {
+		t.Errorf("ungrounded critic prompt should say so:\n%s", got.Prompt)
 	}
 }
 

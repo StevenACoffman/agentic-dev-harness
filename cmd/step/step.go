@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/peterbourgon/ff/v4"
@@ -257,13 +258,8 @@ func (cfg *Config) resume(
 	if wasCritic {
 		arc.Findings = findings
 	}
-	// After the operator's execution turn, record what the change touched from the
-	// working tree (§19.1, §19.3), so the cold critic is grounded on the real change
-	// rather than hand-seeded paths. Best-effort: outside a git repo it is a no-op.
 	if wasExecution {
-		if paths, ok := cfg.changedCodePaths(); ok {
-			arc.Paths = paths
-		}
+		cfg.captureFootprint(arc)
 	}
 	arc.Pending = nil
 	if err := store.Save(arc); err != nil {
@@ -296,6 +292,24 @@ func (cfg *Config) changedCodePaths() ([]string, bool) {
 		paths = append(paths, path)
 	}
 	return paths, true
+}
+
+// captureFootprint records what an execution turn touched (§19.1, §19.3): the
+// working tree's changed paths ground the cold critic on the real change, and the
+// areas they fall under become labels so the arc's context routes. Best-effort —
+// outside a git repo it is a no-op. Derived labels union with any already declared,
+// preserving hand-set ones.
+func (cfg *Config) captureFootprint(arc *adh.Arc) {
+	paths, ok := cfg.changedCodePaths()
+	if !ok {
+		return
+	}
+	arc.Paths = paths
+	for _, label := range contextstore.AreaLabels(paths) {
+		if !slices.Contains(arc.Labels, label) {
+			arc.Labels = append(arc.Labels, label)
+		}
+	}
 }
 
 // readResponse reads the operator's reply from the --response file, or from

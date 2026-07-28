@@ -49,3 +49,33 @@ func ids(units []contextstore.Unit) []string {
 	}
 	return out
 }
+
+func TestAreaLabels(t *testing.T) {
+	tests := []struct {
+		name  string
+		paths []string
+		want  []string
+	}{
+		{
+			"dirs deduped and sorted",
+			[]string{"internal/a.go", "cmd/c.go", "internal/b.go"},
+			[]string{"cmd", "internal"},
+		},
+		{"none", nil, []string{}},
+		{"top-level file has no area", []string{"main.go"}, []string{}},
+		{"leading dot-slash trimmed", []string{"./cmd/x.go"}, []string{"cmd"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := contextstore.AreaLabels(tt.paths)
+			if len(got) != len(tt.want) {
+				t.Fatalf("AreaLabels(%v) = %v, want %v", tt.paths, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("AreaLabels(%v)[%d] = %q, want %q", tt.paths, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
