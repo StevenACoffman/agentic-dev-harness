@@ -90,9 +90,11 @@ func Resume(
 	if arc.Stage == adh.StageStrategy && reply.Resolution != "" {
 		arc.Resolution = reply.Resolution
 	}
+	// Record the validated reply text (a strategy reply's resolution line is
+	// stripped), so history holds the plan, not the marker.
 	if err := stage.Execute(
 		ctx,
-		model.Relay{Response: replyText},
+		model.Relay{Response: reply.Text},
 		renderer,
 		arc,
 		judgment,
