@@ -18,6 +18,23 @@ func (m *Mock) Diff(_ []string) (string, error) {
 	return m.Patch, nil
 }
 
+// Revert drops the given paths from the scripted changed set, mirroring a revert
+// of their working-tree changes. Paths not in the set are ignored.
+func (m *Mock) Revert(paths []string) error {
+	drop := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		drop[path] = true
+	}
+	kept := m.Changed[:0]
+	for _, path := range m.Changed {
+		if !drop[path] {
+			kept = append(kept, path)
+		}
+	}
+	m.Changed = kept
+	return nil
+}
+
 // CurrentBranch returns the scripted branch, defaulting to "main".
 func (m *Mock) CurrentBranch() (string, error) {
 	if m.Branch == "" {

@@ -3,9 +3,9 @@
 // adapter over go-git (v6); Mock is an in-memory implementation with the same
 // methods, so a consumer declares a point-of-use interface and swaps them (no
 // unused interface lives here). Errors from go-git are translated to adh.Error
-// at this boundary, so callers see domain codes, not library types. Merge and
-// revert are intentionally absent: go-git's merge is experimental, so those
-// mutations remain a `git` shell-out follow-up (TODO).
+// at this boundary, so callers see domain codes, not library types. Revert is
+// path-scoped and hermetic (go-git only). Merge is intentionally absent: go-git's
+// merge is experimental, so it remains a `git` shell-out follow-up (TODO).
 package vcs
 
 import (
@@ -191,6 +191,41 @@ func (g *Git) Diff(paths []string) (string, error) {
 	return b.String(), nil
 }
 
+// Revert restores the given repository-relative paths to their committed HEAD
+// state, discarding uncommitted work under them (SPEC §2.3 reject/revert). A path
+// tracked in HEAD is rewritten to its committed content; a path new to HEAD is
+// removed from the working tree. It is scoped to the given paths — never touching
+// anything outside them (so the .adh workspace and unrelated work are safe) — and
+// hermetic (go-git only, no `git` binary).
+func (g *Git) Revert(paths []string) error {
+	const op = "vcs.Git.Revert"
+	worktree, err := g.repo.Worktree()
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	head, err := g.headTree()
+	if err != nil {
+		return err
+	}
+	fsys := worktree.Filesystem()
+	for _, path := range paths {
+		content, tracked, entryErr := headEntry(head, path)
+		if entryErr != nil {
+			return entryErr
+		}
+		if tracked {
+			if err := restoreFile(fsys, path, content); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := removeFile(fsys, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // headTree returns the tree of the current HEAD commit, or nil before the first
 // commit (when every path reads as new).
 func (g *Git) headTree() (*object.Tree, error) {
@@ -214,24 +249,32 @@ func (g *Git) headTree() (*object.Tree, error) {
 	return tree, nil
 }
 
-// treeContent returns the committed content of path in tree, or "" when the tree
-// is nil (no commit) or the path is absent (a new file).
-func treeContent(tree *object.Tree, path string) (string, error) {
+// headEntry reports a path's committed content and whether HEAD tracks it. A nil
+// tree (no commit) or an absent path is untracked with empty content.
+func headEntry(tree *object.Tree, path string) (content string, tracked bool, err error) {
+	const op = "vcs.headEntry"
 	if tree == nil {
-		return "", nil
+		return "", false, nil
 	}
 	file, err := tree.File(path)
 	if errors.Is(err, object.ErrFileNotFound) {
-		return "", nil
+		return "", false, nil
 	}
 	if err != nil {
-		return "", &adh.Error{Op: "vcs.treeContent", Err: err}
+		return "", false, &adh.Error{Op: op, Err: err}
 	}
-	content, err := file.Contents()
+	content, err = file.Contents()
 	if err != nil {
-		return "", &adh.Error{Op: "vcs.treeContent", Err: err}
+		return "", false, &adh.Error{Op: op, Err: err}
 	}
-	return content, nil
+	return content, true, nil
+}
+
+// treeContent returns the committed content of path in tree, or "" when the tree
+// is nil (no commit) or the path is absent (a new file).
+func treeContent(tree *object.Tree, path string) (string, error) {
+	content, _, err := headEntry(tree, path)
+	return content, err
 }
 
 // worktreeContent returns the working-tree content of path, or "" when it is
@@ -251,4 +294,26 @@ func worktreeContent(fsys billy.Filesystem, path string) (string, error) {
 		return "", &adh.Error{Op: op, Err: err}
 	}
 	return string(data), nil
+}
+
+// restoreFile overwrites path in the working tree with content (its HEAD version).
+func restoreFile(fsys billy.Filesystem, path, content string) error {
+	const op = "vcs.restoreFile"
+	file, err := fsys.Create(path)
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	defer func() { _ = file.Close() }()
+	if _, err := io.WriteString(file, content); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	return nil
+}
+
+// removeFile deletes path from the working tree; an already-absent path is fine.
+func removeFile(fsys billy.Filesystem, path string) error {
+	if err := fsys.Remove(path); err != nil && !os.IsNotExist(err) {
+		return &adh.Error{Op: "vcs.removeFile", Err: err}
+	}
+	return nil
 }

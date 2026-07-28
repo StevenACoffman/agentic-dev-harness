@@ -29,6 +29,7 @@ type repo interface {
 	CreateBranch(name string) error
 	Commit(msg string, who vcs.Signature, when time.Time) (string, error)
 	Diff(paths []string) (string, error)
+	Revert(paths []string) error
 }
 
 func TestGitLifecycle(t *testing.T) {
@@ -182,5 +183,75 @@ func TestDiffUnchangedPathIsEmpty(t *testing.T) {
 	}
 	if diff != "" {
 		t.Errorf("unchanged path should yield no diff, got:\n%s", diff)
+	}
+}
+
+func TestRevertRestoresTrackedAndRemovesNew(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	tracked := filepath.Join(dir, "tracked.go")
+	if err := os.WriteFile(tracked, []byte("package x\nconst v = 1\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := repo.Commit("seed", who, at); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	// Modify the tracked file and add a brand-new one; leave an unrelated file be.
+	if err := os.WriteFile(tracked, []byte("package x\nconst v = 999\n"), 0o600); err != nil {
+		t.Fatalf("modify: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "new.go"),
+		[]byte("package fresh\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("add new: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "unrelated.txt"),
+		[]byte("keep me"),
+		0o600,
+	); err != nil {
+		t.Fatalf("add unrelated: %v", err)
+	}
+
+	if err := repo.Revert([]string{"tracked.go", "new.go"}); err != nil {
+		t.Fatalf("Revert: %v", err)
+	}
+
+	// Tracked file restored to its committed content.
+	restored, err := os.ReadFile(tracked)
+	if err != nil || string(restored) != "package x\nconst v = 1\n" {
+		t.Errorf("tracked file not restored to HEAD: %q (err %v)", restored, err)
+	}
+	// New file removed.
+	if _, err := os.Stat(filepath.Join(dir, "new.go")); !os.IsNotExist(err) {
+		t.Errorf("new file should have been removed, stat err = %v", err)
+	}
+	// A path outside the reverted set is untouched.
+	if data, err := os.ReadFile(
+		filepath.Join(dir, "unrelated.txt"),
+	); err != nil ||
+		string(data) != "keep me" {
+		t.Errorf("unrelated file was touched: %q (err %v)", data, err)
+	}
+}
+
+func TestMockRevertDropsPaths(t *testing.T) {
+	m := &vcs.Mock{Changed: []string{"a.go", "b.go", "c.go"}}
+	if err := m.Revert([]string{"b.go"}); err != nil {
+		t.Fatalf("Revert: %v", err)
+	}
+	st, _ := m.Status()
+	for _, p := range st.Changed {
+		if p == "b.go" {
+			t.Errorf("reverted path still present: %v", st.Changed)
+		}
+	}
+	if len(st.Changed) != 2 {
+		t.Errorf("changed = %v, want 2 remaining", st.Changed)
 	}
 }
