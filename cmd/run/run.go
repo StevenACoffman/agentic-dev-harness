@@ -296,6 +296,11 @@ func (cfg *Config) drive(
 		if err := store.Save(arc); err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
+		if arc.Status != adh.StatusOpen {
+			// Terminal state (evaluation failed past its rework budget, §4.1):
+			// reportDone reports it, ahead of the autonomy gate below.
+			break
+		}
 		// Per-stage progress on the diagnostic stream (Info): visible under
 		// --verbose even in --jsonl mode, where stdout carries only the terminal
 		// outcome.
