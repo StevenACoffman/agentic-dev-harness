@@ -121,12 +121,12 @@ ______________________________________________________________________
 
    - Fill in the fields:
 
-     | Field            | Value              |
-     | ---------------- | ------------------ |
-     | Owner            | `StevenACoffman`   |
-     | Repository name  | `agentic-dev-harness`      |
-     | Workflow name    | `postrelease.yaml` |
-     | Environment name | `pypi`             |
+     | Field            | Value                 |
+     | ---------------- | --------------------- |
+     | Owner            | `StevenACoffman`      |
+     | Repository name  | `agentic-dev-harness` |
+     | Workflow name    | `postrelease.yaml`    |
+     | Environment name | `pypi`                |
 
    - Click **Add**.
 

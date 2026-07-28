@@ -2,7 +2,7 @@
 
 `adh` is a five-stage harness for letting an AI agent **plan, build, review, and
 validate its own changes** to a real codebase — with a human on every step that
-can't be undone. It ships as a single Go binary and as a Claude skill,
+can't be undone. It is distributed as a single Go binary and as a Claude skill,
 [`adh-relay`](./.claude/skills/adh-relay/SKILL.md).
 
 The point of difference is where the reasoning comes from. `adh` does not call an
@@ -20,11 +20,11 @@ relayed to the agent; control stays in code.
 
 ______________________________________________________________________
 
-## The loop
+## The Loop
 
 Work moves through five stages, each handing off to the next:
 
-```
+```text
 Strategy → Execution → Critic → Evaluation → Ops
 ```
 
@@ -42,7 +42,7 @@ Strategy → Execution → Critic → Evaluation → Ops
 A unit of work is an **arc**. `adh run <id>` drives an arc through the stages until
 it reaches a human gate or closes; `adh step <id>` runs one transition at a time.
 
-## Driving it as a skill
+## Driving It as a Skill
 
 The [`adh-relay`](./.claude/skills/adh-relay/SKILL.md) skill is the relay's `run`
 loop. Given an arc id, it repeats: **emit** (`adh step --relay --json <id>`),
@@ -59,7 +59,7 @@ together:
   and any environment variable are refused. The agent has no code path to approve
   its own irreversible action.
 
-## What it can do
+## What It Can Do
 
 The capabilities group along the two levers the practice treats as primary —
 **context** and **tools** — plus **proof**, **authority**, and **feedback**.
@@ -94,7 +94,7 @@ trust in levels **L0–L4**; higher levels remove *clicks* (auto-launching safe
 steps), never *gates*. Every irreversible or outward-facing action stops at a human
 gate (`adh gate list`, `adh approve`, `adh reject`).
 
-```
+```text
 L0 Manual → L1 Assisted → L2 Hands-off relay → L3 Auto-advance launches → L4 Lights-out
 ```
 
@@ -135,7 +135,7 @@ To drive an arc as an agent, invoke the skill — e.g. *"run arc-0001"* in Claud
 Code — and it walks the emit → reason → resume loop for you, spawning the cold
 critic sub-agent and stopping at the human gate.
 
-On **close**, a `change` arc's commit lands on its own branch `adh/<arc-id>`
+On **close**, a `change` arc's commit is created on its own branch `adh/<arc-id>`
 (branch-per-arc), leaving the base untouched and the change ready to open as a PR.
 A **reject** at a gate reverts the arc's working-tree changes to HEAD and returns
 it to Execution to be reworked.
@@ -159,7 +159,7 @@ ______________________________________________________________________
 `adh` stands on two bodies of work, and its own contribution is the running
 implementation that joins them.
 
-### The architecture case study — Erik Hill
+### The Architecture Case Study — Erik Hill
 
 The five-stage loop, the cold critic, the differential oracle, the autonomy ladder,
 `NO-PROOF-NO-CLOSE`, and the operating record below come from a harness **Erik
@@ -168,7 +168,7 @@ changes to a real (pre-launch) Android game with a human on every irreversible
 step. That system is private; what follows is the architecture it proved out.
 
 > Case study by **Erik Hill** — agentic systems engineer.
-> Portfolio → https://egnaro9.github.io · LinkedIn → https://linkedin.com/in/erik-hill-98895575
+> Portfolio → <https://egnaro9.github.io> · LinkedIn → <https://linkedin.com/in/erik-hill-98895575>
 
 - **Differential oracle** — the game's core logic exists twice, as a reference
   build and a performance-critical native port authoritative on device; two
@@ -188,7 +188,7 @@ step. That system is private; what follows is the architecture it proved out.
   upstream into TeaVM; a live public model-drift board grading 16 LLMs daily on a
   frozen, deterministically-graded suite.
 
-### The practice — Ryan Lopopolo's *Harness Engineering*
+### The Practice — Ryan Lopopolo's *Harness Engineering*
 
 `adh` is a concrete instantiation of **harness engineering**: the practice of
 improving agent output by shaping the environment around a *fixed* worker (a chosen
@@ -218,7 +218,7 @@ out in [`SPEC-ADDITIONS.md`](./SPEC-ADDITIONS.md) §10–18.
 > Ryan Lopopolo, *Harness Engineering*, CC BY 4.0,
 > <https://github.com/lopopolo/harness-engineering>.
 
-### The implementation — this repository
+### The Implementation — This Repository
 
 The `adh` CLI and the `adh-relay` skill, along with `SPEC.md`, `SPEC-ADDITIONS.md`,
 and `PLAN.md`, are by **Steven A. Coffman**. The contribution is the relay design —

@@ -1,10 +1,10 @@
-# TODO — outstanding work on the adh CLI
+# TODO — Outstanding Work on the Adh CLI
 
 Tracks what remains after Phases 0–9 (see [`PLAN.md`](./PLAN.md)). Everything
 committed passes the phase gate: `golangci-lint run ./...` clean and
 `go test ./...` green.
 
-## Ported from skillsaw (done)
+## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus
       `cmd/judge`. Retargeted, adh.Error-ized, tested.
@@ -29,7 +29,7 @@ Remaining wiring for these:
 - [ ] Branch `implement/adh-spec` is unpushed; upstream PRs are owner-only.
   Decide whether to push to a fork or hand off.
 
-## Fidelity to the source implementations
+## Fidelity to the Source Implementations
 
 Gaps found comparing adh to `SkillOpt` and `evals-differential-oracle`. The pure
 decision cores (gate ratchet, score projection, content hash, defect/lapse,
@@ -62,7 +62,7 @@ around them is partial.
 - Deliberately omitted: `select_gate_score`'s optional semantic-density bonus (a
   gameable proxy). Not a defect.
 
-## Command surface (PLAN Phase 9 follow-ups)
+## Command Surface (PLAN Phase 9 Follow-Ups)
 
 - [x] Per-stage direct commands `strategy`/`execute`/`critic`/`ops` (`cmd/stagecmd`):
   strategy/execute/critic run one Mock stage on an arc already at it; `ops` reports
@@ -90,7 +90,7 @@ around them is partial.
   `tool`: positional-verb dispatch works; converting is broad and low-payoff. Only
   the ratchet regroup (above) needed real nesting.
 
-## Config wiring
+## Config Wiring
 
 - [x] `internal/config` precedence loader (SPEC §3): defaults → user config →
   repo `.adh/config.toml` → `.adh/autonomy` runtime override → `ADH_AUTONOMY`.
@@ -113,7 +113,7 @@ around them is partial.
     `--profile` are now bound on `root.Config` (Command surface) and `--config` is
     wired, but `--profile` selects no profile yet; secrets stay env-only.
 
-## Effectful seams still mocked
+## Effectful Seams Still Mocked
 
 - [x] `model.Relay`: a third `model.Client` whose completion is supplied out of
   band — `adh step --relay` emits the stage prompt (`internal/prompt` templates,
@@ -140,7 +140,7 @@ around them is partial.
   reference build vs native port. Domain-specific (a mobile-port profile) — see
   the proof-contract note below.
 
-## Proof contract generalization
+## Proof Contract Generalization
 
 - [x] SPEC/SPEC-ADDITIONS decision: the `change` resolution's proof contract is
   generalized and made **configurable** per deployment (§SPEC 3.1
@@ -156,7 +156,7 @@ around them is partial.
   never reads config). Remaining: `prompt`'s non-critic `.ProofKind` view field
   still shows the built-in default (not the config override) — a minor follow-up.
 
-## Proof packet generation
+## Proof Packet Generation
 
 - [x] `adh proof create <arc-id> <path>...` hashes an arc's artifacts into a
   manifest (`internal/proof.Create` + `Save`, beside `Load`/`Verify`), writes it
@@ -169,7 +169,7 @@ around them is partial.
 - [ ] Follow-up: the manifest could carry provenance (a git SHA) per §SPEC 5.4 —
   an optional refinement.
 
-## Cold-critic grounding and finding disposition (§19)
+## Cold-Critic Grounding and Finding Disposition (§19)
 
 - [x] §19.1 grounding contract: the critic prompt now carries the repository-owned
   working set — touched paths, acceptance bar, the proof packet's artifacts, and
@@ -229,7 +229,7 @@ around them is partial.
 - [ ] Follow-up: richer semantic labels than the top-level directory (e.g. from
   arc title or an `arc new --label` flag), for finer context routing.
 
-## End-to-end lifecycle wiring
+## End-to-End Lifecycle Wiring
 
 The arc lifecycle now runs end to end:
 `arc new → run` (relays the stages, parks blocked at the ops gate) `→ approve →
@@ -252,7 +252,7 @@ close` (verifies proof, ships).
   through `sleep`. A real evaluation stage that fails an arc back to execution
   is modeled (`StatusFailed`) but the mock never triggers it.
 
-## Offload to a mature library (undifferentiated heavy lifting)
+## Offload to a Mature Library (Undifferentiated Heavy Lifting)
 
 Necessary but edge-case-heavy plumbing that is not adh's differentiated value.
 The effectful interfaces (`model.Client`, `device.Validator`, planned `VCS`,

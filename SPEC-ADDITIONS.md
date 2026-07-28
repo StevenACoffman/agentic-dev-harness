@@ -29,9 +29,9 @@ is deterministic or gated. Judgment — which context a task needs, whether a
 lesson generalizes — is proposed by an agent and **confirmed at a gate**, never
 self-applied.
 
----
+______________________________________________________________________
 
-## 10. Context store and routing
+## 10. Context Store and Routing
 
 **Closes:** just-in-time context; make the repository teach the agent. Today a
 stage receives the change, proof packet, and acceptance bar but no routed domain
@@ -43,12 +43,12 @@ small **active working set** selected by the arc's labels and target paths.
 
 ### 10.1 Commands
 
-| Command | Purpose |
-|---------|---------|
-| `adh context list` | List context units (id, kind, routing labels, owner). |
-| `adh context show <id>` | Print a context unit and where it routes. |
-| `adh context route <arc-id>` | Print the working set `adh` would load for an arc, and why. |
-| `adh context lint` | Check that every routed unit resolves and every executable constraint it names exists. |
+| Command                      | Purpose                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `adh context list`           | List context units (id, kind, routing labels, owner).                                  |
+| `adh context show <id>`      | Print a context unit and where it routes.                                              |
+| `adh context route <arc-id>` | Print the working set `adh` would load for an arc, and why.                            |
+| `adh context lint`           | Check that every routed unit resolves and every executable constraint it names exists. |
 
 ### 10.2 Configuration
 
@@ -73,9 +73,9 @@ routed-and-ignored (a worker gap).
 
 **Exit code 12** — a routed context unit is missing or fails to resolve.
 
----
+______________________________________________________________________
 
-## 11. Lessons: promote corrections into the environment
+## 11. Lessons: Promote Corrections into the Environment
 
 **Closes:** turn feedback into infrastructure (the deepest gap). The base
 `failures.json` records per-arc root-cause fixes, so `adh` re-catches the same
@@ -84,18 +84,18 @@ class of mistake every arc. A lesson moves a recurring correction into its
 
 ### 11.1 Commands
 
-| Command | Purpose |
-|---------|---------|
-| `adh lesson list` | Candidate lessons distilled from the failure registry, cold-critic findings, and human corrections, grouped by governing failure class. |
-| `adh lesson show <id>` | The class, its instances, and the proposed durable owner. |
-| `adh lesson promote <id> --to <owner>` | Move the lesson to a durable owner (see below). Gated. |
-| `adh lesson gc` | Flag stale lessons and exemptions whose triggering behavior no longer recurs. |
+| Command                                | Purpose                                                                                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `adh lesson list`                      | Candidate lessons distilled from the failure registry, cold-critic findings, and human corrections, grouped by governing failure class. |
+| `adh lesson show <id>`                 | The class, its instances, and the proposed durable owner.                                                                               |
+| `adh lesson promote <id> --to <owner>` | Move the lesson to a durable owner (see below). Gated.                                                                                  |
+| `adh lesson gc`                        | Flag stale lessons and exemptions whose triggering behavior no longer recurs.                                                           |
 
 `--to <owner>` is one of: `context` (a domain note or runbook), `skill`,
 `check` (a new lint or test), `invariant` (a new property-based rule on the
 engine), `type` (a domain-model change), or `doc`.
 
-### 11.2 Behavioral spec — the promotion gate
+### 11.2 Behavioral Spec — the Promotion Gate
 
 Promoting a lesson to an **executable owner** (`check`, `invariant`, `type`)
 changes the harness's own gates and is therefore consequential. It requires human
@@ -117,9 +117,9 @@ recurrence_threshold = 2         # instances of a class before it becomes a cand
 promote_executable   = "gated"   # gated | manual — executable owners are never automatic
 ```
 
----
+______________________________________________________________________
 
-## 12. Arc resolution types: let the outcome choose the artifact
+## 12. Arc Resolution Types: Let the Outcome Choose the Artifact
 
 **Closes:** give one agent the whole job. Today every arc flows
 Strategy→Execution→…→Ops toward a code change. Some jobs should close as an
@@ -127,12 +127,12 @@ investigation, an instrumented experiment, or a decision not to build.
 
 An arc gains a `resolution` chosen at Strategy (revisable):
 
-| Resolution | Closes with | Proof required |
-|------------|-------------|----------------|
-| `change` | a merged/deployed code change | the deployment's configured change contract (§SPEC 3.1 `[proof.contract]`) |
-| `investigation` | an analysis or answer, no code | the sources inspected and the reproducible finding |
-| `experiment` | an instrumented painted-door surface | the instrumentation and the readout that answers the product question |
-| `decision` | a recorded decision (often "do not build") | the evidence and the rationale behind the call |
+| Resolution      | Closes with                                | Proof required                                                             |
+| --------------- | ------------------------------------------ | -------------------------------------------------------------------------- |
+| `change`        | a merged/deployed code change              | the deployment's configured change contract (§SPEC 3.1 `[proof.contract]`) |
+| `investigation` | an analysis or answer, no code             | the sources inspected and the reproducible finding                         |
+| `experiment`    | an instrumented painted-door surface       | the instrumentation and the readout that answers the product question      |
+| `decision`      | a recorded decision (often "do not build") | the evidence and the rationale behind the call                             |
 
 NO-PROOF-NO-CLOSE still holds; the **proof type** varies with the resolution.
 `adh arc close <id> --as <resolution>` records it, and `adh proof verify` selects
@@ -150,9 +150,9 @@ differential-oracle checks fall away as that domain's optional plugins.
 **Exit code 8** (proof failure) already covers a missing resolution-matched
 proof; no new code needed.
 
----
+______________________________________________________________________
 
-## 13. Tool registry and legibility
+## 13. Tool Registry and Legibility
 
 **Closes:** make capabilities legible and operable. Today `oracle diff`,
 `invariants`, and `device validate` are hardcoded. A registry lets a stage
@@ -160,12 +160,12 @@ discover, select, invoke, interpret, and repair capabilities through one loop.
 
 ### 13.1 Commands
 
-| Command | Purpose |
-|---------|---------|
-| `adh tool list` | Registered tools with declared inputs, outputs, and verification. |
-| `adh tool show <id>` | A tool's contract and last-run health. |
-| `adh tool run <id> [args]` | Invoke a tool; return its structured result. |
-| `adh tool doctor` | Check each tool is discoverable, invocable, and returns a parseable result; report the repair hint for any that fail. |
+| Command                    | Purpose                                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `adh tool list`            | Registered tools with declared inputs, outputs, and verification.                                                     |
+| `adh tool show <id>`       | A tool's contract and last-run health.                                                                                |
+| `adh tool run <id> [args]` | Invoke a tool; return its structured result.                                                                          |
+| `adh tool doctor`          | Check each tool is discoverable, invocable, and returns a parseable result; report the repair hint for any that fail. |
 
 ### 13.2 Configuration
 
@@ -186,9 +186,9 @@ it `verifies`, not by a hardcoded command, and a failed invocation returns its
 **Exit code 10** — a required tool is unavailable or returned an uninterpretable
 result.
 
----
+______________________________________________________________________
 
-## 14. Worker requalification
+## 14. Worker Requalification
 
 **Closes:** hold the worker constant. The model-gate (§SPEC 5.1) is a floor; it
 does not requalify the environment when the worker changes. A model or agent
@@ -196,12 +196,12 @@ change opens a new adoption epoch that must be requalified before normal runs.
 
 ### 14.1 Commands
 
-| Command | Purpose |
-|---------|---------|
-| `adh worker show` | Current epoch, the model bound to each role, and the last requalification. |
+| Command                | Purpose                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `adh worker show`      | Current epoch, the model bound to each role, and the last requalification.                                                                       |
 | `adh worker requalify` | Run the qualification suite on the current models; record a baseline (ambition ceiling, inner-loop latency, tool reliability, failure taxonomy). |
 
-### 14.2 Behavioral spec
+### 14.2 Behavioral Spec
 
 When any model in `[models]` changes from the value recorded for the current
 epoch, `adh` opens a new epoch and **`adh run` refuses** until
@@ -218,9 +218,9 @@ requalify_suite = ".adh/requalify"   # benchmark arcs re-run on worker change
 
 **Exit code 9** — worker changed; requalification required before `adh run`.
 
----
+______________________________________________________________________
 
-## 15. Maintenance loops
+## 15. Maintenance Loops
 
 **Closes:** run known work as a continuous loop. Periodic self-eval scores
 health but is not a durable loop with owned state and a retirement condition. A
@@ -229,11 +229,11 @@ gates, like the daily dependency scanner the practice describes.
 
 ### 15.1 Commands
 
-| Command | Purpose |
-|---------|---------|
-| `adh loop list` | Registered loops, their goal, last run, and health. |
-| `adh loop run <id>` | Run one iteration; it may spawn arcs under the loop's authority. |
-| `adh loop retire <id>` | Close a loop whose retirement condition is met. |
+| Command                | Purpose                                                          |
+| ---------------------- | ---------------------------------------------------------------- |
+| `adh loop list`        | Registered loops, their goal, last run, and health.              |
+| `adh loop run <id>`    | Run one iteration; it may spawn arcs under the loop's authority. |
+| `adh loop retire <id>` | Close a loop whose retirement condition is met.                  |
 
 ### 15.2 Configuration
 
@@ -254,9 +254,9 @@ proceed autonomously versus at a gate, and the durable state carried to the next
 run. A loop never removes a gate; it only automates the safe launches between
 them (§SPEC 6).
 
----
+______________________________________________________________________
 
-## 16. Effectiveness accounting
+## 16. Effectiveness Accounting
 
 **Closes:** optimize for measured effectiveness. Self-eval reports health and
 counts; effectiveness is useful outcomes per unit of scarce human attention, at
@@ -265,13 +265,13 @@ acceptable cost.
 `adh selfeval` gains, and `adh metrics` reports, the following per period and as
 a trend keyed to the harness revision:
 
-| Dimension | Measures |
-|-----------|----------|
-| attention | human minutes per closed arc: steering, review, approval, recovery |
-| flow | worker duration, wall-clock, and acceptance-rate percentiles |
-| rework | attempts, reversions, and critic/CI cycles per accepted arc |
-| compute | tokens, inference cost, and CI minutes per accepted arc |
-| compounding | the above as a delta versus the prior harness revision |
+| Dimension   | Measures                                                           |
+| ----------- | ------------------------------------------------------------------ |
+| attention   | human minutes per closed arc: steering, review, approval, recovery |
+| flow        | worker duration, wall-clock, and acceptance-rate percentiles       |
+| rework      | attempts, reversions, and critic/CI cycles per accepted arc        |
+| compute     | tokens, inference cost, and CI minutes per accepted arc            |
+| compounding | the above as a delta versus the prior harness revision             |
 
 ```toml
 [metrics]
@@ -282,9 +282,9 @@ The self-eval regression signal (§SPEC README) is redefined against
 **effectiveness**, not activity: more arcs at higher attention cost is a
 regression, not progress.
 
----
+______________________________________________________________________
 
-## 17. Credential custody and agent identities
+## 17. Credential Custody and Agent Identities
 
 **Closes:** the authority residuals. The base gates are strong on *irreversible
 actions* but hold credentials as environment variables. Custody belongs outside
@@ -304,7 +304,7 @@ scopes = ["repo:read", "ci:read"]
 revocable_endpoint = true         # disable this route without rotating the key
 ```
 
-### 17.2 Behavioral spec
+### 17.2 Behavioral Spec
 
 A tool receives credentials from the broker at the action boundary; the model
 context and `state.json` never contain key material. Each stage runs under a
@@ -315,9 +315,9 @@ fails closed at the gate rather than proceeding on a cached secret.
 This preserves the base spec's rule (the agent cannot self-grant) while adding
 least privilege and revocation the current env-var model cannot express.
 
----
+______________________________________________________________________
 
-## 18. Harness self-optimization
+## 18. Harness Self-Optimization
 
 **Closes:** the harness never trains itself. adh proves a *code* change correct
 but has no ratcheting, held-out, reflect-driven loop for improving its own
@@ -332,7 +332,7 @@ The worker stays frozen (§14): self-optimization tunes the *environment*, not
 the model. A worker change opens a new epoch and invalidates the held-out
 baseline, so requalification precedes self-optimization.
 
-### 18.1 The trainable artifact and two roles
+### 18.1 the Trainable Artifact and Two Roles
 
 The **harness artifact** is the editable guiding text — the stage prompts
 (Strategy, Critic), the context units and skills (§10), and any managed memory
@@ -352,16 +352,16 @@ optimizer may write; hand-authored content outside it is preserved. An **edit
 budget** (the "learning rate") caps edits per round; the optimizer ranks its
 proposals and the budget clips the rest.
 
-### 18.2 The improvement gate (comparative ratchet)
+### 18.2 the Improvement Gate (Comparative Ratchet)
 
 adh's existing gates are pass/fail on one arc (§SPEC 5). Self-optimization adds a
 **comparative ratchet** on a held-out split.
 
-| Command | Purpose |
-|---------|---------|
-| `adh harness eval` | Score the current artifact: a deterministic floor plus explicit judge-only dimensions, over the held-out selection split. |
+| Command                                               | Purpose                                                                                                                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adh harness eval`                                    | Score the current artifact: a deterministic floor plus explicit judge-only dimensions, over the held-out selection split.                                       |
 | `adh harness gate --candidate S --current S --best S` | Keep/revert. Strict `>` at both comparisons: accept only if the candidate beats current; promote to best only if it also beats best. Exit 0 = keep, 1 = revert. |
-| `adh harness hash <artifact>` | Content identity (`sha256[:16]`); an unchanged hash is a no-op edit and skips re-evaluation. |
+| `adh harness hash <artifact>`                         | Content identity (`sha256[:16]`); an unchanged hash is a no-op edit and skips re-evaluation.                                                                    |
 
 Rules, ported directly:
 
@@ -384,7 +384,7 @@ only detectable defects (missing sections, broken intra-artifact links, banned
 phrasing) and assumes the judge dimensions are perfect; the optimizer supplies
 the judge-only bases. Compare candidates on the same metric within a run.
 
-### 18.3 Reflect discipline
+### 18.3 Reflect Discipline
 
 The optimizer reflects over arc history to propose edits, following four rules
 the failure registry (§SPEC) does not encode:
@@ -404,17 +404,17 @@ the failure registry (§SPEC) does not encode:
   later round does not re-propose it. The negative-feedback buffer is part of the
   optimizer's context.
 
-### 18.4 Offline consolidation (`adh sleep`)
+### 18.4 Offline Consolidation (`adh sleep`)
 
 A scheduled, offline loop that turns operating history into staged, gated harness
 improvements without touching live files.
 
-| Command | Purpose |
-|---------|---------|
-| `adh sleep run` | One consolidation cycle: harvest → mine → reflect+gate → stage. |
+| Command                        | Purpose                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `adh sleep run`                | One consolidation cycle: harvest → mine → reflect+gate → stage.                                                                  |
 | `adh sleep adopt <staging-id>` | Apply a staged, accepted proposal to the live artifacts, backing them up first. The only command that mutates live guiding docs. |
-| `adh sleep status` | Show staged proposals and the last cycle. |
-| `adh sleep schedule` | Install or remove a scheduled cycle. |
+| `adh sleep status`             | Show staged proposals and the last cycle.                                                                                        |
+| `adh sleep schedule`           | Install or remove a scheduled cycle.                                                                                             |
 
 The cycle:
 
@@ -463,7 +463,7 @@ redact     = true
 auto_adopt = false      # staging-only unless a human opts in
 ```
 
-### 18.6 Evidence log and no-improvement diagnostics
+### 18.6 Evidence Log and No-Improvement Diagnostics
 
 Every cycle appends a redacted, size-capped **evidence log**
 (`.adh/sleep/staging/<id>/evidence.jsonl`) binding a staged proposal to its full
@@ -480,9 +480,9 @@ or no proposed edit), plus any backend call error. Without this a `0.0 → 0.0`
 cycle is a black box and the loop cannot be debugged. The evidence log and these
 diagnostics stage alongside the proposal and never touch live files.
 
----
+______________________________________________________________________
 
-## 19. Cold-critic grounding and finding disposition
+## 19. Cold-Critic Grounding and Finding Disposition
 
 **Closes:** the repository must teach the critic, and a critic's finding is a
 hypothesis the repository adjudicates, not a verdict the model is trusted for.
@@ -497,7 +497,7 @@ critic is grounded by repository-owned artifacts and withholds only the build
 narrative; its findings are confirmed against those same artifacts before they
 change an arc's course.
 
-### 19.1 The critic's grounding contract
+### 19.1 the Critic's Grounding Contract
 
 `adh critic <id>` loads its working set from repository-owned state and denies
 exactly one input, the Execution transcript. The working set is:
@@ -520,17 +520,17 @@ alone, which the prompt states plainly; this is not exit 12. `adh init`
 scaffolds a starter store so grounding is on by default, and Execution labels an
 arc by the areas it touched (§SPEC 5.4) so its context routes.
 
-### 19.2 Finding disposition — confirm against the repository
+### 19.2 Finding Disposition — Confirm Against the Repository
 
 A critic emits findings. Each finding names the repository artifact that would
 confirm it: an oracle divergence, an invariant, an on-device check (§SPEC 2.4),
 an NFR check (§10), or a named local contract. The Evaluation stage that follows
 the critic (§SPEC 1) runs that artifact.
 
-| Finding | Adjudication | Effect |
-|---------|--------------|--------|
-| confirmed — the named artifact fails | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7) |
-| unconfirmed — no artifact fails, or none is named | a lesson candidate (§11) | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+| Finding                                           | Adjudication                       | Effect                                                                                           |
+| ------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| confirmed — the named artifact fails              | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
+| unconfirmed — no artifact fails, or none is named | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
 
 A finding never blocks on the critic's text alone. This is §9's non-goal applied
 to review: the harness does not grade a change with an LLM-as-judge where a
@@ -565,17 +565,17 @@ This section adds no exit code. A confirmed finding surfaces through the existin
 Evaluation gates (exit 5–7); an unconfirmed one is a §11 lesson candidate, and
 its later promotion to an executable owner is the existing gated path (exit 13).
 
----
+______________________________________________________________________
 
-## Exit codes (additions)
+## Exit Codes (Additions)
 
-| Code | Meaning |
-|------|---------|
-| `9` | Worker changed; requalification required (§14). |
-| `10` | Required tool unavailable or uninterpretable (§13). |
-| `12` | Routed context unit missing or unresolved (§10). |
-| `13` | Lesson promotion to an executable owner pending approval (§11). |
-| `14` | Harness change staged; human adoption required (§18.4). |
+| Code | Meaning                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| `9`  | Worker changed; requalification required (§14).                                                                           |
+| `10` | Required tool unavailable or uninterpretable (§13).                                                                       |
+| `12` | Routed context unit missing or unresolved (§10).                                                                          |
+| `13` | Lesson promotion to an executable owner pending approval (§11).                                                           |
+| `14` | Harness change staged; human adoption required (§18.4).                                                                   |
 | `15` | Self-optimization gate self-test failed — a planted regression was not rejected; the gate is untrustworthy, stop (§18.4). |
 
 Code `11` is reserved to avoid collision with a future gate class; `8` (proof
@@ -583,9 +583,9 @@ failure) already covers resolution-matched proof (§12). §19 adds no code: a
 confirmed critic finding surfaces through the Evaluation gates (exit 5–7) and an
 unconfirmed one through the lesson path (§11).
 
----
+______________________________________________________________________
 
-## What these deliberately do not add
+## What These Deliberately Do Not Add
 
 Consistent with §9 Non-goals, these additions keep judgment out of the tool. The
 context store routes units but does not decide a task's intent; `adh lesson`

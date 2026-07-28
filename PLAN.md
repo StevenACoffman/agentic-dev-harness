@@ -1,4 +1,4 @@
-# PLAN — implementing adh from SPEC.md + SPEC-ADDITIONS.md
+# PLAN — Implementing Adh from SPEC.md + SPEC-ADDITIONS.md
 
 > **Status: implemented.** This is the original build plan (Phases 0–9). All
 > phases are complete; it is kept as a record of how `adh` was built and why the
@@ -17,7 +17,7 @@ It follows the local climax convention (as in `skillsaw`) and the guidelines in
 `go-advice/summary_rules.md`. A "Revisions applied from go-advice" section
 records how the advice shaped the plan.
 
-## 1. Reality and scope
+## 1. Reality and Scope
 
 adh orchestrates agents, an oracle, a device, and git. Only part of that is
 deterministic and CLI-ownable; the rest needs a model, `adb`, or the network.
@@ -35,7 +35,7 @@ Two tiers:
   (mirroring SkillOpt-Sleep's `mock` that runs the whole cycle with no API), so
   behavior is testable and the real backend is swapped in at `main`.
 
-## 2. Architecture (functional core / imperative shell)
+## 2. Architecture (Functional Core / Imperative Shell)
 
 adh is a pure CLI tool, so `main.go` stays at the repo root and `cmd/` holds
 command sub-packages (go-advice §1 "pure CLI tool" branch; §18 Pattern B).
@@ -63,28 +63,28 @@ a sibling concern. When two concerns need to compose (e.g. `harness` uses
 `gate` as a leaf — we keep the import graph a DAG rooted at `internal/adh` and
 document any concern→concern edge in the package doc comment.
 
-## 3. Command surface (target)
+## 3. Command Surface (Target)
 
 Grouped as in the SPECs; each is a `cmd/<name>/` package registered in
 `cmd/cmd.go`. Group-parent commands (`arc`, `context`, `tool`, `worker`, `loop`,
 `harness`, `sleep`) set `Exec: nil`.
 
-| Group | Commands |
-|-------|----------|
-| Lifecycle | `init`, `arc {new,list,show}`, `run`, `step`, `status` |
-| Stages | `strategy`, `execute`, `critic`, `eval`, `ops` |
-| Gates | `gate list`, `approve`, `reject` |
-| Oracle/validation | `oracle diff`, `invariants`, `device validate` |
-| Evidence/audit | `proof verify`, `registry audit`, `selfeval`, `failures list` |
-| Autonomy | `autonomy {show,set}` |
-| Additions §10–17 | `context {list,show,route,lint}`, `lesson {list,show,promote,gc}`, `tool {list,show,run,doctor}`, `worker {show,requalify}`, `loop {list,run,retire}`, `metrics` |
-| Self-optimization §18 | `harness {eval,gate,hash}`, `sleep {run,adopt,status,schedule}` |
+| Group                 | Commands                                                                                                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lifecycle             | `init`, `arc {new,list,show}`, `run`, `step`, `status`                                                                                                           |
+| Stages                | `strategy`, `execute`, `critic`, `eval`, `ops`                                                                                                                   |
+| Gates                 | `gate list`, `approve`, `reject`                                                                                                                                 |
+| Oracle/validation     | `oracle diff`, `invariants`, `device validate`                                                                                                                   |
+| Evidence/audit        | `proof verify`, `registry audit`, `selfeval`, `failures list`                                                                                                    |
+| Autonomy              | `autonomy {show,set}`                                                                                                                                            |
+| Additions §10–17      | `context {list,show,route,lint}`, `lesson {list,show,promote,gc}`, `tool {list,show,run,doctor}`, `worker {show,requalify}`, `loop {list,run,retire}`, `metrics` |
+| Self-optimization §18 | `harness {eval,gate,hash}`, `sleep {run,adopt,status,schedule}`                                                                                                  |
 
 Global flags on `root.Config` (§SPEC 2, bound once): `--config`, `--profile`,
 `--repo`, `-v/--verbose`, `-q/--quiet`, `--json`, `--no-color`, `--yes`,
 `--dry-run`.
 
-## 4. Phased plan
+## 4. Phased Plan
 
 Each phase is a step. **Do not proceed to the next phase until**
 `golangci-lint run --fix ./...` is clean without relaxing any rule, `go test
@@ -141,7 +141,7 @@ each phase, re-read the relevant go-advice section, and improve before moving on
 - **Phase 9 — Integration.** Wire the full dispatcher, `--json` on every command,
   end-to-end tests through `cmd.Run`, and update `README.md`.
 
-## 5. Effectful seams — interface contracts
+## 5. Effectful Seams — Interface Contracts
 
 Defined in `internal/adh/interfaces.go`, each with a `mock` implementation:
 
@@ -155,7 +155,7 @@ Defined in `internal/adh/interfaces.go`, each with a `mock` implementation:
 - `Clock` — `Now()`; injected so timestamps and epochs are deterministic
   (go-advice §5: never call `time.Now()` inside logic).
 
-## 6. Cross-cutting invariants (checklist, gates each phase)
+## 6. Cross-Cutting Invariants (Checklist, Gates Each Phase)
 
 Applied from go-advice §19 (Architecture, Domain, Errors, Testing, CLI):
 
@@ -175,7 +175,7 @@ Applied from go-advice §19 (Architecture, Domain, Errors, Testing, CLI):
 - Error strings lowercase, no trailing punctuation, `"<command>: <reason>"`.
 - One concept per file; ≤1000 SLOC; interface comment written before the body.
 
-## 7. Revisions applied from go-advice
+## 7. Revisions Applied from Go-Advice
 
 The first draft placed domain types in whatever `internal` package used them and
 let siblings import each other. The advice changed the plan as follows:
