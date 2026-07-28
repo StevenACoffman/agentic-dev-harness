@@ -79,10 +79,18 @@ around them is partial.
   `--verbose`, `--quiet`, `--no-color` bound once on `root.Flags`. `--quiet` is
   wired (discards stdout in `cmd.Run`); `--config` is wired (`root.ConfigGetenv`
   threaded into every `config.Load` site).
-- [ ] Deferred — global `--json`/`--yes`/`--dry-run`: each is a **local** flag
-  today (version/harness/step; approve owns `--yes`/`--dry-run` for the safety
-  gate). Binding them globally collides; a unification pass must first remove the
-  locals and route commands through `root.Config`.
+- [x] Global `--jsonl` machine output: a single global flag on `root.Config`
+  emitting **JSON Lines** (one compact JSON object per stdout line, via
+  `root.Config.EmitJSONL`) — chosen over `--json` so the contract is uniform
+  whether a command returns one result or many. Replaced the local `--json` flags
+  (version/harness/step) that would have collided with a global one. Honored by the
+  relay/observe commands (`step`, `version`, `harness eval/gate`, `status`, `arc
+  list`, `arc show`, `gate list`, `eval`). Follow-up: the mutation commands
+  (`run`/`proof`/`approve`/`reject`/`close`) still print text — their exit code is
+  the machine signal — and a structured error envelope on stderr.
+- [ ] Deferred — global `--yes`/`--dry-run`: local today (approve owns them for the
+  safety gate). Binding globally needs the same unification pass; lower priority
+  than machine output.
 - [ ] Deferred — `registry audit`: no artifact-registry model exists; auditing only
   proof packets would be a partial interpretation of "orphans/missing-manifests/SHA
   mismatches". Needs the registry concept first.

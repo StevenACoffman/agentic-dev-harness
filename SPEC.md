@@ -58,7 +58,7 @@ Global flags (available on every command):
 | `--repo <path>`    | Target repository root (default: git repo containing cwd).                |
 | `-v, --verbose`    | Increase log verbosity (repeatable: `-vv`, `-vvv`).                       |
 | `-q, --quiet`      | Suppress non-error output.                                                |
-| `--json`           | Emit machine-readable JSON on stdout instead of formatted text.           |
+| `--jsonl`          | Emit machine-readable output as JSON Lines (one JSON object per line).    |
 | `--no-color`       | Disable ANSI color.                                                       |
 | `--yes`            | Pre-answer *non-gate* confirmations. Never satisfies a human safety gate. |
 | `--dry-run`        | Plan and print actions without mutating state, repos, or devices.         |
@@ -307,9 +307,9 @@ ______________________________________________________________________
 | `7`  | On-device validation failed.                                 |
 | `8`  | Proof verification failed (NO-PROOF-NO-CLOSE).               |
 
-`--json` mode returns the same information as a structured object with a
-`status`, `code`, and command-specific payload, so the harness can be scripted
-and chained by hooks.
+`--jsonl` mode returns the same information as structured JSON, so the harness
+can be scripted and chained by hooks. The exit code remains the primary machine
+signal; the JSON payload carries the command-specific detail.
 
 ______________________________________________________________________
 
@@ -317,7 +317,12 @@ ______________________________________________________________________
 
 - Human mode: concise, colorized stage banners; a pending gate is visually
   distinct and prints the exact approval command to run.
-- `--json`: one JSON object per command invocation on stdout; logs go to stderr.
+- `--jsonl`: **JSON Lines** on stdout — every line is one complete, compact JSON
+  object; logs go to stderr. A single-result command (`step`, `status`,
+  `proof verify`) emits exactly one line, which is also a valid plain JSON object;
+  a list command (`arc list`, `gate list`, `failures list`) emits one object per
+  record. The uniform contract — *each stdout line is a JSON object* — lets an
+  agent parse every command's output the same way, whether one result or many.
 - All logs redact secrets and sensitive screen regions.
 - Every stage transition and gate decision is appended to an append-only audit
   log for the periodic self-eval and registry audit.
