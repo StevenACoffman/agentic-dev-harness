@@ -30,6 +30,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/worker"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
@@ -43,6 +44,8 @@ const (
 	// the §10 routing gap (exit 12).
 	opsGateCode    = 4
 	routingGapCode = 12
+	// requalifyCode is the worker-change refusal (§14).
+	requalifyCode = 9
 )
 
 // Config holds the configuration for the step command.
@@ -96,15 +99,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("step: arc %s is not open (status %s)", arc.ID, arc.Status)
 	}
 	if arc.Stage == adh.StageOps {
-		msg := fmt.Sprintf("arc %s is at the ops gate; ship it with `close`", arc.ID)
-		if cfg.JSONL {
-			if err := cfg.EmitBlocked(opsGateCode, root.ReasonAtOps, msg); err != nil {
-				return fmt.Errorf("step: %w", err)
-			}
-		} else {
-			_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
-		}
-		return root.ExitError(opsGateCode)
+		return cfg.reportOpsGate(&arc)
 	}
 	// Evaluation is deterministic on the relay path (§19.2): it adjudicates the
 	// critic's findings against repository artifacts, not by relaying another
@@ -119,6 +114,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
+	}
+	if err := cfg.requalifyGate(&conf); err != nil {
+		return err
 	}
 	renderer, err := prompt.Default()
 	if err != nil {
@@ -220,6 +218,20 @@ func (cfg *Config) emit(
 	return cfg.report(arc, statusAwaiting, outcome.Prompt)
 }
 
+// reportOpsGate reports an arc that has reached the ops ship gate (§5.2): a
+// blocked outcome under --jsonl, else a stderr line, and exit 4.
+func (cfg *Config) reportOpsGate(arc *adh.Arc) error {
+	msg := fmt.Sprintf("arc %s is at the ops gate; ship it with `close`", arc.ID)
+	if cfg.JSONL {
+		if err := cfg.EmitBlocked(opsGateCode, root.ReasonAtOps, msg); err != nil {
+			return fmt.Errorf("step: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+	}
+	return root.ExitError(opsGateCode)
+}
+
 // reportGap reports a critic routing gap (§19.1): the environment did not teach
 // the critic, so no prompt was emitted. It is a blocked outcome under --jsonl,
 // else a stderr line, and exits 12.
@@ -282,6 +294,32 @@ func (cfg *Config) repoDir() string {
 		return cfg.Repo
 	}
 	return "."
+}
+
+// requalifyGate refuses a step when the worker changed from the recorded epoch
+// (§14): the fixed worker must be requalified before normal runs resume. Exit 9,
+// a blocked outcome with the requalify reason. A never-requalified workspace is
+// not gated (RequalifyNeeded requires a recorded epoch).
+func (cfg *Config) requalifyGate(conf *config.Config) error {
+	needed, err := worker.RequalifyNeeded(
+		worker.DefaultStateFile,
+		worker.EpochFor(conf.BaselineModels()),
+	)
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	if !needed {
+		return nil
+	}
+	const msg = "worker changed; run `adh worker requalify` before continuing (§14)"
+	if cfg.JSONL {
+		if emitErr := cfg.EmitBlocked(requalifyCode, root.ReasonRequalify, msg); emitErr != nil {
+			return fmt.Errorf("step: %w", emitErr)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+	}
+	return root.ExitError(requalifyCode)
 }
 
 // readResponse reads the operator's reply from the --response file, or from

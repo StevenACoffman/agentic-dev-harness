@@ -28,6 +28,7 @@ const (
 	ReasonUngrounded = "ungrounded" // critic routing gap, exit 12 (step)
 	ReasonGate       = "gate"       // pending human approval, exit 4 (approve)
 	ReasonProof      = "proof"      // proof verification failed, exit 8 (proof/close)
+	ReasonRequalify  = "requalify"  // worker changed; requalify before running, exit 9 (§14)
 )
 
 // Exit codes surfaced in an error outcome's Code for a generic returned error

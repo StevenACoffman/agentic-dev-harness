@@ -70,3 +70,45 @@ func TestLoadAbsent(t *testing.T) {
 		t.Errorf("absent epoch = %+v, want zero", got)
 	}
 }
+
+func TestEpochForIsDeterministic(t *testing.T) {
+	models := map[string]string{"critic": "reasoning", "execution": "fast"}
+	a := worker.EpochFor(models)
+	b := worker.EpochFor(map[string]string{"execution": "fast", "critic": "reasoning"})
+	if a.ID == "" || a.ID != b.ID {
+		t.Errorf("EpochFor not order-independent/deterministic: %q vs %q", a.ID, b.ID)
+	}
+	if worker.EpochFor(map[string]string{"critic": "reasoning-2"}).ID == a.ID {
+		t.Error("a changed binding should hash to a different epoch")
+	}
+}
+
+func TestRequalifyNeeded(t *testing.T) {
+	dir := t.TempDir()
+	current := worker.EpochFor(map[string]string{"critic": "reasoning"})
+
+	// No recorded epoch: a fresh workspace is not gated.
+	if needed, err := worker.RequalifyNeeded(
+		filepath.Join(dir, "absent.json"),
+		current,
+	); err != nil ||
+		needed {
+		t.Errorf("fresh workspace = (%v, %v), want (false, nil)", needed, err)
+	}
+
+	matching := filepath.Join(dir, "match.json")
+	if err := worker.Save(matching, current); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if needed, err := worker.RequalifyNeeded(matching, current); err != nil || needed {
+		t.Errorf("matching epoch = (%v, %v), want (false, nil)", needed, err)
+	}
+
+	stale := filepath.Join(dir, "stale.json")
+	if err := worker.Save(stale, worker.EpochFor(map[string]string{"critic": "old"})); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if needed, err := worker.RequalifyNeeded(stale, current); err != nil || !needed {
+		t.Errorf("changed worker = (%v, %v), want (true, nil)", needed, err)
+	}
+}

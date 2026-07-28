@@ -7,17 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	workerlib "github.com/StevenACoffman/agentic-dev-harness/internal/worker"
 )
-
-const stateFile = ".adh/worker.json"
 
 // Config holds the configuration for the worker command.
 type Config struct {
@@ -58,7 +54,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 }
 
 func (cfg *Config) show() error {
-	epoch, err := workerlib.Load(stateFile)
+	epoch, err := workerlib.Load(workerlib.DefaultStateFile)
 	if err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
@@ -78,21 +74,17 @@ func (cfg *Config) requalify() error {
 	if err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
-	models := conf.BaselineModels()
-	epoch := workerlib.Epoch{ID: identity.Hash(canonical(models)), Models: models}
-	if err := workerlib.Save(stateFile, epoch); err != nil {
+	epoch := workerlib.EpochFor(conf.BaselineModels())
+	if err := workerlib.Save(workerlib.DefaultStateFile, epoch); err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "requalified: epoch %s (%d roles)\n", epoch.ID, len(models))
+	_, _ = fmt.Fprintf(
+		cfg.Stdout,
+		"requalified: epoch %s (%d roles)\n",
+		epoch.ID,
+		len(epoch.Models),
+	)
 	return nil
-}
-
-func canonical(models map[string]string) string {
-	var b strings.Builder
-	for _, role := range sortedRoles(models) {
-		b.WriteString(role + "=" + models[role] + ";")
-	}
-	return b.String()
 }
 
 func sortedRoles(models map[string]string) []string {

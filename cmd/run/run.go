@@ -25,12 +25,17 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/worker"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
 // routingGapCode is the exit code for a critic routing gap (§10, §19.1): the
 // environment did not teach the critic, so the relay refuses to emit a prompt.
-const routingGapCode = 12
+// requalifyCode is the worker-change refusal (§14).
+const (
+	routingGapCode = 12
+	requalifyCode  = 9
+)
 
 // Config holds the configuration for the run command.
 type Config struct {
@@ -78,6 +83,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
+	}
+	if err := cfg.requalifyGate(&conf); err != nil {
+		return err
 	}
 	renderer, err := prompt.Default()
 	if err != nil {
@@ -365,6 +373,32 @@ func (cfg *Config) repoDir() string {
 		return cfg.Repo
 	}
 	return "."
+}
+
+// requalifyGate refuses a run when the worker changed from the recorded epoch
+// (§14): the fixed worker must be requalified before normal runs resume. Exit 9,
+// a blocked outcome with the requalify reason. A never-requalified workspace is
+// not gated (RequalifyNeeded requires a recorded epoch).
+func (cfg *Config) requalifyGate(conf *config.Config) error {
+	needed, err := worker.RequalifyNeeded(
+		worker.DefaultStateFile,
+		worker.EpochFor(conf.BaselineModels()),
+	)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	if !needed {
+		return nil
+	}
+	const msg = "worker changed; run `adh worker requalify` before continuing (§14)"
+	if cfg.JSONL {
+		if emitErr := cfg.EmitBlocked(requalifyCode, root.ReasonRequalify, msg); emitErr != nil {
+			return fmt.Errorf("run: %w", emitErr)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "run: %s\n", msg)
+	}
+	return root.ExitError(requalifyCode)
 }
 
 // block parks the arc at a human gate (StatusBlocked) and records why, so the
