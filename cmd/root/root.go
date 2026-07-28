@@ -29,6 +29,7 @@ const (
 	ReasonGate       = "gate"       // pending human approval, exit 4 (approve)
 	ReasonProof      = "proof"      // proof verification failed, exit 8 (proof/close)
 	ReasonRequalify  = "requalify"  // worker changed; requalify before running, exit 9 (§14)
+	ReasonFailed     = "failed"     // arc failed evaluation past its rework budget (run, §4.1)
 )
 
 // Exit codes surfaced in an error outcome's Code for a generic returned error

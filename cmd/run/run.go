@@ -31,10 +31,12 @@ import (
 
 // routingGapCode is the exit code for a critic routing gap (§10, §19.1): the
 // environment did not teach the critic, so the relay refuses to emit a prompt.
-// requalifyCode is the worker-change refusal (§14).
+// requalifyCode is the worker-change refusal (§14); codeFailed is a terminal
+// evaluation fail past the rework budget (§4.1), which stops the drive.
 const (
 	routingGapCode = 12
 	requalifyCode  = 9
+	codeFailed     = 1
 )
 
 // Config holds the configuration for the run command.
@@ -315,8 +317,23 @@ func (cfg *Config) drive(
 }
 
 // reportDone emits the terminal outcome when the loop completes (the arc left the
-// open state): a success outcome under --jsonl, else a human line.
+// open state). An arc that failed evaluation past its rework budget (§4.1) is an
+// error outcome (reason failed, exit 1) so the drive stops for a human — the
+// per-finding kinds are already in the failure registry from the reworks. Any
+// other terminal state is a success outcome.
 func (cfg *Config) reportDone(arc *adh.Arc) error {
+	if arc.Status == adh.StatusFailed {
+		msg := fmt.Sprintf("arc %s failed evaluation after %d rework(s); escalate to a human",
+			arc.ID, arc.Reworks)
+		if cfg.JSONL {
+			if err := cfg.EmitError(codeFailed, root.ReasonFailed, msg); err != nil {
+				return fmt.Errorf("run: %w", err)
+			}
+		} else {
+			_, _ = fmt.Fprintf(cfg.Stderr, "run: %s\n", msg)
+		}
+		return root.ExitError(codeFailed)
+	}
 	if cfg.JSONL {
 		if err := cfg.EmitOK(
 			map[string]string{"arc": arc.ID, "status": string(arc.Status)},
@@ -361,7 +378,12 @@ func (cfg *Config) adjudicate(ctx context.Context, arc *adh.Arc, recordLessons b
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
+	if err := evaluation.Apply(
+		arc,
+		&verdict,
+		recordLessons,
+		evaluation.DefaultMaxReworks,
+	); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil

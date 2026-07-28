@@ -44,8 +44,10 @@ const (
 	// the §10 routing gap (exit 12).
 	opsGateCode    = 4
 	routingGapCode = 12
-	// requalifyCode is the worker-change refusal (§14).
+	// requalifyCode is the worker-change refusal (§14); codeFailed is a terminal
+	// evaluation fail past the rework budget (§4.1).
 	requalifyCode = 9
+	codeFailed    = 1
 )
 
 // Config holds the configuration for the step command.
@@ -155,13 +157,37 @@ func (cfg *Config) disposeEval(
 		return fmt.Errorf("step: %w", err)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
-	if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
+	if err := evaluation.Apply(
+		arc,
+		&verdict,
+		recordLessons,
+		evaluation.DefaultMaxReworks,
+	); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
+	if arc.Status == adh.StatusFailed {
+		return cfg.reportFailed(arc)
+	}
 	return cfg.report(arc, statusAdvanced, "")
+}
+
+// reportFailed reports an arc that failed evaluation past its rework budget (§4.1):
+// an error outcome (reason failed, exit 1) so the drive stops for a human. The
+// per-finding kinds are already in the failure registry from the reworks.
+func (cfg *Config) reportFailed(arc *adh.Arc) error {
+	msg := fmt.Sprintf("arc %s failed evaluation after %d rework(s); escalate to a human",
+		arc.ID, arc.Reworks)
+	if cfg.JSONL {
+		if err := cfg.EmitError(codeFailed, root.ReasonFailed, msg); err != nil {
+			return fmt.Errorf("step: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+	}
+	return root.ExitError(codeFailed)
 }
 
 // advance runs one stage synchronously through client (the mock) and saves it.

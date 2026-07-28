@@ -100,7 +100,12 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("eval: %w", err)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
-	if err := evaluation.Apply(&arc, &verdict, recordLessons); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&verdict,
+		recordLessons,
+		evaluation.DefaultMaxReworks,
+	); err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
 	if err := store.Save(&arc); err != nil {
@@ -110,25 +115,29 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 }
 
 // report emits the disposition (one outcome under --jsonl, else a human line) and
-// returns the Evaluation exit code: a confirmed finding is an error outcome (exit
-// 5–8, reason = the finding kind); an unconfirmed disposition is a success outcome.
+// returns the Evaluation exit code. A clean verdict is a success outcome. A
+// confirmed finding is an error outcome (exit 5–8, reason = the finding kind);
+// whether it reworked or failed terminally is read from the arc's resulting status
+// — the durable machine signal (arc show → failed) the message also states.
 func (cfg *Config) report(arc *adh.Arc, verdict *critic.Verdict) error {
-	if verdict.ReturnsToExecution() {
-		kind := verdict.BlockingKind()
-		code := exitFor(kind)
-		if cfg.JSONL {
-			msg := fmt.Sprintf("%d finding(s) confirmed; arc %s returned to execution",
-				len(verdict.Confirmed), arc.ID)
-			if err := cfg.EmitError(code, string(kind), msg); err != nil {
-				return fmt.Errorf("eval: %w", err)
-			}
-		} else {
-			_, _ = fmt.Fprintf(cfg.Stdout,
-				"eval: %d finding(s) confirmed; arc %s returned to execution\n",
-				len(verdict.Confirmed), arc.ID)
-		}
-		return root.ExitError(code)
+	if !verdict.ReturnsToExecution() {
+		return cfg.reportAdvanced(arc, verdict)
 	}
+	kind := verdict.BlockingKind()
+	code := exitFor(kind)
+	msg := confirmedMessage(arc, verdict)
+	if cfg.JSONL {
+		if err := cfg.EmitError(code, string(kind), msg); err != nil {
+			return fmt.Errorf("eval: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stdout, "eval: %s\n", msg)
+	}
+	return root.ExitError(code)
+}
+
+// reportAdvanced emits the clean-verdict outcome: the arc advanced to the ops gate.
+func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	if cfg.JSONL {
 		if err := cfg.EmitOK(result{
 			Arc:         arc.ID,
@@ -143,6 +152,18 @@ func (cfg *Config) report(arc *adh.Arc, verdict *critic.Verdict) error {
 		"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
 		arc.ID, len(verdict.Unconfirmed))
 	return nil
+}
+
+// confirmedMessage describes a confirmed-finding disposition: a rework within
+// budget, or a terminal fail once the arc's rework budget is spent (§4.1).
+func confirmedMessage(arc *adh.Arc, verdict *critic.Verdict) string {
+	if arc.Status == adh.StatusFailed {
+		return fmt.Sprintf(
+			"%d finding(s) confirmed; arc %s failed after %d rework(s) — escalate to a human",
+			len(verdict.Confirmed), arc.ID, arc.Reworks)
+	}
+	return fmt.Sprintf("%d finding(s) confirmed; arc %s returned to execution (rework %d)",
+		len(verdict.Confirmed), arc.ID, arc.Reworks)
 }
 
 // repoDir is the repository root — the --repo global, or the current directory.
