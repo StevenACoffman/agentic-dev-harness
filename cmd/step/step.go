@@ -14,8 +14,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
-	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -31,7 +29,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
 // Turn outcomes reported to the caller. "awaiting" means the prompt was emitted
@@ -39,9 +37,6 @@ import (
 const (
 	statusAwaiting = "awaiting"
 	statusAdvanced = "advanced"
-	// maxCriticDiffBytes caps the diff surfaced to the critic so a large change
-	// never bloats the prompt unbounded; the excess is dropped with a marker.
-	maxCriticDiffBytes = 16 << 10
 	// opsGateCode is the exit code when an arc has reached the ops ship gate
 	// (SPEC §7 code 4: a pending human gate blocks advancement); routingGapCode is
 	// the §10 routing gap (exit 12).
@@ -203,7 +198,7 @@ func (cfg *Config) emit(
 	// review (the shell reads the diff; the engine renders and parks the prompt).
 	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
 	if arc.Stage == adh.StageCritic {
-		in.Diff = cfg.criticDiff(arc)
+		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 	}
 	outcome, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, in, renderer, model.Relay{}.ModelClass(), judgment,
@@ -268,7 +263,7 @@ func (cfg *Config) resume(
 		return fmt.Errorf("step: %w", err)
 	}
 	if wasExecution {
-		cfg.captureFootprint(arc)
+		worktree.CaptureFootprint(cfg.repoDir(), arc)
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
@@ -282,67 +277,6 @@ func (cfg *Config) repoDir() string {
 		return cfg.Repo
 	}
 	return "."
-}
-
-// criticDiff renders the change under review as a unified diff for the critic's
-// grounding (§19.1). Best-effort — outside a git repo it is empty — and capped so
-// a huge change cannot bloat the prompt (the truncation is marked, never silent).
-func (cfg *Config) criticDiff(arc *adh.Arc) string {
-	if len(arc.Paths) == 0 {
-		return ""
-	}
-	repo, err := vcs.Open(cfg.repoDir())
-	if err != nil {
-		return ""
-	}
-	diff, err := repo.Diff(arc.Paths)
-	if err != nil {
-		return ""
-	}
-	if len(diff) > maxCriticDiffBytes {
-		diff = diff[:maxCriticDiffBytes] + "\n… diff truncated …\n"
-	}
-	return diff
-}
-
-// changedCodePaths reports the working tree's changed paths from the repo at
-// --repo (default cwd), excluding the harness's own .adh/ state. The bool is false
-// when there is no git repo — the capture is best-effort and never fatal.
-func (cfg *Config) changedCodePaths() ([]string, bool) {
-	repo, err := vcs.Open(cfg.repoDir())
-	if err != nil {
-		return nil, false
-	}
-	status, err := repo.Status()
-	if err != nil {
-		return nil, false
-	}
-	paths := make([]string, 0, len(status.Changed))
-	for _, path := range status.Changed {
-		if strings.HasPrefix(path, ".adh/") {
-			continue
-		}
-		paths = append(paths, path)
-	}
-	return paths, true
-}
-
-// captureFootprint records what an execution turn touched (§19.1, §19.3): the
-// working tree's changed paths ground the cold critic on the real change, and the
-// areas they fall under become labels so the arc's context routes. Best-effort —
-// outside a git repo it is a no-op. Derived labels union with any already declared,
-// preserving hand-set ones.
-func (cfg *Config) captureFootprint(arc *adh.Arc) {
-	paths, ok := cfg.changedCodePaths()
-	if !ok {
-		return
-	}
-	arc.Paths = paths
-	for _, label := range contextstore.AreaLabels(paths) {
-		if !slices.Contains(arc.Labels, label) {
-			arc.Labels = append(arc.Labels, label)
-		}
-	}
 }
 
 // readResponse reads the operator's reply from the --response file, or from

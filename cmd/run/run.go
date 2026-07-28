@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -14,18 +16,37 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
+
+// routingGapCode is the exit code for a critic routing gap (§10, §19.1): the
+// environment did not teach the critic, so the relay refuses to emit a prompt.
+const routingGapCode = 12
 
 // Config holds the configuration for the run command.
 type Config struct {
 	*root.Config
-	Flags   *ff.FlagSet
-	Command *ff.Command
+	Relay    bool
+	Response string
+	Flags    *ff.FlagSet
+	Command  *ff.Command
+}
+
+// relayResult is the awaiting outcome `run --relay` carries in its data payload —
+// the same shape `step --relay` uses, so an agent parses either identically.
+type relayResult struct {
+	Arc    string `json:"arc"`
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // New creates and registers the run command with the given parent config.
@@ -33,9 +54,13 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("run").SetParent(parent.Flags)
+	cfg.Flags.BoolVar(&cfg.Relay, 0, "relay",
+		"drive the arc by relaying prompts to an operator instead of the mock model")
+	cfg.Flags.StringVar(&cfg.Response, 0, "response", "",
+		"resume the pending relayed turn with the reply in this file (- for stdin)")
 	cfg.Command = &ff.Command{
 		Name:      "run",
-		Usage:     "agentic-dev-harness run <arc-id>",
+		Usage:     "agentic-dev-harness run [--relay [--response <file>]] <arc-id>",
 		ShortHelp: "advance an arc through the loop until a gate or completion",
 		LongHelp:  "Relay the arc through stages until a human gate or closure (SPEC §2.1).",
 		Flags:     cfg.Flags,
@@ -62,7 +87,170 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
+	if cfg.Relay {
+		return cfg.driveRelay(ctx, store, &arc, &conf, renderer)
+	}
 	return cfg.drive(ctx, store, &arc, &conf, renderer)
+}
+
+// driveRelay drives the arc by relaying (SPEC §1-2): if a reply is supplied it
+// resumes the pending turn, then advances — running deterministic evaluation
+// inline (§19.2) and emitting the next model stage's prompt to park for a reply,
+// or stopping at the ops gate. So one `run --relay --response <file>` applies the
+// reply, runs any evaluation, and emits the next prompt, collapsing the relay's
+// emit → resume → eval cycle into a single call. It shares the relay engine and
+// worktree grounding with `step`; the awaiting outcome uses step's data shape.
+func (cfg *Config) driveRelay(
+	ctx context.Context,
+	store *state.Store,
+	arc *adh.Arc,
+	conf *config.Config,
+	renderer stage.Prompter,
+) error {
+	judgment := conf.JudgmentRoles()
+	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
+	if cfg.Response != "" {
+		if err := cfg.resumeRelay(ctx, store, arc, renderer, judgment); err != nil {
+			return err
+		}
+	}
+	for arc.Status == adh.StatusOpen {
+		switch arc.Stage {
+		case adh.StageOps:
+			return cfg.block(
+				store,
+				arc,
+				root.ReasonAtOps,
+				"ops is the ship gate; approve then `close`",
+			)
+		case adh.StageEvaluation:
+			if err := cfg.adjudicate(ctx, arc, recordLessons); err != nil {
+				return err
+			}
+			if err := store.Save(arc); err != nil {
+				return fmt.Errorf("run: %w", err)
+			}
+		default:
+			return cfg.emitRelay(store, conf, renderer, arc, judgment)
+		}
+	}
+	return cfg.reportDone(arc)
+}
+
+// resumeRelay applies the operator's reply to the pending turn and captures an
+// execution turn's footprint. It refuses a reply with no matching pending turn.
+func (cfg *Config) resumeRelay(
+	ctx context.Context,
+	store *state.Store,
+	arc *adh.Arc,
+	renderer stage.Prompter,
+	judgment authority.JudgmentRoles,
+) error {
+	if arc.Pending == nil || arc.Pending.Stage != arc.Stage {
+		return fmt.Errorf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage)
+	}
+	text, err := cfg.readResponse()
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	wasExecution := arc.Stage == adh.StageExecution
+	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	if wasExecution {
+		worktree.CaptureFootprint(cfg.repoDir(), arc)
+	}
+	if err := store.Save(arc); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	return nil
+}
+
+// emitRelay grounds and emits the current model stage's prompt, parks it, and
+// reports the awaiting outcome — or a routing gap (§19.1).
+func (cfg *Config) emitRelay(
+	store *state.Store,
+	conf *config.Config,
+	renderer stage.Prompter,
+	arc *adh.Arc,
+	judgment authority.JudgmentRoles,
+) error {
+	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
+	if arc.Stage == adh.StageCritic {
+		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
+	}
+	out, err := relay.Emit(
+		arc, contextstore.DefaultStoreDir, in, renderer, model.Relay{}.ModelClass(), judgment,
+	)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	if out.Kind == relay.Gap {
+		return cfg.reportGap(arc)
+	}
+	if err := store.Save(arc); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	return cfg.reportAwaiting(arc, out.Prompt)
+}
+
+// reportAwaiting reports a parked relay turn: a success outcome carrying the arc,
+// stage, and prompt under --jsonl (step's shape), else the human prompt.
+func (cfg *Config) reportAwaiting(arc *adh.Arc, promptText string) error {
+	if cfg.JSONL {
+		rec := relayResult{
+			Arc:    arc.ID,
+			Stage:  string(arc.Stage),
+			Status: "awaiting",
+			Prompt: promptText,
+		}
+		if err := cfg.EmitOK(rec); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(
+		cfg.Stdout,
+		"%s awaiting response at %s:\n%s\n",
+		arc.ID,
+		arc.Stage,
+		promptText,
+	)
+	return nil
+}
+
+// reportGap reports a critic routing gap (§19.1, exit 12): the environment did not
+// teach the critic, so no prompt was emitted.
+func (cfg *Config) reportGap(arc *adh.Arc) error {
+	msg := fmt.Sprintf(
+		"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof",
+		arc.ID,
+	)
+	if cfg.JSONL {
+		if err := cfg.EmitBlocked(routingGapCode, root.ReasonUngrounded, msg); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "run: %s\n", msg)
+	}
+	return root.ExitError(routingGapCode)
+}
+
+// readResponse reads the operator's reply from the --response file, or from stdin
+// when it is "-".
+func (cfg *Config) readResponse() (string, error) {
+	if cfg.Response == "-" {
+		data, err := io.ReadAll(cfg.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading response from stdin: %w", err)
+		}
+		return string(data), nil
+	}
+	data, err := os.ReadFile(cfg.Response)
+	if err != nil {
+		return "", fmt.Errorf("reading response file %s: %w", cfg.Response, err)
+	}
+	return string(data), nil
 }
 
 // drive relays the arc through stages until it parks at a gate or closes, honoring
@@ -140,20 +328,27 @@ func (cfg *Config) advanceStage(
 	recordLessons bool,
 ) error {
 	if arc.Stage == adh.StageEvaluation {
-		adjudicator, err := evaluation.RepoAdjudicatorFor(cfg.repoDir())
-		if err != nil {
-			return fmt.Errorf("run: %w", err)
-		}
-		verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
-		if err != nil {
-			return fmt.Errorf("run: %w", err)
-		}
-		if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
-			return fmt.Errorf("run: %w", err)
-		}
-		return nil
+		return cfg.adjudicate(ctx, arc, recordLessons)
 	}
 	if err := stage.Execute(ctx, model.Mock{}, renderer, arc, judgment); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	return nil
+}
+
+// adjudicate runs the deterministic Evaluation disposition (§19.2) on the arc's
+// findings and applies the verdict, mutating the arc. It is shared by the mock
+// drive and the relay drive; the caller persists the arc.
+func (cfg *Config) adjudicate(ctx context.Context, arc *adh.Arc, recordLessons bool) error {
+	adjudicator, err := evaluation.RepoAdjudicatorFor(cfg.repoDir())
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
