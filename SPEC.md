@@ -90,7 +90,7 @@ operation uses `adh run`, which chains them via hooks.
 |---------|---------|
 | `adh gate list` | List pending human gates across all arcs. |
 | `adh approve <id> --phrase "<approval-phrase>"` | Approve a pending gate. |
-| `adh reject <id> [--reason "<text>"]` | Reject a pending gate; returns arc to prior stage. |
+| `adh reject <id> [--reason "<text>"]` | Reject a pending gate; revert the arc's working-tree changes and return it to Execution. |
 
 ### 2.4 Oracle & validation commands
 
@@ -213,7 +213,11 @@ created → strategy → execution → critic → evaluation → ops → closed
                                                 └── fail ──┘
 ```
 
-- A **reject** at Critic returns the arc to Execution with the critic's notes.
+- A **reject** at a gate returns the arc to Execution with the notes and reverts
+  its working-tree changes to HEAD, so the rework starts from the base, not the
+  rejected attempt. The revert is path-scoped to the arc's footprint.
+- On **close**, a `change` arc's commit lands on its own branch `adh/<arc-id>`
+  (branch-per-arc), leaving the base untouched and the change ready to open as a PR.
 - A **fail** at Evaluation (oracle divergence, invariant break, device failure)
   returns the arc to Execution and records an entry in the failure registry.
 - An arc reaches `closed` only after `adh proof verify` passes — **the loop

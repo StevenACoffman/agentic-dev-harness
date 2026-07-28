@@ -125,11 +125,15 @@ around them is partial.
 - [ ] `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
   port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
-  status/branch/commit; `internal/vcs.Mock` is the test double. `close` now
-  commits a `change` arc past the approval+proof gates (best-effort: no repo /
-  clean tree → the arc still closes), so the ship is a real, gated VCS mutation.
-  Follow-ups: merge/revert (go-git merge is experimental → shell out to the `git`
-  binary via `github.com/ldez/go-git-cmd-wrapper/v2`) and a branch-per-arc.
+  status/branch/commit/diff/revert; `internal/vcs.Mock` is the test double. `close`
+  commits a `change` arc past the approval+proof gates onto its own branch
+  `adh/<arc-id>` (branch-per-arc, base untouched; best-effort: no repo / clean tree
+  / no baseline commit → the arc still closes in place), and `reject` reverts the
+  arc's working-tree paths to HEAD and returns it to Execution. `vcs.Revert` is
+  path-scoped and hermetic (go-git only, no `git` binary), so it never touches the
+  `.adh` workspace or unrelated work. Follow-up: merge of the arc branch to base
+  (go-git merge is experimental → a `git` shell-out via
+  `github.com/ldez/go-git-cmd-wrapper/v2`); returning to the base branch after ship.
 - [ ] No injected `Clock` (deterministic timestamps) once state grows time
   fields.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
@@ -265,11 +269,14 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       hand-rolled HTTP/retry layer. **Deferred**: needs API keys + network (no
       deterministic test here), and `model.Relay` is the skill-driven backend the
       tool actually uses today.
-- [x] `VCS` (branch/commit/status) → `internal/vcs` over `go-git/v6` + the `vcs`
-      command; `Mock` for tests. `close` now commits a `change` arc past the
-      approval+proof gates. Merge/revert stay a `git` shell-out via
-      `github.com/ldez/go-git-cmd-wrapper/v2` (go-git merge is experimental), and
-      a branch-per-arc is a follow-up.
+- [x] `VCS` (branch/commit/status/diff/revert) → `internal/vcs` over `go-git/v6` +
+      the `vcs` command; `Mock` for tests. `close` commits a `change` arc onto its
+      own branch `adh/<arc-id>` past the approval+proof gates, and `reject` reverts
+      the arc's paths to HEAD and returns it to Execution. `revert` is path-scoped
+      and hermetic (go-git only) — the safety over a repo-wide reset+clean, which
+      would discard the untracked `.adh` workspace. Only merge stays a `git`
+      shell-out via `github.com/ldez/go-git-cmd-wrapper/v2` (go-git merge is
+      experimental); branch-per-arc merge to base is the follow-up.
 - [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
       **Deferred**: needs a device; a shell-out adapter is untestable in CI.
 - [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
