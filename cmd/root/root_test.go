@@ -7,7 +7,76 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
+
+// newConfig builds a root.Config writing to out for envelope tests.
+func newConfig(out *bytes.Buffer) *root.Config {
+	return root.New(func(string) string { return "" }, strings.NewReader(""), out, &bytes.Buffer{})
+}
+
+// decodeOutcome parses the single JSONL line as an outcome envelope.
+func decodeOutcome(t *testing.T, out string) map[string]any {
+	t.Helper()
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rec); err != nil {
+		t.Fatalf("outcome does not parse: %v (%q)", err, out)
+	}
+	return rec
+}
+
+func TestEmitOK(t *testing.T) {
+	var out bytes.Buffer
+	cfg := newConfig(&out)
+	if err := cfg.EmitOK(map[string]string{"arc": "arc-0001"}); err != nil {
+		t.Fatalf("EmitOK: %v", err)
+	}
+	rec := decodeOutcome(t, out.String())
+	if rec["status"] != root.StatusOK || rec["code"] != 0.0 {
+		t.Errorf("envelope = %v, want status ok / code 0", rec)
+	}
+	data, ok := rec["data"].(map[string]any)
+	if !ok || data["arc"] != "arc-0001" {
+		t.Errorf("data = %v, want the wrapped payload", rec["data"])
+	}
+}
+
+func TestEmitBlockedAndError(t *testing.T) {
+	var out bytes.Buffer
+	cfg := newConfig(&out)
+	if err := cfg.EmitBlocked(4, root.ReasonGate, "pass --phrase"); err != nil {
+		t.Fatalf("EmitBlocked: %v", err)
+	}
+	blocked := decodeOutcome(t, out.String())
+	if blocked["status"] != root.StatusBlocked || blocked["code"] != 4.0 ||
+		blocked["reason"] != root.ReasonGate {
+		t.Errorf("blocked envelope = %v", blocked)
+	}
+	// A blocked/error outcome carries no data field.
+	if _, has := blocked["data"]; has {
+		t.Errorf("blocked outcome should omit data: %v", blocked)
+	}
+
+	out.Reset()
+	if err := cfg.EmitError(8, root.ReasonProof, "digest mismatch"); err != nil {
+		t.Fatalf("EmitError: %v", err)
+	}
+	errored := decodeOutcome(t, out.String())
+	if errored["status"] != root.StatusError || errored["code"] != 8.0 {
+		t.Errorf("error envelope = %v", errored)
+	}
+}
+
+func TestCodeForError(t *testing.T) {
+	invalid := &adh.Error{Code: adh.EINVALID, Message: "bad"}
+	if got := root.CodeForError(invalid); got != 2 {
+		t.Errorf("CodeForError(EINVALID) = %d, want 2", got)
+	}
+	other := &adh.Error{Code: adh.ENOTFOUND, Message: "gone"}
+	if got := root.CodeForError(other); got != 1 {
+		t.Errorf("CodeForError(ENOTFOUND) = %d, want 1", got)
+	}
+}
 
 func TestEmitJSONLWritesOneCompactLine(t *testing.T) {
 	var out bytes.Buffer

@@ -7,6 +7,34 @@ import (
 	"io"
 
 	"github.com/peterbourgon/ff/v4"
+
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+)
+
+// Outcome status values (SPEC §8): the class of a command's result, the field an
+// agent switches on under --jsonl.
+const (
+	StatusOK      = "ok"      // the command succeeded
+	StatusBlocked = "blocked" // stopped at a human gate or an environment gap, not a failure
+	StatusError   = "error"   // the command failed
+)
+
+// Outcome reason tokens: a stable machine string for a blocked/error outcome, so
+// an agent branches on the token instead of matching prose. Free-form reasons
+// (e.g. a confirmed finding's kind) may also appear; these are the shared ones.
+const (
+	ReasonAtOps      = "at_ops"     // arc reached the ops ship gate (step)
+	ReasonUngrounded = "ungrounded" // critic routing gap, exit 12 (step)
+	ReasonGate       = "gate"       // pending human approval, exit 4 (approve)
+	ReasonProof      = "proof"      // proof verification failed, exit 8 (proof/close)
+)
+
+// Exit codes surfaced in an error outcome's Code for a generic returned error
+// (SPEC §7): usage/validation vs. everything else. Domain gates set their own
+// (4, 5–8, 12) at the call site.
+const (
+	codeGeneric = 1
+	codeUsage   = 2
 )
 
 // ExitError is returned by commands that want a specific non-zero exit code
@@ -14,6 +42,18 @@ import (
 // ExitError with errors.As and calls os.Exit(int(e)) directly, bypassing the
 // default "error: ..." printer.
 type ExitError int
+
+// Outcome is the structured result an agent reads under --jsonl (SPEC §8): a
+// single JSON object per command outcome. Status is the class; Code is the process
+// exit code (0 for ok); Reason is a stable machine token for a blocked/error
+// outcome; Message is the human detail; Data is the command payload on success.
+type Outcome struct {
+	Status  string `json:"status"`
+	Code    int    `json:"code"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
+}
 
 // Config holds shared I/O writers, the injected environment accessor, the global
 // flags (SPEC §2, bound once), and the root ff.Command. All subcommand configs
@@ -78,6 +118,39 @@ func (c *Config) EmitJSONL(v any) error {
 	}
 	_, _ = fmt.Fprintln(c.Stdout, string(data))
 	return nil
+}
+
+// EmitOK writes a success outcome carrying the command payload (SPEC §8).
+func (c *Config) EmitOK(data any) error {
+	return c.EmitJSONL(Outcome{Status: StatusOK, Code: 0, Data: data})
+}
+
+// EmitBlocked writes a blocked outcome — a human gate or environment gap, not a
+// failure — with its exit code and a machine reason token.
+func (c *Config) EmitBlocked(code int, reason, message string) error {
+	return c.EmitJSONL(Outcome{Status: StatusBlocked, Code: code, Reason: reason, Message: message})
+}
+
+// EmitError writes an error outcome with its exit code and a machine reason token.
+func (c *Config) EmitError(code int, reason, message string) error {
+	return c.EmitJSONL(Outcome{Status: StatusError, Code: code, Reason: reason, Message: message})
+}
+
+// CodeForError maps a returned error to the process exit code an error outcome
+// reports when the call site set none: a validation error is a usage error (2),
+// everything else is generic (1). Domain gates (4, 5–8, 12) set their own code.
+func CodeForError(err error) int {
+	if adh.ErrorCode(err) == adh.EINVALID {
+		return codeUsage
+	}
+	return codeGeneric
+}
+
+// ReasonForError is the machine reason token for a returned error: its domain
+// error code (e.g. "not_found", "invalid", "conflict"), or "internal" for an
+// untyped error. It lets an agent branch on the failure class under --jsonl.
+func ReasonForError(err error) string {
+	return adh.ErrorCode(err)
 }
 
 // ConfigGetenv returns an environment accessor that honors --config: when set, it
