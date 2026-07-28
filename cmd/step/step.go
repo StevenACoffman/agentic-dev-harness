@@ -25,10 +25,12 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
 // Turn outcomes reported to the caller. "awaiting" means the prompt was emitted
@@ -103,7 +105,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 			arc.ID,
 		)
 	}
-	conf, err := config.Load(cfg.Getenv)
+	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
@@ -114,13 +116,39 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	judgment := conf.JudgmentRoles()
 
 	switch {
+	case !cfg.Relay && arc.Stage == adh.StageEvaluation:
+		// Evaluation is the deterministic disposition (§19.2), not a model step —
+		// the same path `adh eval` and the relay take.
+		return cfg.disposeEval(ctx, store, &conf, &arc)
 	case !cfg.Relay:
 		return cfg.advance(ctx, store, model.Mock{}, renderer, &arc, judgment)
 	case cfg.Response != "":
 		return cfg.resume(ctx, store, renderer, &arc, judgment)
 	default:
-		return cfg.emit(store, renderer, &arc, judgment)
+		return cfg.emit(store, &conf, renderer, &arc, judgment)
 	}
+}
+
+// disposeEval adjudicates the critic's findings and disposes of the arc (§19.2),
+// the same deterministic evaluation as `adh eval`.
+func (cfg *Config) disposeEval(
+	ctx context.Context,
+	store *state.Store,
+	conf *config.Config,
+	arc *adh.Arc,
+) error {
+	verdict, err := evaluation.Adjudicate(ctx, evaluation.RepoAdjudicator{}, arc.Findings)
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
+	if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	if err := store.Save(arc); err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	return cfg.report(arc, statusAdvanced, "")
 }
 
 // advance runs one stage synchronously through client (the mock) and saves it.
@@ -146,6 +174,7 @@ func (cfg *Config) advance(
 // stage is idempotent: it reprints the parked prompt without opening a new one.
 func (cfg *Config) emit(
 	store *state.Store,
+	conf *config.Config,
 	renderer stage.Prompter,
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
@@ -153,11 +182,16 @@ func (cfg *Config) emit(
 	if arc.Pending != nil && arc.Pending.Stage == arc.Stage {
 		return cfg.report(arc, statusAwaiting, arc.Pending.Prompt)
 	}
-	// Ground the critic from repository state (§19.1). A routing gap — an arc that
+	// Ground the critic from repository state (§19.1). The acceptance bar is the
+	// deployment's configured proof contract (§19.4). A routing gap — an arc that
 	// declared a footprint yet routed no context and left no proof — means the
 	// environment did not teach the critic, so we refuse to emit a prompt it could
 	// only answer from its own priors (exit 12, §10).
-	ground, gap, err := critic.ForStage(arc, contextstore.DefaultStoreDir)
+	ground, gap, err := critic.ForStage(
+		arc,
+		contextstore.DefaultStoreDir,
+		conf.ProofContract(arc.Resolution),
+	)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
@@ -209,6 +243,7 @@ func (cfg *Config) resume(
 	// A critic turn's reply is structured findings (§19.2), parsed and validated
 	// before any state changes so a malformed answer never advances the arc.
 	wasCritic := arc.Stage == adh.StageCritic
+	wasExecution := arc.Stage == adh.StageExecution
 	var findings []adh.Finding
 	if wasCritic {
 		findings, err = critic.ParseFindings(text)
@@ -222,11 +257,45 @@ func (cfg *Config) resume(
 	if wasCritic {
 		arc.Findings = findings
 	}
+	// After the operator's execution turn, record what the change touched from the
+	// working tree (§19.1, §19.3), so the cold critic is grounded on the real change
+	// rather than hand-seeded paths. Best-effort: outside a git repo it is a no-op.
+	if wasExecution {
+		if paths, ok := cfg.changedCodePaths(); ok {
+			arc.Paths = paths
+		}
+	}
 	arc.Pending = nil
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
 	return cfg.report(arc, statusAdvanced, "")
+}
+
+// changedCodePaths reports the working tree's changed paths from the repo at
+// --repo (default cwd), excluding the harness's own .adh/ state. The bool is false
+// when there is no git repo — the capture is best-effort and never fatal.
+func (cfg *Config) changedCodePaths() ([]string, bool) {
+	dir := cfg.Repo
+	if dir == "" {
+		dir = "."
+	}
+	repo, err := vcs.Open(dir)
+	if err != nil {
+		return nil, false
+	}
+	status, err := repo.Status()
+	if err != nil {
+		return nil, false
+	}
+	paths := make([]string, 0, len(status.Changed))
+	for _, path := range status.Changed {
+		if strings.HasPrefix(path, ".adh/") {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths, true
 }
 
 // readResponse reads the operator's reply from the --response file, or from

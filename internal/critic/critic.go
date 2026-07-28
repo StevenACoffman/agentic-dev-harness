@@ -26,13 +26,19 @@ type Grounding struct {
 }
 
 // Ground assembles the working set from repository state already read: it routes
-// units by the arc's labels and touched paths, carries the proof packet's
-// artifacts, and takes the acceptance bar from the resolution. It is pure and
-// mutates nothing. A nil packet contributes no artifacts.
-func Ground(arc *adh.Arc, units []contextstore.Unit, pkt *proof.Packet) Grounding {
+// units by the arc's labels and touched paths and carries the proof packet's
+// artifacts. The acceptance bar is passed in as data (the deployment's configured
+// proof contract, §19.4) so the pure grounding never reads config. It mutates
+// nothing; a nil packet contributes no artifacts.
+func Ground(
+	arc *adh.Arc,
+	units []contextstore.Unit,
+	pkt *proof.Packet,
+	acceptanceBar string,
+) Grounding {
 	g := Grounding{
 		Paths:         arc.Paths,
-		AcceptanceBar: arc.Resolution.ProofKind(),
+		AcceptanceBar: acceptanceBar,
 		Context:       contextstore.Route(units, arc.Labels, arc.Paths, MaxContextUnits),
 	}
 	if pkt != nil {
@@ -49,9 +55,10 @@ func (g *Grounding) HasGrounding() bool {
 }
 
 // Load reads the working set from disk: the context store under storeDir and the
-// proof packet at arc.Proof when set. A missing store yields no units (not an
+// proof packet at arc.Proof when set. acceptanceBar is the configured proof
+// contract, passed through to Ground. A missing store yields no units (not an
 // error); an unreadable proof manifest propagates.
-func Load(arc *adh.Arc, storeDir string) (Grounding, error) {
+func Load(arc *adh.Arc, storeDir, acceptanceBar string) (Grounding, error) {
 	const op = "critic.Load"
 	units, err := contextstore.Load(storeDir)
 	if err != nil {
@@ -65,7 +72,7 @@ func Load(arc *adh.Arc, storeDir string) (Grounding, error) {
 		}
 		pkt = &loaded
 	}
-	return Ground(arc, units, pkt), nil
+	return Ground(arc, units, pkt, acceptanceBar), nil
 }
 
 // ForStage returns the grounding a stage needs and whether it is a routing gap.
@@ -75,11 +82,11 @@ func Load(arc *adh.Arc, storeDir string) (Grounding, error) {
 // critic, so it would fall back on its own priors. Callers surface a gap as
 // exit 12 (§10). An arc that declared no footprint is not a gap; its critic is
 // simply ungrounded and the prompt says so.
-func ForStage(arc *adh.Arc, storeDir string) (*Grounding, bool, error) {
+func ForStage(arc *adh.Arc, storeDir, acceptanceBar string) (*Grounding, bool, error) {
 	if arc.Stage != adh.StageCritic {
 		return nil, false, nil
 	}
-	g, err := Load(arc, storeDir)
+	g, err := Load(arc, storeDir, acceptanceBar)
 	if err != nil {
 		return nil, false, err
 	}

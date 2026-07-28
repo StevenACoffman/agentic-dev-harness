@@ -28,12 +28,12 @@ func TestGroundRoutesAndAssembles(t *testing.T) {
 		Artifacts: []proof.Artifact{{Path: "proof/oracle.txt", Digest: "abc"}},
 	}
 
-	g := critic.Ground(arc, units, pkt)
+	g := critic.Ground(arc, units, pkt, "tests pass and CI is green")
 	if len(g.Context) != 1 || g.Context[0].ID != "u-auth" {
 		t.Errorf("routed context = %+v, want only u-auth", g.Context)
 	}
-	if g.AcceptanceBar != adh.ResolutionChange.ProofKind() {
-		t.Errorf("acceptance bar = %q, want the change proof kind", g.AcceptanceBar)
+	if g.AcceptanceBar != "tests pass and CI is green" {
+		t.Errorf("acceptance bar = %q, want the passed-in contract text", g.AcceptanceBar)
 	}
 	if len(g.Proof) != 1 || g.Proof[0].Path != "proof/oracle.txt" {
 		t.Errorf("proof artifacts = %+v, want the packet's artifact", g.Proof)
@@ -64,7 +64,7 @@ func TestHasGrounding(t *testing.T) {
 
 func TestForStageNonCriticIsNil(t *testing.T) {
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Labels: []string{"auth"}}
-	g, gap, err := critic.ForStage(arc, t.TempDir())
+	g, gap, err := critic.ForStage(arc, t.TempDir(), "bar")
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestForStageNonCriticIsNil(t *testing.T) {
 
 func TestForStageGapWhenDeclaredButUntaught(t *testing.T) {
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
-	_, gap, err := critic.ForStage(arc, filepath.Join(t.TempDir(), "no-store"))
+	_, gap, err := critic.ForStage(arc, filepath.Join(t.TempDir(), "no-store"), "bar")
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestForStageGapWhenDeclaredButUntaught(t *testing.T) {
 
 func TestForStageUndeclaredIsNotGap(t *testing.T) {
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Resolution: adh.ResolutionChange}
-	g, gap, err := critic.ForStage(arc, filepath.Join(t.TempDir(), "no-store"))
+	g, gap, err := critic.ForStage(arc, filepath.Join(t.TempDir(), "no-store"), "bar")
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestForStageGroundedFromStore(t *testing.T) {
 		t.Fatalf("write unit: %v", err)
 	}
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
-	g, gap, err := critic.ForStage(arc, dir)
+	g, gap, err := critic.ForStage(arc, dir, "bar")
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestLoadReadsProofManifest(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Proof: manifest}
-	g, err := critic.Load(arc, filepath.Join(dir, "no-store"))
+	g, err := critic.Load(arc, filepath.Join(dir, "no-store"), "bar")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}

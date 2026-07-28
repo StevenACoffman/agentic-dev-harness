@@ -14,15 +14,23 @@ import (
 // default "error: ..." printer.
 type ExitError int
 
-// Config holds shared I/O writers, the injected environment accessor, and the
-// root ff.Command. All subcommand configs embed *Config to inherit these.
+// Config holds shared I/O writers, the injected environment accessor, the global
+// flags (SPEC §2, bound once), and the root ff.Command. All subcommand configs
+// embed *Config to inherit these.
 type Config struct {
-	Stdin   io.Reader
-	Stdout  io.Writer
-	Stderr  io.Writer
-	Getenv  func(string) string
-	Flags   *ff.FlagSet
-	Command *ff.Command
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+	Getenv func(string) string
+	// Global flags, available on every command via the parent flag chain.
+	ConfigPath string // --config: override the config file path
+	Profile    string // --profile: named config profile (not yet wired; SPEC §3 tier 3)
+	Repo       string // --repo: target repository root (not yet threaded to the store)
+	Verbose    bool   // --verbose: increase log verbosity (no logging subsystem yet)
+	Quiet      bool   // --quiet: suppress non-error stdout (wired in cmd.Run)
+	NoColor    bool   // --no-color: disable ANSI color (no color output yet)
+	Flags      *ff.FlagSet
+	Command    *ff.Command
 }
 
 // Error reports the exit status. ExitError satisfies the error interface so a
@@ -37,16 +45,36 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 	cfg.Stdout = stdout
 	cfg.Stderr = stderr
 	cfg.Getenv = getenv
-	// No shared flags — cfg.Flags is nil; ff provides --help automatically.
-	// Subcommands call SetParent(parent.Flags)
-	// which is a no-op here; add shared flags (e.g. BoolVar) to activate.
-	// To add shared flags, uncomment and bind before constructing the command:
-	// cfg.Flags = ff.NewFlagSet("agentic-dev-harness")
-	// cfg.Flags.BoolVar(&cfg.MyFlag, 0, "my-flag", "", "description")
+	// Global flags (SPEC §2), bound once here; subcommands inherit them via
+	// SetParent(parent.Flags), so `adh <cmd> --quiet` resolves through the chain.
+	cfg.Flags = ff.NewFlagSet("agentic-dev-harness")
+	cfg.Flags.StringVar(&cfg.ConfigPath, 0, "config", "", "override the config file path")
+	cfg.Flags.StringVar(&cfg.Profile, 0, "profile", "", "select a named config profile")
+	cfg.Flags.StringVar(&cfg.Repo, 0, "repo", "", "target repository root")
+	cfg.Flags.BoolVar(&cfg.Verbose, 'v', "verbose", "increase log verbosity")
+	cfg.Flags.BoolVar(&cfg.Quiet, 'q', "quiet", "suppress non-error output")
+	cfg.Flags.BoolVar(&cfg.NoColor, 0, "no-color", "disable ANSI color")
 	cfg.Command = &ff.Command{
 		Name:      "agentic-dev-harness",
-		Usage:     "agentic-dev-harness <SUBCOMMAND> ...",
+		Usage:     "agentic-dev-harness [global flags] <SUBCOMMAND> ...",
 		ShortHelp: "TODO: describe agentic-dev-harness here",
+		Flags:     cfg.Flags,
 	}
 	return &cfg
+}
+
+// ConfigGetenv returns an environment accessor that honors --config: when set, it
+// overrides ADH_CONFIG so config.Load reads the chosen file; other keys pass
+// through to the injected Getenv. The approval phrase is still never sourced from
+// the environment (§5.2) — ADH_APPROVAL_PHRASE stays ignored downstream.
+func (c *Config) ConfigGetenv() func(string) string {
+	if c.ConfigPath == "" {
+		return c.Getenv
+	}
+	return func(key string) string {
+		if key == "ADH_CONFIG" {
+			return c.ConfigPath
+		}
+		return c.Getenv(key)
+	}
 }

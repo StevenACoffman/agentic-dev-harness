@@ -12,7 +12,9 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -47,12 +49,13 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("run: requires an arc id")
 	}
-	conf, err := config.Load(cfg.Getenv)
+	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	level := conf.AutonomyLevel()
 	judgment := conf.JudgmentRoles()
+	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	renderer, err := prompt.Default()
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -67,8 +70,8 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 			return cfg.block(store, &arc, "ops is the ship gate; approve then `close`")
 		}
 		from := arc.Stage
-		if err := stage.Execute(ctx, model.Mock{}, renderer, &arc, judgment); err != nil {
-			return fmt.Errorf("run: %w", err)
+		if err := cfg.advanceStage(ctx, renderer, &arc, judgment, recordLessons); err != nil {
+			return err
 		}
 		if err := store.Save(&arc); err != nil {
 			return fmt.Errorf("run: %w", err)
@@ -79,6 +82,33 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		}
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "arc %s %s\n", arc.ID, arc.Status)
+	return nil
+}
+
+// advanceStage runs one stage in place. Evaluation is the deterministic
+// disposition (§19.2) — it adjudicates the critic's findings, never a model step;
+// every other stage runs through the mock model. This keeps evaluation
+// deterministic on the run path too, matching `adh eval` and the relay.
+func (cfg *Config) advanceStage(
+	ctx context.Context,
+	renderer stage.Prompter,
+	arc *adh.Arc,
+	judgment authority.JudgmentRoles,
+	recordLessons bool,
+) error {
+	if arc.Stage == adh.StageEvaluation {
+		verdict, err := evaluation.Adjudicate(ctx, evaluation.RepoAdjudicator{}, arc.Findings)
+		if err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		if err := evaluation.Apply(arc, &verdict, recordLessons); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		return nil
+	}
+	if err := stage.Execute(ctx, model.Mock{}, renderer, arc, judgment); err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
 	return nil
 }
 

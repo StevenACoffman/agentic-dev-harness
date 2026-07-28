@@ -184,7 +184,7 @@ func TestStepRelayCriticEmitCarriesGrounding(t *testing.T) {
 	if got.Status != "awaiting" {
 		t.Fatalf("status = %q, want awaiting", got.Status)
 	}
-	for _, want := range []string{"u-auth", "internal/authz/policy.go", "oracle, invariant"} {
+	for _, want := range []string{"u-auth", "internal/authz/policy.go", "tests pass"} {
 		if !strings.Contains(got.Prompt, want) {
 			t.Errorf("critic prompt missing grounding %q:\n%s", want, got.Prompt)
 		}
