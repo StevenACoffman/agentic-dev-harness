@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 )
 
@@ -24,6 +25,46 @@ type Artifact struct {
 type Packet struct {
 	Arc       string     `json:"arc"`
 	Artifacts []Artifact `json:"artifacts"`
+}
+
+// Create builds a proof packet for arc by hashing each path's bytes under root
+// (identity.Hash, sha256[:16]). Paths are recorded repo-relative, exactly as
+// Verify resolves them. A proof must cover real bytes: an empty path set is
+// EINVALID and an unreadable artifact is an error, never a silent skip.
+func Create(root, arc string, paths []string) (Packet, error) {
+	const op = "proof.Create"
+	if len(paths) == 0 {
+		return Packet{}, &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "proof create requires at least one artifact path",
+		}
+	}
+	artifacts := make([]Artifact, 0, len(paths))
+	for _, path := range paths {
+		data, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil {
+			return Packet{}, &adh.Error{Op: op, Err: err}
+		}
+		artifacts = append(artifacts, Artifact{Path: path, Digest: identity.Hash(string(data))})
+	}
+	return Packet{Arc: arc, Artifacts: artifacts}, nil
+}
+
+// Save writes a packet manifest to path as indented JSON, creating the directory
+// if needed and writing atomically so a crash never leaves a half-written manifest.
+func Save(path string, pkt *Packet) error {
+	const op = "proof.Save"
+	data, err := json.MarshalIndent(pkt, "", "  ")
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	if err := atomicfile.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	return nil
 }
 
 // Load reads a packet manifest from a JSON file.
