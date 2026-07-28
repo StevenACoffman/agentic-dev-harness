@@ -2,7 +2,9 @@ package root_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -64,6 +66,46 @@ func TestEmitBlockedAndError(t *testing.T) {
 	errored := decodeOutcome(t, out.String())
 	if errored["status"] != root.StatusError || errored["code"] != 8.0 {
 		t.Errorf("error envelope = %v", errored)
+	}
+}
+
+func TestLogLevel(t *testing.T) {
+	tests := []struct {
+		name           string
+		verbose, quiet bool
+		want           slog.Level
+	}{
+		{"default is warn", false, false, slog.LevelWarn},
+		{"verbose is debug", true, false, slog.LevelDebug},
+		{"quiet is error", false, true, slog.LevelError},
+		{"quiet wins over verbose", true, true, slog.LevelError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := root.LogLevel(tt.verbose, tt.quiet); got != tt.want {
+				t.Errorf("LogLevel(%v, %v) = %v, want %v", tt.verbose, tt.quiet, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewLoggerJSONHonorsLevel(t *testing.T) {
+	var out bytes.Buffer
+	ctx := context.Background()
+	log := root.NewLogger(&out, true, slog.LevelWarn)
+	log.InfoContext(ctx, "hidden below the level")
+	log.WarnContext(ctx, "shown", "op", "test")
+
+	line := strings.TrimSpace(out.String())
+	if strings.Contains(line, "hidden") {
+		t.Errorf("info logged below the warn threshold: %q", line)
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		t.Fatalf("log line is not JSON: %v (%q)", err, line)
+	}
+	if rec["level"] != "WARN" || rec["msg"] != "shown" || rec["op"] != "test" {
+		t.Errorf("log record = %v, want a WARN line with op=test", rec)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -71,8 +72,12 @@ type Config struct {
 	Quiet      bool   // --quiet: suppress non-error stdout (wired in cmd.Run)
 	NoColor    bool   // --no-color: disable ANSI color (no color output yet)
 	JSONL      bool   // --jsonl: emit machine output as JSON Lines (SPEC §8)
-	Flags      *ff.FlagSet
-	Command    *ff.Command
+	// Log is the diagnostic stream on stderr, separate from the stdout data plane
+	// (SPEC §8). New seeds a default; Run rebuilds it once the flags are parsed, so
+	// --verbose/--quiet set the level and --jsonl selects the JSON handler.
+	Log     *slog.Logger
+	Flags   *ff.FlagSet
+	Command *ff.Command
 }
 
 // Error reports the exit status. ExitError satisfies the error interface so a
@@ -87,6 +92,9 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 	cfg.Stdout = stdout
 	cfg.Stderr = stderr
 	cfg.Getenv = getenv
+	// A safe default logger so cfg.Log is never nil (a command exercised without
+	// Run still logs); Run rebuilds it from the parsed flags.
+	cfg.Log = NewLogger(stderr, false, slog.LevelWarn)
 	// Global flags (SPEC §2), bound once here; subcommands inherit them via
 	// SetParent(parent.Flags), so `adh <cmd> --quiet` resolves through the chain.
 	cfg.Flags = ff.NewFlagSet("agentic-dev-harness")
@@ -151,6 +159,32 @@ func CodeForError(err error) int {
 // untyped error. It lets an agent branch on the failure class under --jsonl.
 func ReasonForError(err error) string {
 	return adh.ErrorCode(err)
+}
+
+// LogLevel resolves the diagnostic log level from the verbosity flags: --quiet
+// shows only errors ("suppress non-error output", SPEC §2), --verbose unlocks
+// debug, and the default shows warnings and errors — the incidental notices.
+// quiet wins when both are set.
+func LogLevel(verbose, quiet bool) slog.Level {
+	switch {
+	case quiet:
+		return slog.LevelError
+	case verbose:
+		return slog.LevelDebug
+	default:
+		return slog.LevelWarn
+	}
+}
+
+// NewLogger builds the stderr diagnostic logger at the given level: a JSON handler
+// under --jsonl, so the log stream is structured like the stdout data plane, or a
+// text handler for humans.
+func NewLogger(w io.Writer, jsonl bool, level slog.Level) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: level}
+	if jsonl {
+		return slog.New(slog.NewJSONHandler(w, opts))
+	}
+	return slog.New(slog.NewTextHandler(w, opts))
 }
 
 // ConfigGetenv returns an environment accessor that honors --config: when set, it

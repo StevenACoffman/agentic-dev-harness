@@ -74,6 +74,10 @@ func Run(
 	if r.Quiet {
 		r.Stdout = io.Discard
 	}
+	// Build the diagnostic logger now that the flags are parsed: --verbose/--quiet
+	// set the level, --jsonl selects the JSON handler. It writes to stderr, the
+	// diagnostic stream kept separate from the stdout data plane (SPEC §8).
+	r.Log = root.NewLogger(stderr, r.JSONL, root.LogLevel(r.Verbose, r.Quiet))
 
 	if runErr := runSelected(ctx, r, stderr); runErr != nil {
 		return runErr
