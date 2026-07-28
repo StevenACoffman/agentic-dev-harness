@@ -74,6 +74,7 @@ func TestRenderCriticGrounded(t *testing.T) {
 	}
 	ground := &critic.Grounding{
 		Paths:         []string{"internal/authz/policy.go"},
+		Diff:          "--- a/internal/authz/policy.go\n+++ b/internal/authz/policy.go\n+allow := true\n",
 		AcceptanceBar: adh.ResolutionChange.ProofKind(),
 		Proof:         []proof.Artifact{{Path: "proof/oracle.txt"}},
 		Context:       []contextstore.Unit{{ID: "u-auth", Kind: "runbook"}},
@@ -82,7 +83,7 @@ func TestRenderCriticGrounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	for _, want := range []string{"internal/authz/policy.go", "proof/oracle.txt", "u-auth"} {
+	for _, want := range []string{"internal/authz/policy.go", "proof/oracle.txt", "u-auth", "+allow := true"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("grounded critic prompt missing %q:\n%s", want, out)
 		}

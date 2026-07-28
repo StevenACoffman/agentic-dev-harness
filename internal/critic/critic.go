@@ -20,25 +20,36 @@ const MaxContextUnits = contextstore.DefaultWorkingSet
 // review is judged against. It never carries the builder's transcript.
 type Grounding struct {
 	Paths         []string            // the arc's touched repository paths
+	Diff          string              // unified diff of the change under review (§19.1)
 	AcceptanceBar string              // what the resolution's proof must show (§5.4)
 	Proof         []proof.Artifact    // the proof packet the builder left
 	Context       []contextstore.Unit // units routed for the arc's labels/paths (§10)
 }
 
+// Inputs are the grounding facts the shell computes and hands to the pure core:
+// the acceptance bar (the deployment's configured proof contract, §19.4) and the
+// diff of the change under review (§19.1). Bundling them keeps the critic free of
+// config and vcs — they arrive as data — and lets more inputs be added without
+// churning every Ground/Load/ForStage signature.
+type Inputs struct {
+	AcceptanceBar string
+	Diff          string
+}
+
 // Ground assembles the working set from repository state already read: it routes
-// units by the arc's labels and touched paths and carries the proof packet's
-// artifacts. The acceptance bar is passed in as data (the deployment's configured
-// proof contract, §19.4) so the pure grounding never reads config. It mutates
+// units by the arc's labels and touched paths, carries the proof packet's
+// artifacts, and carries the shell-supplied inputs (bar + diff). It mutates
 // nothing; a nil packet contributes no artifacts.
 func Ground(
 	arc *adh.Arc,
 	units []contextstore.Unit,
 	pkt *proof.Packet,
-	acceptanceBar string,
+	in Inputs,
 ) Grounding {
 	g := Grounding{
 		Paths:         arc.Paths,
-		AcceptanceBar: acceptanceBar,
+		Diff:          in.Diff,
+		AcceptanceBar: in.AcceptanceBar,
 		Context:       contextstore.Route(units, arc.Labels, arc.Paths, MaxContextUnits),
 	}
 	if pkt != nil {
@@ -74,14 +85,14 @@ func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Pack
 	return units, pkt, nil
 }
 
-// Load assembles the critic's working set. acceptanceBar is the configured proof
-// contract, passed through to Ground.
-func Load(arc *adh.Arc, storeDir, acceptanceBar string) (Grounding, error) {
+// Load assembles the critic's working set. in carries the shell-supplied bar and
+// diff, passed through to Ground.
+func Load(arc *adh.Arc, storeDir string, in Inputs) (Grounding, error) {
 	units, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return Grounding{}, err
 	}
-	return Ground(arc, units, pkt, acceptanceBar), nil
+	return Ground(arc, units, pkt, in), nil
 }
 
 // ForStage returns the grounding a stage needs and whether it is a routing gap.
@@ -92,7 +103,7 @@ func Load(arc *adh.Arc, storeDir, acceptanceBar string) (Grounding, error) {
 // fall back on its own priors. Callers surface a gap as exit 12 (§10). An empty or
 // absent store is simply ungrounded, not a gap (grounding is not configured);
 // likewise an arc that declared no footprint. The prompt says so in both cases.
-func ForStage(arc *adh.Arc, storeDir, acceptanceBar string) (*Grounding, bool, error) {
+func ForStage(arc *adh.Arc, storeDir string, in Inputs) (*Grounding, bool, error) {
 	if arc.Stage != adh.StageCritic {
 		return nil, false, nil
 	}
@@ -100,7 +111,7 @@ func ForStage(arc *adh.Arc, storeDir, acceptanceBar string) (*Grounding, bool, e
 	if err != nil {
 		return nil, false, err
 	}
-	g := Ground(arc, units, pkt, acceptanceBar)
+	g := Ground(arc, units, pkt, in)
 	declared := len(arc.Labels) > 0 || len(arc.Paths) > 0
 	gap := declared && len(units) > 0 && !g.HasGrounding()
 	return &g, gap, nil

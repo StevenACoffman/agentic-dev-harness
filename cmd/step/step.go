@@ -39,6 +39,9 @@ import (
 const (
 	statusAwaiting = "awaiting"
 	statusAdvanced = "advanced"
+	// maxCriticDiffBytes caps the diff surfaced to the critic so a large change
+	// never bloats the prompt unbounded; the excess is dropped with a marker.
+	maxCriticDiffBytes = 16 << 10
 )
 
 // Config holds the configuration for the step command.
@@ -183,16 +186,16 @@ func (cfg *Config) emit(
 	if arc.Pending != nil && arc.Pending.Stage == arc.Stage {
 		return cfg.report(arc, statusAwaiting, arc.Pending.Prompt)
 	}
-	// Ground the critic from repository state (§19.1). The acceptance bar is the
-	// deployment's configured proof contract (§19.4). A routing gap — an arc that
-	// declared a footprint yet routed no context and left no proof — means the
-	// environment did not teach the critic, so we refuse to emit a prompt it could
-	// only answer from its own priors (exit 12, §10).
-	ground, gap, err := critic.ForStage(
-		arc,
-		contextstore.DefaultStoreDir,
-		conf.ProofContract(arc.Resolution),
-	)
+	// Ground the critic from repository state (§19.1): the configured proof
+	// contract (§19.4) as the acceptance bar, and the diff of the change under
+	// review. A routing gap — a declared footprint against a populated store that
+	// routes nothing, with no proof — means the environment did not teach the
+	// critic, so we refuse to emit a prompt it could only guess at (exit 12, §10).
+	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
+	if arc.Stage == adh.StageCritic {
+		in.Diff = cfg.criticDiff(arc)
+	}
+	ground, gap, err := critic.ForStage(arc, contextstore.DefaultStoreDir, in)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
@@ -268,15 +271,40 @@ func (cfg *Config) resume(
 	return cfg.report(arc, statusAdvanced, "")
 }
 
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
+}
+
+// criticDiff renders the change under review as a unified diff for the critic's
+// grounding (§19.1). Best-effort — outside a git repo it is empty — and capped so
+// a huge change cannot bloat the prompt (the truncation is marked, never silent).
+func (cfg *Config) criticDiff(arc *adh.Arc) string {
+	if len(arc.Paths) == 0 {
+		return ""
+	}
+	repo, err := vcs.Open(cfg.repoDir())
+	if err != nil {
+		return ""
+	}
+	diff, err := repo.Diff(arc.Paths)
+	if err != nil {
+		return ""
+	}
+	if len(diff) > maxCriticDiffBytes {
+		diff = diff[:maxCriticDiffBytes] + "\n… diff truncated …\n"
+	}
+	return diff
+}
+
 // changedCodePaths reports the working tree's changed paths from the repo at
 // --repo (default cwd), excluding the harness's own .adh/ state. The bool is false
 // when there is no git repo — the capture is best-effort and never fatal.
 func (cfg *Config) changedCodePaths() ([]string, bool) {
-	dir := cfg.Repo
-	if dir == "" {
-		dir = "."
-	}
-	repo, err := vcs.Open(dir)
+	repo, err := vcs.Open(cfg.repoDir())
 	if err != nil {
 		return nil, false
 	}

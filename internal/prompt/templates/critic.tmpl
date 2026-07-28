@@ -4,7 +4,9 @@ Acceptance bar: {{if .AcceptanceBar}}{{.AcceptanceBar}}{{else}}(none recorded){{
 {{if .Paths}}
 Touched paths:
 {{range .Paths}}- {{.}}
-{{end}}{{end}}{{if .Proof}}
+{{end}}{{end}}{{if .Diff}}
+Change under review (unified diff):
+{{.Diff}}{{end}}{{if .Proof}}
 Proof artifacts the builder left:
 {{range .Proof}}- {{.Path}}
 {{end}}{{end}}{{if .Context}}
