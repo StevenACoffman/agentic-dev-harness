@@ -132,9 +132,17 @@ around them is partial.
   band — `adh step --relay` emits the stage prompt (`internal/prompt` templates,
   cold-critic view) and parks a pending turn; `--response` resumes and advances.
   Drives the LLM from a skill (`.claude/skills/adh-relay`) instead of an API.
+- [x] Validated relay replies + relay wired into `run`. Every relayed reply is
+  validated against its stage before the arc advances (`critic.ParseReply`): empty
+  is rejected for all, a critic reply is findings JSON, and a strategy reply may
+  choose the resolution via a leading `resolution: <word>` line (§12). The emit/
+  resume orchestration moved to `internal/relay` (a shared engine; the worktree
+  grounding to `internal/worktree`), so `step` and `run` are thin shells over it.
+  `run --relay [--response]` now drives the relay, chaining a resume through inline
+  evaluation to the next emitted prompt in one call.
 - [ ] `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
-  `Relay` are the only backends. Follow-ups: structured/validated relay replies,
-  `[models] driver` config to pick the backend, and relay wired into `run`.
+  `Relay` are the only backends. Follow-up: a `[models] driver` config to pick the
+  backend. (The API client itself stays deprioritized — the relay is the backend.)
 - [ ] `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
   port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do

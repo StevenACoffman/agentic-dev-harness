@@ -83,6 +83,17 @@ Normal operation uses `adh run`, which drives the stages via the relay (and hook
 or `adh step` to run one transition at a time. Individual stages can also be invoked
 directly for debugging or manual re-runs.
 
+Both `run` and `step` accept `--relay [--response <file>]` to drive the arc by
+relaying prompts to an operator (a Claude/Gemini skill) instead of calling a model:
+the command emits the stage's prompt and parks a pending turn, and `--response`
+feeds the reply back. Every relayed reply is validated against its stage's contract
+before the arc advances — a critic reply is findings JSON (§19.2), a strategy reply
+may lead with a `resolution: <word>` line that chooses the arc's resolution (§12) —
+so a malformed reply never advances an arc. `run --relay --response <file>` chains:
+it applies the reply, runs any deterministic evaluation inline, and emits the next
+prompt (or parks at the ops gate) in one call, while `step --relay` advances exactly
+one stage.
+
 | Command                   | Stage                                                                               | Default model class      |
 | ------------------------- | ----------------------------------------------------------------------------------- | ------------------------ |
 | `adh stage strategy <id>` | Plan the change (manual single stage).                                              | Reasoning (strong, cold) |
