@@ -9,6 +9,12 @@ gates that make the loop trustworthy. It is a specification, not an
 implementation guide — it defines *what* the tool does and *how it behaves*, not
 how any given stage is implemented internally.
 
+The lineage of these ideas — Erik Hill's architecture case study and Ryan
+Lopopolo's *Harness Engineering* practice — is set out in the
+[README](./README.md#lineage). [`SPEC-ADDITIONS.md`](./SPEC-ADDITIONS.md) §10–18
+extends this base with the practice's context, tool, feedback, and effectiveness
+levers.
+
 ---
 
 ## 1. Overview
@@ -73,16 +79,17 @@ Global flags (available on every command):
 
 ### 2.2 Stage commands
 
-Each stage can be invoked directly for debugging or manual re-runs. Normal
-operation uses `adh run`, which chains them via hooks.
+Normal operation uses `adh run`, which drives the stages via the relay (and hooks),
+or `adh step` to run one transition at a time. Individual stages can also be invoked
+directly for debugging or manual re-runs.
 
 | Command | Stage | Default model class |
 |---------|-------|---------------------|
-| `adh strategy <id>` | Plan the change. | Reasoning (strong, cold) |
-| `adh execute <id>` | Build it. | Fast |
-| `adh critic <id>` | Review in cold context. | Reasoning (strong, cold) |
-| `adh eval <id>` | Run checks (oracle, invariants, on-device). | Reasoning (strong, cold) |
-| `adh ops <id>` | Ship, behind a human gate. | Fast |
+| `adh stage strategy <id>` | Plan the change (manual single stage). | Reasoning (strong, cold) |
+| `adh stage execute <id>` | Build it (manual single stage). | Fast |
+| `adh step <id>` | Run the arc's current stage, then stop. Under `--relay` the cold critic runs here. | per stage |
+| `adh eval <id>` | Adjudicate the critic's findings and dispose of the arc (deterministic — no model). | — |
+| `adh ops <id>` | Report the ship gate for an arc at ops. | Fast |
 
 ### 2.3 Gate & approval commands
 
@@ -97,17 +104,19 @@ operation uses `adh run`, which chains them via hooks.
 | Command | Purpose |
 |---------|---------|
 | `adh oracle diff` | Run the differential oracle: compare reference build vs. native port. |
-| `adh invariants` | Run property-based invariant tests over the native engine. |
+| `adh oracle invariants` | Run property-based invariant tests over the native engine. |
+| `adh oracle selftest` | Prove the oracle gate catches a planted bug (negative control). |
 | `adh device validate` | Run adb-driven on-device tests; capture sanitized screenshots. |
 
 ### 2.5 Evidence & audit commands
 
 | Command | Purpose |
 |---------|---------|
-| `adh proof verify <id>` | Confirm an arc's proof artifacts exist and match manifests. |
-| `adh registry audit` | Audit the artifact registry for orphans, missing manifests, SHA mismatches. |
+| `adh proof create <id> <path>...` | Build an arc's proof packet: hash the artifacts into a manifest and record it on the arc. |
+| `adh proof verify <manifest>` | Confirm proof artifacts exist and match the manifest (exit 8 on failure). |
 | `adh selfeval` | Run periodic self-evaluation: score health, delta vs. prior, failure taxonomy. |
-| `adh failures list` | Show the failure registry with per-item root-cause status. |
+| `adh failures list` | Show the failure registry with root-cause status and lesson candidates. |
+| `adh metrics` | Report effectiveness accounting (proven outcomes beside their cost). |
 
 ### 2.6 Autonomy commands
 

@@ -7,6 +7,18 @@ practice treats as primary — **context** and **tools** — and the **compoundi
 loop** that lets corrections improve later runs instead of being re-caught every
 arc.
 
+The practice is Ryan Lopopolo's *Harness Engineering* (see the
+[README lineage](./README.md#lineage)): hold the worker constant, improve context
+and tools, make the repository teach the agent, prove the outcome, and turn
+feedback into infrastructure. Each addition below maps to one of those areas —
+§10 context and §13 tools are the two levers; §11 lessons, §16 effectiveness, and
+§18 harness self-optimization are the feedback loop; §14 worker requalification is
+the fixed-worker epoch. The mapping is drawn out in the
+[README](./README.md#the-practice--ryan-lopopolos-harness-engineering).
+
+> Ryan Lopopolo, *Harness Engineering*, CC BY 4.0,
+> <https://github.com/lopopolo/harness-engineering>.
+
 They follow the base spec's conventions (command tables, `.adh/config.toml`
 sections, `state.json` model, behavioral gate specs, exit codes) and are numbered
 to fold in as §10–§17, before §9 Non-goals, which remains last. Each section
