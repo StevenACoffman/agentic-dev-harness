@@ -97,6 +97,31 @@ func TestStepRelayEmitIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestStepRelayStrategyReplyChoosesResolution(t *testing.T) {
+	t.Chdir(t.TempDir())
+	id := seedOpenArc(t)
+	mustRun(t, "step", "--relay", "--jsonl", id) // emit the strategy prompt, park
+
+	respPath := filepath.Join(t.TempDir(), "reply.txt")
+	reply := "resolution: investigation\ninspect the crash logs, no code change"
+	if err := os.WriteFile(respPath, []byte(reply), 0o600); err != nil {
+		t.Fatalf("write reply: %v", err)
+	}
+	mustRun(t, "step", "--relay", "--response", respPath, "--jsonl", id)
+
+	arc, err := state.Default().Get(id)
+	if err != nil {
+		t.Fatalf("reload arc: %v", err)
+	}
+	// Strategy chose the resolution from the reply (§12) instead of defaulting.
+	if arc.Resolution != adh.ResolutionInvestigation {
+		t.Errorf("resolution = %q, want investigation", arc.Resolution)
+	}
+	if arc.Stage != adh.StageExecution {
+		t.Errorf("stage = %q, want execution after the strategy turn", arc.Stage)
+	}
+}
+
 func TestStepRelayResumeAdvances(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedOpenArc(t)

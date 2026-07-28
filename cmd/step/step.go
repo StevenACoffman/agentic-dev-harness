@@ -261,25 +261,23 @@ func (cfg *Config) resume(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	if strings.TrimSpace(text) == "" {
-		return fmt.Errorf("step: empty response for arc %s", arc.ID)
+	// Validate the reply against the stage's contract before any state changes, so
+	// a malformed answer never advances the arc (§19.2): findings for the critic, a
+	// chosen resolution for strategy (§12), prose otherwise.
+	reply, err := critic.ParseReply(arc.Stage, text)
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
 	}
-	// A critic turn's reply is structured findings (§19.2), parsed and validated
-	// before any state changes so a malformed answer never advances the arc.
 	wasCritic := arc.Stage == adh.StageCritic
 	wasExecution := arc.Stage == adh.StageExecution
-	var findings []adh.Finding
-	if wasCritic {
-		findings, err = critic.ParseFindings(text)
-		if err != nil {
-			return fmt.Errorf("step: %w", err)
-		}
+	if arc.Stage == adh.StageStrategy && reply.Resolution != "" {
+		arc.Resolution = reply.Resolution
 	}
 	if err := stage.Execute(ctx, model.Relay{Response: text}, renderer, arc, judgment); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
 	if wasCritic {
-		arc.Findings = findings
+		arc.Findings = reply.Findings
 	}
 	if wasExecution {
 		cfg.captureFootprint(arc)
