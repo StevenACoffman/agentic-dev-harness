@@ -204,10 +204,11 @@ func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
 
 // ship commits a `change` arc's work — the irreversible action the ops gate
 // protects. It runs only past the approval + proof gates, so the commit is gated.
-// It is best-effort: outside a git repo the arc closes without a commit (silently,
-// since not every workspace is under git), and a commit error (e.g. nothing to
-// commit) is a surfaced warning, not a failed close. Non-`change` resolutions
-// carry no code commit.
+// The change lands on its own branch adh/<arc-id> (branch-per-arc), leaving the
+// base branch untouched and the commit ready to open as a PR. It is best-effort:
+// outside a git repo the arc closes without a commit (silently, since not every
+// workspace is under git), and a commit error (e.g. nothing to commit) is a
+// surfaced warning, not a failed close. Non-`change` resolutions carry no commit.
 func (cfg *Config) ship(arc *adh.Arc) {
 	if arc.Resolution != adh.ResolutionChange {
 		return
@@ -216,14 +217,31 @@ func (cfg *Config) ship(arc *adh.Arc) {
 	if err != nil {
 		return // no git repo here — nothing to commit
 	}
+	branch := shipBranch(repo, arc)
 	who := vcs.Signature{Name: "adh", Email: "adh@localhost"}
 	hash, err := repo.Commit(arc.ID+": "+arc.Title, who, time.Now())
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: commit skipped: %s\n", err)
 		return
 	}
-	arc.History = append(arc.History, "committed "+hash)
-	_, _ = fmt.Fprintf(cfg.Stdout, "committed %s as %s\n", arc.ID, hash)
+	arc.History = append(arc.History, "committed "+hash+" on "+branch)
+	_, _ = fmt.Fprintf(cfg.Stdout, "committed %s as %s on %s\n", arc.ID, hash, branch)
+}
+
+// shipBranch isolates the arc's commit on its own branch adh/<arc-id>, created
+// from HEAD, and returns the branch the commit will land on. Best-effort: a repo
+// with no commit yet (a branch needs one) or an existing branch of that name
+// leaves the commit on the current branch, whose name is returned instead.
+func shipBranch(repo *vcs.Git, arc *adh.Arc) string {
+	name := "adh/" + arc.ID
+	if err := repo.CreateBranch(name); err == nil {
+		return name
+	}
+	current, err := repo.CurrentBranch()
+	if err != nil {
+		return name // unreachable in practice; the commit still proceeds
+	}
+	return current
 }
 
 // repoDir is the repository root — the --repo global, or the current directory.
