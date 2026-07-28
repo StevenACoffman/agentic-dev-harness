@@ -28,6 +28,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
@@ -197,46 +198,44 @@ func (cfg *Config) emit(
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
 ) error {
-	if arc.Pending != nil && arc.Pending.Stage == arc.Stage {
-		return cfg.report(arc, statusAwaiting, arc.Pending.Prompt)
-	}
 	// Ground the critic from repository state (§19.1): the configured proof
-	// contract (§19.4) as the acceptance bar, and the diff of the change under
-	// review. A routing gap — a declared footprint against a populated store that
-	// routes nothing, with no proof — means the environment did not teach the
-	// critic, so we refuse to emit a prompt it could only guess at (exit 12, §10).
+	// contract (§19.4) as the acceptance bar and the diff of the change under
+	// review (the shell reads the diff; the engine renders and parks the prompt).
 	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = cfg.criticDiff(arc)
 	}
-	ground, gap, err := critic.ForStage(arc, contextstore.DefaultStoreDir, in)
+	outcome, err := relay.Emit(
+		arc, contextstore.DefaultStoreDir, in, renderer, model.Relay{}.ModelClass(), judgment,
+	)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	if gap {
-		msg := fmt.Sprintf(
-			"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof, do not guess",
-			arc.ID,
-		)
-		if cfg.JSONL {
-			if err := cfg.EmitBlocked(routingGapCode, root.ReasonUngrounded, msg); err != nil {
-				return fmt.Errorf("step: %w", err)
-			}
-		} else {
-			_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
-		}
-		return root.ExitError(routingGapCode)
+	if outcome.Kind == relay.Gap {
+		return cfg.reportGap(arc)
 	}
-	relay := model.Relay{}
-	req, err := stage.Request(renderer, arc, ground, relay.ModelClass(), judgment)
-	if err != nil {
-		return fmt.Errorf("step: %w", err)
-	}
-	arc.Pending = &adh.Pending{Stage: arc.Stage, Prompt: req.Prompt}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	return cfg.report(arc, statusAwaiting, req.Prompt)
+	return cfg.report(arc, statusAwaiting, outcome.Prompt)
+}
+
+// reportGap reports a critic routing gap (§19.1): the environment did not teach
+// the critic, so no prompt was emitted. It is a blocked outcome under --jsonl,
+// else a stderr line, and exits 12.
+func (cfg *Config) reportGap(arc *adh.Arc) error {
+	msg := fmt.Sprintf(
+		"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof, do not guess",
+		arc.ID,
+	)
+	if cfg.JSONL {
+		if err := cfg.EmitBlocked(routingGapCode, root.ReasonUngrounded, msg); err != nil {
+			return fmt.Errorf("step: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+	}
+	return root.ExitError(routingGapCode)
 }
 
 // resume feeds the operator's reply back through the relay, advancing the arc
@@ -261,28 +260,16 @@ func (cfg *Config) resume(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	// Validate the reply against the stage's contract before any state changes, so
-	// a malformed answer never advances the arc (§19.2): findings for the critic, a
-	// chosen resolution for strategy (§12), prose otherwise.
-	reply, err := critic.ParseReply(arc.Stage, text)
-	if err != nil {
-		return fmt.Errorf("step: %w", err)
-	}
-	wasCritic := arc.Stage == adh.StageCritic
+	// The engine validates the reply against the stage's contract before any state
+	// changes (§19.2, §12); the shell captures the execution footprint afterward
+	// because that needs the worktree.
 	wasExecution := arc.Stage == adh.StageExecution
-	if arc.Stage == adh.StageStrategy && reply.Resolution != "" {
-		arc.Resolution = reply.Resolution
-	}
-	if err := stage.Execute(ctx, model.Relay{Response: text}, renderer, arc, judgment); err != nil {
+	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("step: %w", err)
-	}
-	if wasCritic {
-		arc.Findings = reply.Findings
 	}
 	if wasExecution {
 		cfg.captureFootprint(arc)
 	}
-	arc.Pending = nil
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
