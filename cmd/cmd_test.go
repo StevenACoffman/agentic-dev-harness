@@ -41,7 +41,7 @@ func TestHarnessEvalMinFloorPasses(t *testing.T) {
 	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 		t.Fatalf("write artifact: %v", err)
 	}
-	if _, err := run(t, "harness", "--min", "50", "eval", path); err != nil {
+	if _, err := run(t, "harness", "eval", "--min", "50", path); err != nil {
 		t.Errorf("eval --min 50 on a 100-scoring doc should pass, got %v", err)
 	}
 }
@@ -52,7 +52,7 @@ func TestHarnessEvalMinFloorFails(t *testing.T) {
 	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 		t.Fatalf("write artifact: %v", err)
 	}
-	_, err := run(t, "harness", "--min", "101", "eval", path)
+	_, err := run(t, "harness", "eval", "--min", "101", path)
 	var exit root.ExitError
 	if !errors.As(err, &exit) || int(exit) != 1 {
 		t.Fatalf("eval below --min floor = %v, want ExitError(1)", err)
@@ -175,21 +175,21 @@ func TestCloseBadResolutionFails(t *testing.T) {
 	}
 }
 
-func TestGateAcceptDispatch(t *testing.T) {
-	out, err := run(t, "gate", "--candidate", "90", "--current", "84")
+func TestHarnessGateAcceptDispatch(t *testing.T) {
+	out, err := run(t, "harness", "gate", "--candidate", "90", "--current", "84")
 	if err != nil {
-		t.Fatalf("gate accept returned error: %v", err)
+		t.Fatalf("harness gate accept returned error: %v", err)
 	}
 	if !strings.Contains(out, "accept_new_best") {
-		t.Errorf("gate accept output = %q, want accept_new_best", out)
+		t.Errorf("harness gate accept output = %q, want accept_new_best", out)
 	}
 }
 
-func TestGateRejectExitCode(t *testing.T) {
-	_, err := run(t, "gate", "--candidate", "80", "--current", "84")
+func TestHarnessGateRejectExitCode(t *testing.T) {
+	_, err := run(t, "harness", "gate", "--candidate", "80", "--current", "84")
 	var exit root.ExitError
 	if !errors.As(err, &exit) || int(exit) != 1 {
-		t.Fatalf("gate reject error = %v, want ExitError(1)", err)
+		t.Fatalf("harness gate reject error = %v, want ExitError(1)", err)
 	}
 }
 

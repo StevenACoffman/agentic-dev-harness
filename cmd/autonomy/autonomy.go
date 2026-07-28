@@ -48,7 +48,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "show":
-		conf, err := config.Load(cfg.Getenv)
+		conf, err := config.Load(cfg.ConfigGetenv())
 		if err != nil {
 			return fmt.Errorf("autonomy: %w", err)
 		}
@@ -69,7 +69,7 @@ func (cfg *Config) set(args []string) error {
 	if err != nil {
 		return fmt.Errorf("autonomy: %w", err)
 	}
-	conf, err := config.Load(cfg.Getenv)
+	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("autonomy: %w", err)
 	}

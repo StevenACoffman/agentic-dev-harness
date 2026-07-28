@@ -4,17 +4,13 @@ package metricscmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	metricslib "github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
 )
-
-const metricsFile = ".adh/metrics.json"
 
 // Config holds the configuration for the metrics command.
 type Config struct {
@@ -41,9 +37,9 @@ func New(parent *root.Config) *Config {
 }
 
 func (cfg *Config) exec(_ context.Context, _ []string) error {
-	records, err := load()
+	records, err := metricslib.Load(metricslib.LedgerFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("metrics: %w", err)
 	}
 	s := metricslib.Summarize(records)
 	_, _ = fmt.Fprintf(
@@ -56,19 +52,4 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		s.AttentionPerAccept,
 	)
 	return nil
-}
-
-func load() ([]metricslib.Record, error) {
-	data, err := os.ReadFile(metricsFile)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("metrics: %w", err)
-	}
-	var records []metricslib.Record
-	if err := json.Unmarshal(data, &records); err != nil {
-		return nil, fmt.Errorf("metrics: %w", err)
-	}
-	return records, nil
 }

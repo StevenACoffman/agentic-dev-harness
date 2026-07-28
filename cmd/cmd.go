@@ -23,7 +23,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/evalcmd"
-	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/failurescmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/gatecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/harnesscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/judgecmd"
@@ -35,7 +36,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/reject"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/run"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/selfeval"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/sleep"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/stagecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/step"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/toolcmd"
@@ -62,7 +65,7 @@ func Run(
 	r := root.New(getenv, stdin, stdout, stderr)
 	version.New(r)
 	vcscmd.New(r)
-	gate.New(r)
+	gatecmd.New(r)
 	// register new commands here
 
 	arc.New(r)
@@ -78,10 +81,13 @@ func Run(
 	contextcmd.New(r)
 	toolcmd.New(r)
 	step.New(r)
+	stagecmd.New(r)
 	evalcmd.New(r)
 	run.New(r)
 	lessoncmd.New(r)
+	failurescmd.New(r)
 	metricscmd.New(r)
+	selfeval.New(r)
 	sleep.New(r)
 	loopcmd.New(r)
 	workercmd.New(r)
@@ -90,6 +96,12 @@ func Run(
 	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
 		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
 		return fmt.Errorf("parse: %w", err)
+	}
+	// --quiet suppresses non-error output for every command at once: they all write
+	// through the embedded *root.Config, so redirecting stdout here is enough.
+	// Errors still go to stderr.
+	if r.Quiet {
+		r.Stdout = io.Discard
 	}
 
 	if err := r.Command.Run(ctx); err != nil {

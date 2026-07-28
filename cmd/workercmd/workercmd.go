@@ -74,7 +74,7 @@ func (cfg *Config) show() error {
 }
 
 func (cfg *Config) requalify() error {
-	conf, err := config.Load(cfg.Getenv)
+	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
