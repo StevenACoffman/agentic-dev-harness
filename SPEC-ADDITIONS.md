@@ -117,7 +117,7 @@ An arc gains a `resolution` chosen at Strategy (revisable):
 
 | Resolution | Closes with | Proof required |
 |------------|-------------|----------------|
-| `change` | a merged/deployed code change | the current oracle, invariant, and device proof (§SPEC 4–5) |
+| `change` | a merged/deployed code change | the deployment's configured change contract (§SPEC 3.1 `[proof.contract]`) |
 | `investigation` | an analysis or answer, no code | the sources inspected and the reproducible finding |
 | `experiment` | an instrumented painted-door surface | the instrumentation and the readout that answers the product question |
 | `decision` | a recorded decision (often "do not build") | the evidence and the rationale behind the call |
@@ -126,6 +126,14 @@ NO-PROOF-NO-CLOSE still holds; the **proof type** varies with the resolution.
 `adh arc close <id> --as <resolution>` records it, and `adh proof verify` selects
 the matching proof contract. Stages that do not apply to a non-`change`
 resolution (Execution, Ops) are skipped, and the skip is recorded.
+
+The `change` contract is **generic by default and configurable per deployment**
+(§SPEC 3.1 `[proof.contract]`): the harness holds a `change` arc to whatever
+acceptance bar the repository declares. The original oracle + invariant +
+on-device triad (§SPEC 4–5) is one such profile — a mobile-port deployment's
+choice — not a built-in requirement. A deployment with no game and no device
+simply defines a code-level contract (tests, review, CI), and the adb/device and
+differential-oracle checks fall away as that domain's optional plugins.
 
 **Exit code 8** (proof failure) already covers a missing resolution-matched
 proof; no new code needed.

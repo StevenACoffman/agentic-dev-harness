@@ -157,7 +157,18 @@ tolerance     = 0             # exact-match; any divergence fails the gate
 [proof]
 archive_dir       = ".adh/artifacts"
 require_manifest  = true       # NO-PROOF-NO-CLOSE
-redaction_method  = "blackout" # sanitize sensitive screen regions
+redaction_method  = "blackout" # domain-specific: sanitize sensitive screen regions (screenshot artifacts only)
+
+# Proof contract: the acceptance bar each resolution must satisfy to close. The
+# harness enforces that *a* matching proof exists (NO-PROOF-NO-CLOSE); the *content*
+# of the bar is the deployment's to define. These generic defaults suit any repo;
+# a domain overrides them — a mobile port might set
+# change = "oracle, invariant, and on-device proof".
+[proof.contract]
+change        = "the change's tests pass and its review/CI checks are green"
+investigation = "the sources inspected and the reproducible finding"
+experiment    = "the instrumentation and the readout that answers the product question"
+decision      = "the evidence and the rationale behind the call"
 ```
 
 ### 3.2 Environment variables
@@ -236,9 +247,16 @@ message history and a distinct system role.
 `adh proof verify <id>` must pass before an arc closes. It checks:
 
 - Every declared artifact exists on disk.
-- Every artifact has a provenance manifest binding it to a git SHA, screen
-  dimensions, and redaction method.
-- Manifest hashes match the files on disk.
+- Manifest hashes match the files on disk — content identity binds the packet to
+  the exact bytes it covers.
+
+*What* proof a resolution must carry — its **proof contract** — is not fixed by
+the harness. It is configurable per resolution (§3.1 `[proof.contract]`), so each
+deployment declares its own acceptance bar: a generic code change might require
+"tests pass and CI is green", while a mobile port sets "oracle, invariant, and
+on-device proof". Optional provenance fields (a git SHA) and domain-specific
+sanitization (screen dimensions, a redaction method) apply only to the artifact
+kinds that need them (e.g. screenshots), not to proof in general.
 
 ---
 
