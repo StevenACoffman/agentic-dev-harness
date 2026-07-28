@@ -66,12 +66,16 @@ func TestCreateHashesSoVerifyPasses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "b.txt"), []byte("beta"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	pkt, err := proof.Create(root, "arc-0001", []string{"a.txt", "b.txt"})
+	// No git SHA passed: the packet records no provenance.
+	pkt, err := proof.Create(root, "arc-0001", "", []string{"a.txt", "b.txt"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if pkt.Arc != "arc-0001" || len(pkt.Artifacts) != 2 {
 		t.Fatalf("packet = %+v, want arc-0001 with 2 artifacts", pkt)
+	}
+	if pkt.Provenance != nil {
+		t.Errorf("provenance = %+v, want nil with no git SHA", pkt.Provenance)
 	}
 	if pkt.Artifacts[0].Digest != identity.Hash("alpha") {
 		t.Errorf("digest = %q, want the identity hash of the bytes", pkt.Artifacts[0].Digest)
@@ -81,14 +85,35 @@ func TestCreateHashesSoVerifyPasses(t *testing.T) {
 	}
 }
 
+func TestCreateRecordsProvenance(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("alpha"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	pkt, err := proof.Create(root, "arc-0001", sha, []string{"a.txt"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if pkt.Provenance == nil || pkt.Provenance.GitSHA != sha {
+		t.Errorf("provenance = %+v, want git SHA %q", pkt.Provenance, sha)
+	}
+	// Provenance is not a gate: the packet still verifies on its bytes, and the
+	// recorded SHA does not have to match anything on disk.
+	if err := proof.Verify(root, &pkt); err != nil {
+		t.Errorf("a packet with provenance should verify on bytes, got %v", err)
+	}
+}
+
 func TestCreateMissingFileErrors(t *testing.T) {
-	if _, err := proof.Create(t.TempDir(), "arc-0001", []string{"absent.txt"}); err == nil {
+	if _, err := proof.Create(t.TempDir(), "arc-0001", "", []string{"absent.txt"}); err == nil {
 		t.Error("Create over a missing artifact should error, not skip it")
 	}
 }
 
 func TestCreateEmptyPathsIsInvalid(t *testing.T) {
-	if _, err := proof.Create(t.TempDir(), "arc-0001", nil); adh.ErrorCode(err) != adh.EINVALID {
+	_, err := proof.Create(t.TempDir(), "arc-0001", "", nil)
+	if adh.ErrorCode(err) != adh.EINVALID {
 		t.Errorf("Create with no paths = %v, want EINVALID", err)
 	}
 }
@@ -98,7 +123,7 @@ func TestSaveRoundTrips(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("alpha"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	pkt, err := proof.Create(root, "arc-0001", []string{"a.txt"})
+	pkt, err := proof.Create(root, "arc-0001", "deadbeefcafe", []string{"a.txt"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -113,5 +138,9 @@ func TestSaveRoundTrips(t *testing.T) {
 	if loaded.Arc != pkt.Arc || len(loaded.Artifacts) != 1 ||
 		loaded.Artifacts[0] != pkt.Artifacts[0] {
 		t.Errorf("round-trip mismatch: saved %+v, loaded %+v", pkt, loaded)
+	}
+	// Provenance survives the round-trip.
+	if loaded.Provenance == nil || loaded.Provenance.GitSHA != "deadbeefcafe" {
+		t.Errorf("round-trip lost provenance: %+v", loaded.Provenance)
 	}
 }

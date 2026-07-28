@@ -15,7 +15,12 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
+
+// shortSHALen is how many leading hex characters of a provenance SHA the create
+// summary prints.
+const shortSHALen = 12
 
 // Config holds the configuration for the proof command and its subcommands.
 type Config struct {
@@ -87,7 +92,7 @@ func (cfg *Config) create(args []string) error {
 		return fmt.Errorf("proof: %w", err)
 	}
 	repoRoot := cfg.repoDir()
-	pkt, err := prooflib.Create(repoRoot, arc.ID, paths)
+	pkt, err := prooflib.Create(repoRoot, arc.ID, headSHA(repoRoot), paths)
 	if err != nil {
 		return fmt.Errorf("proof: %w", err)
 	}
@@ -106,8 +111,38 @@ func (cfg *Config) create(args []string) error {
 		return fmt.Errorf("proof: %w", err)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
-		"proof created: %d artifacts for %s at %s\n", len(pkt.Artifacts), arc.ID, out)
+		"proof created: %d artifacts for %s at %s%s\n",
+		len(pkt.Artifacts), arc.ID, out, provenanceNote(&pkt))
 	return nil
+}
+
+// headSHA resolves the current commit for proof provenance (SPEC §5.4),
+// best-effort: outside a git repo, or before the first commit, it returns "" and
+// the packet simply records no provenance. Provenance is informational, so a
+// resolution failure never fails the create.
+func headSHA(repoRoot string) string {
+	repo, err := vcs.Open(repoRoot)
+	if err != nil {
+		return ""
+	}
+	sha, err := repo.HeadSHA()
+	if err != nil {
+		return ""
+	}
+	return sha
+}
+
+// provenanceNote renders the short git SHA for the create summary, or "" when the
+// packet recorded no provenance.
+func provenanceNote(pkt *prooflib.Packet) string {
+	if pkt.Provenance == nil || pkt.Provenance.GitSHA == "" {
+		return ""
+	}
+	sha := pkt.Provenance.GitSHA
+	if len(sha) > shortSHALen {
+		sha = sha[:shortSHALen]
+	}
+	return " (git " + sha + ")"
 }
 
 func (cfg *Config) verify(args []string) error {

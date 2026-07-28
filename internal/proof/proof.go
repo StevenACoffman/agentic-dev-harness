@@ -21,17 +21,30 @@ type Artifact struct {
 	Digest string `json:"sha256"`
 }
 
-// Packet is an arc's declared proof: the artifacts that must exist and match.
+// Provenance records where a proof packet came from (SPEC §5.4): the commit the
+// proof was created against. It is optional and informational — the gate binds a
+// packet to its bytes by digest; the git SHA binds it to a commit. Screenshot
+// provenance (dimensions, redaction method) is domain-specific and not modeled here.
+type Provenance struct {
+	GitSHA string `json:"git_sha,omitempty"`
+}
+
+// Packet is an arc's declared proof: the artifacts that must exist and match, plus
+// optional provenance. Provenance is nil when none was recorded (e.g. no git repo).
 type Packet struct {
-	Arc       string     `json:"arc"`
-	Artifacts []Artifact `json:"artifacts"`
+	Arc        string      `json:"arc"`
+	Provenance *Provenance `json:"provenance,omitempty"`
+	Artifacts  []Artifact  `json:"artifacts"`
 }
 
 // Create builds a proof packet for arc by hashing each path's bytes under root
 // (identity.Hash, sha256[:16]). Paths are recorded repo-relative, exactly as
-// Verify resolves them. A proof must cover real bytes: an empty path set is
-// EINVALID and an unreadable artifact is an error, never a silent skip.
-func Create(root, arc string, paths []string) (Packet, error) {
+// Verify resolves them. gitSHA records provenance — the commit the proof was
+// created against (SPEC §5.4); an empty gitSHA records none (no git repo). The
+// caller resolves the SHA and passes it, so proof needs no version-control
+// dependency. A proof must cover real bytes: an empty path set is EINVALID and an
+// unreadable artifact is an error, never a silent skip.
+func Create(root, arc, gitSHA string, paths []string) (Packet, error) {
 	const op = "proof.Create"
 	if len(paths) == 0 {
 		return Packet{}, &adh.Error{
@@ -47,7 +60,11 @@ func Create(root, arc string, paths []string) (Packet, error) {
 		}
 		artifacts = append(artifacts, Artifact{Path: path, Digest: identity.Hash(string(data))})
 	}
-	return Packet{Arc: arc, Artifacts: artifacts}, nil
+	pkt := Packet{Arc: arc, Artifacts: artifacts}
+	if gitSHA != "" {
+		pkt.Provenance = &Provenance{GitSHA: gitSHA}
+	}
+	return pkt, nil
 }
 
 // Save writes a packet manifest to path as indented JSON, creating the directory
@@ -83,7 +100,9 @@ func Load(path string) (Packet, error) {
 
 // Verify checks that every artifact in pkt exists under root and matches its
 // recorded digest. It returns EINVALID when the packet declares nothing and
-// ECONFLICT on the first missing artifact or digest mismatch.
+// ECONFLICT on the first missing artifact or digest mismatch. Provenance is not a
+// gate condition (SPEC §5.4): a packet verifies on its bytes regardless of the
+// commit it records, so a proof created at one commit still verifies at another.
 func Verify(root string, pkt *Packet) error {
 	const op = "proof.Verify"
 	if len(pkt.Artifacts) == 0 {
