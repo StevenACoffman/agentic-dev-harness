@@ -8,7 +8,14 @@ import "time"
 type Mock struct {
 	Branch  string
 	Changed []string
+	Patch   string // scripted Diff output
 	commits int
+}
+
+// Diff returns the scripted patch. It ignores paths — the mock has no tree to
+// diff — so a test sets Patch to whatever the consumer should see.
+func (m *Mock) Diff(_ []string) (string, error) {
+	return m.Patch, nil
 }
 
 // CurrentBranch returns the scripted branch, defaulting to "main".

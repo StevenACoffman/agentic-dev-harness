@@ -3,6 +3,7 @@ package vcs_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ type repo interface {
 	Status() (vcs.Status, error)
 	CreateBranch(name string) error
 	Commit(msg string, who vcs.Signature, when time.Time) (string, error)
+	Diff(paths []string) (string, error)
 }
 
 func TestGitLifecycle(t *testing.T) {
@@ -96,5 +98,89 @@ func TestMock(t *testing.T) {
 	after, _ := m.Status()
 	if !after.Clean {
 		t.Errorf("mock should be clean after commit, got %+v", after)
+	}
+}
+
+func TestDiffModifiedFile(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	path := filepath.Join(dir, "greet.go")
+	if err := os.WriteFile(
+		path,
+		[]byte("package greet\n\nconst hi = \"hello\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := repo.Commit("seed", who, at); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	// Modify the committed file; the diff should show the change.
+	if err := os.WriteFile(
+		path,
+		[]byte("package greet\n\nconst hi = \"howdy\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	diff, err := repo.Diff([]string{"greet.go"})
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	for _, want := range []string{"a/greet.go", "b/greet.go", "-const hi = \"hello\"", "+const hi = \"howdy\""} {
+		if !strings.Contains(diff, want) {
+			t.Errorf("diff missing %q:\n%s", want, diff)
+		}
+	}
+}
+
+func TestDiffNewFileIsAllAdded(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	// No commit yet: a brand-new file reads as all-added against an empty HEAD.
+	if err := os.WriteFile(
+		filepath.Join(dir, "new.go"),
+		[]byte("package fresh\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	diff, err := repo.Diff([]string{"new.go"})
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if !strings.Contains(diff, "+package fresh") {
+		t.Errorf("new file should be all-added:\n%s", diff)
+	}
+}
+
+func TestDiffUnchangedPathIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "same.go"),
+		[]byte("package same\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := repo.Commit("seed", who, at); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	diff, err := repo.Diff([]string{"same.go"})
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("unchanged path should yield no diff, got:\n%s", diff)
 	}
 }

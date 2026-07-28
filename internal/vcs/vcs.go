@@ -9,12 +9,21 @@
 package vcs
 
 import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
 	"sort"
+	"strings"
 	"time"
 
+	billy "github.com/go-git/go-billy/v6"
 	git "github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/hexops/gotextdiff"
+	"github.com/hexops/gotextdiff/myers"
+	"github.com/hexops/gotextdiff/span"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
@@ -145,4 +154,101 @@ func (g *Git) Commit(msg string, who Signature, when time.Time) (string, error) 
 		return "", &adh.Error{Op: "vcs.Git.Commit", Err: err}
 	}
 	return hash.String()[:shortHashLen], nil
+}
+
+// Diff renders a unified diff of the given repository-relative paths between the
+// committed HEAD content and the current working tree — the pre-commit change
+// under review (SPEC-ADDITIONS §19.1). It reads both sides through the go-git
+// handle and formats the text with gotextdiff, so it needs no `git` binary. A path
+// unchanged between HEAD and the tree contributes nothing; a path absent from HEAD
+// reads as all-added, one absent from the tree as all-removed.
+func (g *Git) Diff(paths []string) (string, error) {
+	const op = "vcs.Git.Diff"
+	worktree, err := g.repo.Worktree()
+	if err != nil {
+		return "", &adh.Error{Op: op, Err: err}
+	}
+	head, err := g.headTree()
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, path := range paths {
+		before, err := treeContent(head, path)
+		if err != nil {
+			return "", err
+		}
+		after, err := worktreeContent(worktree.Filesystem(), path)
+		if err != nil {
+			return "", err
+		}
+		if before == after {
+			continue
+		}
+		edits := myers.ComputeEdits(span.URIFromPath(path), before, after)
+		_, _ = fmt.Fprintf(&b, "%s", gotextdiff.ToUnified("a/"+path, "b/"+path, before, edits))
+	}
+	return b.String(), nil
+}
+
+// headTree returns the tree of the current HEAD commit, or nil before the first
+// commit (when every path reads as new).
+func (g *Git) headTree() (*object.Tree, error) {
+	const op = "vcs.Git.headTree"
+	ref, err := g.repo.Head()
+	switch {
+	case errors.Is(err, plumbing.ErrReferenceNotFound):
+		//nolint:nilnil // no commit yet: an empty HEAD is no tree, not an error
+		return nil, nil
+	case err != nil:
+		return nil, &adh.Error{Op: op, Err: err}
+	}
+	commit, err := g.repo.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, &adh.Error{Op: op, Err: err}
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, &adh.Error{Op: op, Err: err}
+	}
+	return tree, nil
+}
+
+// treeContent returns the committed content of path in tree, or "" when the tree
+// is nil (no commit) or the path is absent (a new file).
+func treeContent(tree *object.Tree, path string) (string, error) {
+	if tree == nil {
+		return "", nil
+	}
+	file, err := tree.File(path)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", &adh.Error{Op: "vcs.treeContent", Err: err}
+	}
+	content, err := file.Contents()
+	if err != nil {
+		return "", &adh.Error{Op: "vcs.treeContent", Err: err}
+	}
+	return content, nil
+}
+
+// worktreeContent returns the working-tree content of path, or "" when it is
+// absent (a deleted file).
+func worktreeContent(fsys billy.Filesystem, path string) (string, error) {
+	const op = "vcs.worktreeContent"
+	file, err := fsys.Open(path)
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", &adh.Error{Op: op, Err: err}
+	}
+	defer func() { _ = file.Close() }()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", &adh.Error{Op: op, Err: err}
+	}
+	return string(data), nil
 }
