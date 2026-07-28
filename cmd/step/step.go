@@ -10,7 +10,6 @@ package step
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,12 +48,11 @@ type Config struct {
 	*root.Config
 	Relay    bool
 	Response string
-	JSON     bool
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
 
-// result is the machine-readable outcome emitted under --json.
+// result is the machine-readable outcome emitted under --jsonl.
 type result struct {
 	Arc    string `json:"arc"`
 	Stage  string `json:"stage"`
@@ -71,7 +69,6 @@ func New(parent *root.Config) *Config {
 		"emit the stage prompt for an operator to answer instead of calling a model")
 	cfg.Flags.StringVar(&cfg.Response, 0, "response", "",
 		"resume a relayed turn with the reply in this file (- for stdin)")
-	cfg.Flags.BoolVar(&cfg.JSON, 0, "json", "emit the outcome as JSON")
 	cfg.Command = &ff.Command{
 		Name:      "step",
 		Usage:     "agentic-dev-harness step [--relay [--response <file>]] [--json] <arc-id>",
@@ -361,18 +358,14 @@ func (cfg *Config) readResponse() (string, error) {
 	return string(data), nil
 }
 
-// report prints the outcome: JSON under --json, otherwise a human-readable line
-// (and, when awaiting, the prompt itself on the following lines).
+// report prints the outcome: one JSON object under --jsonl, otherwise a
+// human-readable line (and, when awaiting, the prompt itself on the following lines).
 func (cfg *Config) report(arc *adh.Arc, status, promptText string) error {
-	if cfg.JSON {
-		data, err := json.MarshalIndent(
-			result{Arc: arc.ID, Stage: string(arc.Stage), Status: status, Prompt: promptText},
-			"", "  ",
-		)
-		if err != nil {
+	if cfg.JSONL {
+		rec := result{Arc: arc.ID, Stage: string(arc.Stage), Status: status, Prompt: promptText}
+		if err := cfg.EmitJSONL(rec); err != nil {
 			return fmt.Errorf("step: %w", err)
 		}
-		_, _ = fmt.Fprintln(cfg.Stdout, string(data))
 		return nil
 	}
 	if status == statusAwaiting {

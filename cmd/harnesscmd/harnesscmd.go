@@ -30,7 +30,6 @@ type Config struct {
 	Checks string
 	Output string
 	Min    float64
-	JSON   bool
 	// gate flags
 	Candidate  string
 	Current    string
@@ -75,7 +74,6 @@ func (cfg *Config) addEval() {
 	)
 	fs.Float64Var(&cfg.Min, 'm', "min", 0,
 		"exit non-zero when the deterministic score is below this floor (0 = no floor)")
-	fs.BoolVar(&cfg.JSON, 0, "json", "emit the report as JSON")
 	cfg.Command.Subcommands = append(cfg.Command.Subcommands, &ff.Command{
 		Name:      "eval",
 		Usage:     "agentic-dev-harness harness eval [--min N] [--checks c.json] [--output o.txt] <artifact>",
@@ -93,7 +91,6 @@ func (cfg *Config) addGate() {
 	fs.StringVar(&cfg.Best, 'b', "best", "", "best-so-far score (defaults to current)")
 	fs.StringVar(&cfg.BestStep, 0, "best-step", "0", "step at which best was set")
 	fs.StringVar(&cfg.GlobalStep, 0, "global-step", "0", "current step")
-	fs.BoolVar(&cfg.JSON, 0, "json", "emit the decision as JSON")
 	cfg.Command.Subcommands = append(cfg.Command.Subcommands, &ff.Command{
 		Name:      "gate",
 		Usage:     "agentic-dev-harness harness gate --candidate N --current N [--best N]",
@@ -236,11 +233,9 @@ func (cfg *Config) readOutput() (string, error) {
 }
 
 func (cfg *Config) render(report *harness.EvalReport) error {
-	if cfg.JSON {
-		enc := json.NewEncoder(cfg.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(report); err != nil {
-			return fmt.Errorf("harness: encode json: %w", err)
+	if cfg.JSONL {
+		if err := cfg.EmitJSONL(report); err != nil {
+			return fmt.Errorf("harness: %w", err)
 		}
 		return nil
 	}
@@ -259,11 +254,9 @@ func (cfg *Config) render(report *harness.EvalReport) error {
 }
 
 func (cfg *Config) renderGate(res gatelib.Result) error {
-	if cfg.JSON {
-		enc := json.NewEncoder(cfg.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(res); err != nil {
-			return fmt.Errorf("harness: encode json: %w", err)
+	if cfg.JSONL {
+		if err := cfg.EmitJSONL(res); err != nil {
+			return fmt.Errorf("harness: %w", err)
 		}
 		return nil
 	}

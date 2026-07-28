@@ -31,13 +31,13 @@ func TestStepRelayExecutionResumeCapturesPaths(t *testing.T) {
 	if err := state.Default().Save(&arc); err != nil {
 		t.Fatalf("seed arc: %v", err)
 	}
-	mustRun(t, "step", "--relay", "--json", arc.ID) // open the execution turn
+	mustRun(t, "step", "--relay", "--jsonl", arc.ID) // open the execution turn
 
 	reply := filepath.Join(t.TempDir(), "reply.txt") // outside the repo tree
 	if err := os.WriteFile(reply, []byte("built the widget"), 0o600); err != nil {
 		t.Fatalf("write reply: %v", err)
 	}
-	mustRun(t, "step", "--relay", "--response", reply, "--json", arc.ID)
+	mustRun(t, "step", "--relay", "--response", reply, "--jsonl", arc.ID)
 
 	reloaded, err := state.Default().Get(arc.ID)
 	if err != nil {

@@ -3,7 +3,6 @@ package version
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -51,7 +50,6 @@ type Info struct {
 // Config holds the configuration for the version command.
 type Config struct {
 	*root.Config
-	JSON    bool
 	Flags   *ff.FlagSet
 	Command *ff.Command
 }
@@ -84,7 +82,6 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("version").SetParent(parent.Flags)
-	cfg.Flags.BoolVar(&cfg.JSON, 0, "json", "output version information as JSON")
 	cfg.Command = &ff.Command{
 		Name:      "version",
 		Usage:     "agentic-dev-harness version [--json]",
@@ -156,15 +153,6 @@ func (i *Info) String() string {
 	return b.String()
 }
 
-// JSONString returns the JSON representation of the version info.
-func (i *Info) JSONString() (string, error) {
-	b, err := json.MarshalIndent(i, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("marshaling version info: %w", err)
-	}
-	return string(b), nil
-}
-
 func gatherVersionInfo(bi *debug.BuildInfo) Info {
 	const unknown = "unknown"
 	info := Info{
@@ -210,12 +198,10 @@ func gatherVersionInfo(bi *debug.BuildInfo) Info {
 func (cfg *Config) exec(_ context.Context, _ []string) error {
 	bi, _ := debug.ReadBuildInfo()
 	info := GetVersionInfoFrom(bi, Version)
-	if cfg.JSON {
-		s, err := info.JSONString()
-		if err != nil {
+	if cfg.JSONL {
+		if err := cfg.EmitJSONL(info); err != nil {
 			return fmt.Errorf("version: %w", err)
 		}
-		_, _ = fmt.Fprintln(cfg.Stdout, s)
 		return nil
 	}
 	_, _ = fmt.Fprint(cfg.Stdout, info.String())

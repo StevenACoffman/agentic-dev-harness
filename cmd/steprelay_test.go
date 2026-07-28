@@ -14,7 +14,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
-// stepResult mirrors the JSON the step command emits under --json.
+// stepResult mirrors the JSON the step command emits under --jsonl.
 type stepResult struct {
 	Arc    string `json:"arc"`
 	Stage  string `json:"stage"`
@@ -46,7 +46,7 @@ func TestStepRelayEmitParksPending(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedOpenArc(t)
 
-	out := mustRun(t, "step", "--relay", "--json", id)
+	out := mustRun(t, "step", "--relay", "--jsonl", id)
 	got := decodeStep(t, out)
 	if got.Status != "awaiting" {
 		t.Errorf("status = %q, want awaiting", got.Status)
@@ -74,8 +74,8 @@ func TestStepRelayEmitIsIdempotent(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedOpenArc(t)
 
-	first := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
-	second := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
+	first := decodeStep(t, mustRun(t, "step", "--relay", "--jsonl", id))
+	second := decodeStep(t, mustRun(t, "step", "--relay", "--jsonl", id))
 	if first.Prompt != second.Prompt {
 		t.Errorf("re-emit changed the prompt:\n%q\nvs\n%q", first.Prompt, second.Prompt)
 	}
@@ -91,14 +91,14 @@ func TestStepRelayEmitIsIdempotent(t *testing.T) {
 func TestStepRelayResumeAdvances(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedOpenArc(t)
-	mustRun(t, "step", "--relay", "--json", id) // open the turn
+	mustRun(t, "step", "--relay", "--jsonl", id) // open the turn
 
 	respPath := filepath.Join(t.TempDir(), "reply.txt")
 	if err := os.WriteFile(respPath, []byte("chose a code change; steps: ..."), 0o600); err != nil {
 		t.Fatalf("write reply: %v", err)
 	}
 
-	out := mustRun(t, "step", "--relay", "--response", respPath, "--json", id)
+	out := mustRun(t, "step", "--relay", "--response", respPath, "--jsonl", id)
 	got := decodeStep(t, out)
 	if got.Status != "advanced" {
 		t.Errorf("status = %q, want advanced", got.Status)
@@ -180,7 +180,7 @@ func TestStepRelayCriticEmitCarriesGrounding(t *testing.T) {
 	writeContextUnit(t, "u-auth", []string{"auth"})
 	id := seedCriticArc(t, []string{"auth"}, []string{"internal/authz/policy.go"})
 
-	got := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
+	got := decodeStep(t, mustRun(t, "step", "--relay", "--jsonl", id))
 	if got.Status != "awaiting" {
 		t.Fatalf("status = %q, want awaiting", got.Status)
 	}
@@ -216,7 +216,7 @@ func TestStepRelayCriticNoStoreEmitsUngrounded(t *testing.T) {
 	t.Chdir(t.TempDir()) // no .adh/context store: grounding not configured, not a gap
 	id := seedCriticArc(t, []string{"auth"}, nil)
 
-	got := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
+	got := decodeStep(t, mustRun(t, "step", "--relay", "--jsonl", id))
 	if got.Status != "awaiting" {
 		t.Fatalf("status = %q, want awaiting (no store is not a gap)", got.Status)
 	}
@@ -229,7 +229,7 @@ func TestStepRelayCriticUndeclaredEmitsUngrounded(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedCriticArc(t, nil, nil) // declares no footprint → not a gap
 
-	got := decodeStep(t, mustRun(t, "step", "--relay", "--json", id))
+	got := decodeStep(t, mustRun(t, "step", "--relay", "--jsonl", id))
 	if got.Status != "awaiting" {
 		t.Fatalf("status = %q, want awaiting (undeclared is not a gap)", got.Status)
 	}
@@ -241,7 +241,7 @@ func TestStepRelayCriticUndeclaredEmitsUngrounded(t *testing.T) {
 func TestStepRelayCriticResumeStoresFindings(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedCriticArc(t, nil, nil) // undeclared → no routing gap
-	mustRun(t, "step", "--relay", "--json", id)
+	mustRun(t, "step", "--relay", "--jsonl", id)
 
 	respPath := filepath.Join(t.TempDir(), "findings.json")
 	reply := `{"findings":[{"summary":"clears differ","kind":"oracle","ref":"corpus"}]}`
@@ -249,7 +249,7 @@ func TestStepRelayCriticResumeStoresFindings(t *testing.T) {
 		t.Fatalf("write findings: %v", err)
 	}
 
-	got := decodeStep(t, mustRun(t, "step", "--relay", "--response", respPath, "--json", id))
+	got := decodeStep(t, mustRun(t, "step", "--relay", "--response", respPath, "--jsonl", id))
 	if got.Status != "advanced" || got.Stage != string(adh.StageEvaluation) {
 		t.Fatalf("resume = %+v, want advanced to evaluation", got)
 	}
@@ -265,7 +265,7 @@ func TestStepRelayCriticResumeStoresFindings(t *testing.T) {
 func TestStepRelayCriticResumeRejectsNonFindings(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedCriticArc(t, nil, nil)
-	mustRun(t, "step", "--relay", "--json", id)
+	mustRun(t, "step", "--relay", "--jsonl", id)
 
 	respPath := filepath.Join(t.TempDir(), "reply.txt")
 	if err := os.WriteFile(respPath, []byte("looks fine to me"), 0o600); err != nil {
@@ -298,7 +298,7 @@ func TestStepRelayRefusesEvaluation(t *testing.T) {
 func TestStepRelayResumeRejectsEmptyReply(t *testing.T) {
 	t.Chdir(t.TempDir())
 	id := seedOpenArc(t)
-	mustRun(t, "step", "--relay", "--json", id)
+	mustRun(t, "step", "--relay", "--jsonl", id)
 
 	respPath := filepath.Join(t.TempDir(), "reply.txt")
 	if err := os.WriteFile(respPath, []byte("   \n"), 0o600); err != nil {
