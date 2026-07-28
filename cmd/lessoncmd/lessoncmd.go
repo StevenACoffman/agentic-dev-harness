@@ -64,11 +64,18 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 }
 
 func (cfg *Config) list() error {
-	notes, err := failures.Load(failures.RegistryFile)
+	// Candidate lessons come from both the confirmed failure registry (§4.1) and
+	// the lesson-candidate file the Evaluation loop writes for unconfirmed critic
+	// findings (§19.2), so a class the loop surfaced is visible and promotable (§11.1).
+	registry, err := failures.Load(failures.RegistryFile)
 	if err != nil {
 		return fmt.Errorf("lesson: %w", err)
 	}
-	for _, l := range lessonlib.Distill(notes) {
+	candidates, err := failures.Load(failures.CandidatesFile)
+	if err != nil {
+		return fmt.Errorf("lesson: %w", err)
+	}
+	for _, l := range lessonlib.Distill(append(registry, candidates...)) {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t(%d instances)\n", l.Class, len(l.Instances))
 	}
 	return nil
