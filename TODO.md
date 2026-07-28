@@ -107,10 +107,11 @@ around them is partial.
     (§5.2) — a config-settable phrase would be a self-grant route.
   - [x] `worker requalify` binds the per-role baseline from `[models]`
     (`config.BaselineModels`); editing `[models]` opens a new epoch (§14).
+  - [x] `adh init` writes a starter `.adh/config.toml` (`config.StarterTOML`,
+    idempotent — kept if present) and scaffolds `.adh/context` + `.adh/artifacts`.
   - [ ] Deferred: the `--profile` layer (SPEC §3 tier 3). `--config`/`--repo`/
     `--profile` are now bound on `root.Config` (Command surface) and `--config` is
-    wired, but `--profile` selects no profile yet; no `adh init` writing a starter
-    `.adh/config.toml`; secrets stay env-only.
+    wired, but `--profile` selects no profile yet; secrets stay env-only.
 
 ## Effectful seams still mocked
 
@@ -127,8 +128,8 @@ around them is partial.
   status/branch/commit; `internal/vcs.Mock` is the test double. `close` now
   commits a `change` arc past the approval+proof gates (best-effort: no repo /
   clean tree → the arc still closes), so the ship is a real, gated VCS mutation.
-  Follow-ups: merge/revert (go-git merge is experimental → a `git` shell-out) and
-  a branch-per-arc.
+  Follow-ups: merge/revert (go-git merge is experimental → shell out to the `git`
+  binary via `github.com/ldez/go-git-cmd-wrapper/v2`) and a branch-per-arc.
 - [ ] No injected `Clock` (deterministic timestamps) once state grows time
   fields.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
@@ -206,12 +207,23 @@ around them is partial.
   runs wait on those adapters (adb; a real oracle target). NFR findings have no
   runner yet (always unconfirmed).
 - [ ] §19.1 unified diff *text*: `Arc.Paths` now reflects the change, but the diff
-  *text* still needs a `git diff` shell-out (go-git's textual diff is a weak spot)
-  and a `Grounding.Diff` field + template line to surface it to the critic.
-- [ ] Populate `Arc.Labels` from Execution (`Arc.Proof` is now set by
-  `adh proof create`): `Arc.Paths` is now filled
-  from VCS on execution resume, but Labels (semantic tags) and Proof (a
-  builder-written manifest path) are still set only by hand / by tests.
+  *text* still needs generating (go-git's working-tree textual diff is a weak spot)
+  and a `Grounding.Diff` field + template line to surface it to the critic. Offload
+  the generation to `github.com/hexops/gotextdiff` (maintained unified-diff
+  generator), **scoped to the pre-commit critic-grounding case only** — feed it the
+  HEAD-blob vs worktree content read via the existing go-git handle, keeping tests
+  hermetic (no `git` binary). The post-commit (tree-to-tree) diff needs no library:
+  go-git's native `(*object.Patch).String()` already emits it.
+- [x] Populate `Arc.Labels` from Execution + smooth the exit-12 wall. Resuming a
+  relayed execution turn derives area labels from the changed paths
+  (`contextstore.AreaLabels`, top-level dir) and unions them into `Arc.Labels`, so
+  the critic's context routes. The routing gap now requires an *environment*: a
+  gap (exit 12) fires only when a context store exists (has units) yet routes
+  nothing for a declared arc — an empty/absent store is ungrounded, not a gap
+  (§19.1, updated). `adh init` scaffolds a starter store keyed by top-level dir so
+  a typical change grounds out of the box. (`Arc.Proof` is set by `adh proof create`.)
+- [ ] Follow-up: richer semantic labels than the top-level directory (e.g. from
+  arc title or an `arc new --label` flag), for finer context routing.
 
 ## End-to-end lifecycle wiring
 
@@ -255,8 +267,9 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       tool actually uses today.
 - [x] `VCS` (branch/commit/status) → `internal/vcs` over `go-git/v6` + the `vcs`
       command; `Mock` for tests. `close` now commits a `change` arc past the
-      approval+proof gates. Merge/revert stay a `git` shell-out (go-git merge is
-      experimental), and a branch-per-arc is a follow-up.
+      approval+proof gates. Merge/revert stay a `git` shell-out via
+      `github.com/ldez/go-git-cmd-wrapper/v2` (go-git merge is experimental), and
+      a branch-per-arc is a follow-up.
 - [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
       **Deferred**: needs a device; a shell-out adapter is untestable in CI.
 - [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
@@ -281,7 +294,14 @@ Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
 
 ## Housekeeping
 
-- [ ] No CI workflow to run `golangci-lint` + `go test` on push.
+- [x] CI: `.github/workflows/test.yml` runs build, vet, `go test -race`, golangci-lint,
+  and a `go mod tidy` drift check on push/PR to `main`. (A boilerplate
+  `gotmplfumpt` self-format step copied from another project was dropped — adh has
+  no such binary.)
+- [x] Release: `RELEASE_PROCESS.md` documents the GoReleaser flow (`.goreleaser.yaml`,
+  already tracked) and the `gowheels` PyPI-wheel distribution. Follow-up: the
+  `.github/workflows/postrelease.yaml` that doc references (auto-publish wheels on
+  release) is not present yet.
 - [ ] `PLAN.md`, `SPEC-ADDITIONS.md`, `README.md`, and this file have not been
   run through the repo's `mdformat`/`rumdl`/prettier config (outside the
   golangci gate; may drift).
