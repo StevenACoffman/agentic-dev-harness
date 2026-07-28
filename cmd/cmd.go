@@ -39,6 +39,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/step"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/toolcmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/vcscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/workercmd"
 )
@@ -60,6 +61,7 @@ func Run(
 ) error {
 	r := root.New(getenv, stdin, stdout, stderr)
 	version.New(r)
+	vcscmd.New(r)
 	gate.New(r)
 	// register new commands here
 
