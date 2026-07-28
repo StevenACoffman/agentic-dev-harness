@@ -5,18 +5,15 @@ package lessoncmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	lessonlib "github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 )
-
-const failuresFile = ".adh/failures.json"
 
 // Config holds the configuration for the lesson command.
 type Config struct {
@@ -67,11 +64,11 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 }
 
 func (cfg *Config) list() error {
-	failures, err := loadFailures()
+	notes, err := failures.Load(failures.RegistryFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("lesson: %w", err)
 	}
-	for _, l := range lessonlib.Distill(failures) {
+	for _, l := range lessonlib.Distill(notes) {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t(%d instances)\n", l.Class, len(l.Instances))
 	}
 	return nil
@@ -96,19 +93,4 @@ func (cfg *Config) promote(args []string) error {
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "promoted %q to %s\n", args[0], owner)
 	return nil
-}
-
-func loadFailures() ([]string, error) {
-	data, err := os.ReadFile(failuresFile)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("lesson: %w", err)
-	}
-	var failures []string
-	if err := json.Unmarshal(data, &failures); err != nil {
-		return nil, fmt.Errorf("lesson: %w", err)
-	}
-	return failures, nil
 }

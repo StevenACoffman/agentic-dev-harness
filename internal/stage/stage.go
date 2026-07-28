@@ -1,8 +1,11 @@
 // Package stage sequences the five-stage loop (SPEC §1): it runs an arc's
 // current stage through the model seam and advances it, and decides whether the
-// relay may auto-launch the next stage under the autonomy level (SPEC §6). The
-// critic runs cold — its prompt carries only the change under review, never the
-// builder's transcript (SPEC-ADDITIONS §11, cold-context critic).
+// relay may auto-launch the next stage under the autonomy level (SPEC §6). A
+// stage's work splits into two pure halves — Request (gate the model class and
+// render the prompt) and Apply (record the response and advance) — so a relay
+// can emit the prompt on one process invocation and apply the reply on the next.
+// Execute composes them for the synchronous Mock/API path. The critic runs cold:
+// the injected Prompter withholds the builder's transcript (SPEC §1).
 package stage
 
 import (
@@ -11,15 +14,25 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 )
 
 // Client is the model seam the stages need, declared here at the point of use
-// and satisfied by model.Mock and the real client. ModelClass reports the
-// capability tier the binding runs at, so Execute can enforce the model-gate.
+// and satisfied by model.Mock, model.Relay, and the real client. ModelClass
+// reports the capability tier the binding runs at, so the gate can be enforced.
 type Client interface {
 	Complete(ctx context.Context, req model.Request) (model.Response, error)
 	ModelClass() authority.ModelClass
+}
+
+// Prompter renders the prompt for an arc's current stage. It is declared here at
+// the point of use and satisfied by *prompt.Renderer; the critic's prompt is
+// cold by construction, since the renderer withholds the builder's transcript.
+// ground is the critic's repository-owned working set (§19.1); it is nil for
+// every other stage and for an ungrounded critic.
+type Prompter interface {
+	Render(arc *adh.Arc, ground *critic.Grounding) (string, error)
 }
 
 // AutoAdvances reports whether, after completing stage s at autonomy level lvl,
@@ -35,45 +48,74 @@ func AutoAdvances(s adh.Stage, lvl authority.Level) bool {
 	return lvl >= authority.L2
 }
 
-// Execute runs the arc's current stage through client, appends the output to the
-// arc's history, and advances the arc to the next stage. It mutates arc in place.
-// Ops is not a model step — it is the human-gated ship, performed by the close
-// command — so Execute refuses it (EINVALID) and never auto-closes an arc. The
-// judgment set (config-driven) is enforced against the model's class.
-func Execute(
-	ctx context.Context,
-	client Client,
+// Request builds the model request for the arc's current stage. It enforces the
+// model-gate (SPEC §5.1) against class and renders the prompt via prompter,
+// passing ground (the critic's working set, §19.1; nil for other stages). It is
+// pure: no I/O, no mutation of arc. Ops has no model step (it ships via close),
+// so Request refuses it with EINVALID. The gate is checked before the prompt is
+// rendered, so a gated stage never produces a prompt.
+func Request(
+	prompter Prompter,
 	arc *adh.Arc,
+	ground *critic.Grounding,
+	class authority.ModelClass,
 	judgment authority.JudgmentRoles,
-) error {
+) (model.Request, error) {
 	if arc.Stage == adh.StageOps {
-		return &adh.Error{Code: adh.EINVALID, Message: "ops ships via close, not a model step"}
+		return model.Request{}, &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "ops ships via close, not a model step",
+		}
 	}
-	// Model-gate (SPEC §5.1): a judgment role must run on a reasoning-class model.
-	if err := authority.ModelGate(arc.Stage, client.ModelClass(), judgment); err != nil {
-		return fmt.Errorf("stage: %w", err)
+	if err := authority.ModelGate(arc.Stage, class, judgment); err != nil {
+		return model.Request{}, fmt.Errorf("stage: %w", err)
 	}
-	resp, err := client.Complete(ctx, model.Request{Role: arc.Stage, Prompt: promptFor(arc)})
+	prompt, err := prompter.Render(arc, ground)
 	if err != nil {
-		return fmt.Errorf("stage: %w", err)
+		return model.Request{}, fmt.Errorf("stage: %w", err)
 	}
+	return model.Request{Role: arc.Stage, Prompt: prompt}, nil
+}
+
+// Apply records resp in the arc's history and advances the arc to the next stage
+// (SPEC §1). It mutates arc in place. Strategy chooses the resolution (§12); an
+// unset one defaults to a code change so a downstream close has a proof contract
+// to check. Apply's precondition is that the arc is not at ops — Request refuses
+// ops, so a pending turn never parks there — and the ok guard makes ops a safe
+// no-op advance rather than blanking the stage.
+func Apply(arc *adh.Arc, resp model.Response) {
 	arc.History = append(arc.History, string(arc.Stage)+": "+resp.Text)
-	// Strategy chooses the resolution (§12); the mock defaults an unset one to a
-	// code change so a downstream close has a proof contract to check.
 	if arc.Stage == adh.StageStrategy && arc.Resolution == "" {
 		arc.Resolution = adh.ResolutionChange
 	}
-	next, _ := adh.NextStage(arc.Stage) // always present: ops is refused above
+	next, ok := adh.NextStage(arc.Stage)
+	if !ok {
+		return
+	}
 	arc.Stage = next
-	return nil
 }
 
-// promptFor builds the stage's prompt. The critic gets a cold context — only the
-// change and its proof, never the prior stages' transcript — so it cannot
-// rationalize choices it never watched being made.
-func promptFor(arc *adh.Arc) string {
-	if arc.Stage == adh.StageCritic {
-		return "review the change and its proof for arc " + arc.ID
+// Execute runs the arc's current stage through client and advances it, composing
+// the two pure halves: Request gates and renders, client.Complete answers, Apply
+// records and advances. It mutates arc in place. Ops is refused by Request. The
+// critic's grounding is nil here: Execute drives the synchronous Mock/API path
+// and the relayed resume, where the rendered critic prompt is not consumed by a
+// reasoner — the relay's grounded emit is handled by the step command via Request.
+func Execute(
+	ctx context.Context,
+	client Client,
+	prompter Prompter,
+	arc *adh.Arc,
+	judgment authority.JudgmentRoles,
+) error {
+	req, err := Request(prompter, arc, nil, client.ModelClass(), judgment)
+	if err != nil {
+		return err
 	}
-	return string(arc.Stage) + " the work for arc " + arc.ID
+	resp, err := client.Complete(ctx, req)
+	if err != nil {
+		return fmt.Errorf("stage: %w", err)
+	}
+	Apply(arc, resp)
+	return nil
 }

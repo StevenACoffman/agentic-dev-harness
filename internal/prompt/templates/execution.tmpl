@@ -1,0 +1,7 @@
+Build the work for arc {{.ID}}{{if .Title}} — {{.Title}}{{end}}.
+{{if .Resolution}}Resolution: {{.Resolution}}.{{end}}
+{{if .History}}
+Prior stages:
+{{range .History}}- {{.}}
+{{end}}{{end}}
+Make the change and prepare the proof {{if .ProofKind}}({{.ProofKind}}){{else}}the resolution requires{{end}}.

@@ -462,6 +462,83 @@ diagnostics stage alongside the proposal and never touch live files.
 
 ---
 
+## 19. Cold-critic grounding and finding disposition
+
+**Closes:** the repository must teach the critic, and a critic's finding is a
+hypothesis the repository adjudicates, not a verdict the model is trusted for.
+§SPEC 5.3 makes the critic *cold* — a fresh context with no builder transcript —
+but leaves two things unstated: what grounds the critic, and what its findings
+do. The stage seam shows the gap. The critic runs on a placeholder prompt, and
+its output is appended to arc history with no adjudication. A finding neither
+blocks the arc nor becomes a durable check.
+
+The standard of good lives in the repository, not in the model's priors. A cold
+critic is grounded by repository-owned artifacts and withholds only the build
+narrative; its findings are confirmed against those same artifacts before they
+change an arc's course.
+
+### 19.1 The critic's grounding contract
+
+`adh critic <id>` loads its working set from repository-owned state and denies
+exactly one input, the Execution transcript. The working set is:
+
+- the change under review — the diff and the arc's touched paths;
+- the proof packet the builder left and the arc's acceptance bar (§SPEC 5.4);
+- the context units routed for the arc's labels and paths (§10), including any
+  NFR check that encodes a nonfunctional requirement.
+
+"Cold" is an isolation boundary on the builder's reasoning (§SPEC 5.3), not a
+context boundary on the repository. A critic forced to reason from its own
+priors because the environment did not teach it records a routing gap (§10, exit
+12), not a property of cold review.
+
+### 19.2 Finding disposition — confirm against the repository
+
+A critic emits findings. Each finding names the repository artifact that would
+confirm it: an oracle divergence, an invariant, an on-device check (§SPEC 2.4),
+an NFR check (§10), or a named local contract. The Evaluation stage that follows
+the critic (§SPEC 1) runs that artifact.
+
+| Finding | Adjudication | Effect |
+|---------|--------------|--------|
+| confirmed — the named artifact fails | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7) |
+| unconfirmed — no artifact fails, or none is named | a lesson candidate (§11) | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+
+A finding never blocks on the critic's text alone. This is §9's non-goal applied
+to review: the harness does not grade a change with an LLM-as-judge where a
+deterministic check can decide, so a critic's judgment either points to a check
+that already decides the change or becomes one. A bad prior invents a
+requirement the repository does not hold, and the gate drops it; a prior that
+holds up is a real gap in the acceptance bar, and §11 turns it into a durable
+check the next arc meets deterministically.
+
+The human gate at Ops (§SPEC 5.2) is unchanged. An operator may still reject, on
+judgment, a change that every automated check passed. Authority to block on
+taste stays with the human, never the critic.
+
+### 19.3 Convergence
+
+The critic runs once per arc (§SPEC 1), so it cannot widen a change across review
+rounds today. A critic-and-author revision loop or an auto-advancing review, if
+added later, carries a merge bias and a bounded set of author responses per
+finding so review ends. Until then this is a recorded design constraint,
+not a runtime gate.
+
+### 19.4 Configuration
+
+```toml
+[critic]
+ground_from = ["diff", "proof", "acceptance_bar", "context"]  # §10 routed set
+deny        = ["transcript"]   # the one input cold review withholds
+unconfirmed = "lesson"         # a finding with no failing artifact is a §11 candidate, never a blocker
+```
+
+This section adds no exit code. A confirmed finding surfaces through the existing
+Evaluation gates (exit 5–7); an unconfirmed one is a §11 lesson candidate, and
+its later promotion to an executable owner is the existing gated path (exit 13).
+
+---
+
 ## Exit codes (additions)
 
 | Code | Meaning |
@@ -474,7 +551,9 @@ diagnostics stage alongside the proposal and never touch live files.
 | `15` | Self-optimization gate self-test failed — a planted regression was not rejected; the gate is untrustworthy, stop (§18.4). |
 
 Code `11` is reserved to avoid collision with a future gate class; `8` (proof
-failure) already covers resolution-matched proof (§12).
+failure) already covers resolution-matched proof (§12). §19 adds no code: a
+confirmed critic finding surfaces through the Evaluation gates (exit 5–7) and an
+unconfirmed one through the lesson path (§11).
 
 ---
 
@@ -487,5 +566,7 @@ types record how an arc closed but Strategy chooses it; requalification measures
 capability but does not set ambition for the operator. Self-optimization (§18)
 proposes and scores harness edits, but a deterministic strict-`>` gate on a
 held-out split accepts them and a human adopts them; the worker stays frozen
-throughout. The harness gains the context and tool levers and a compounding
-loop; it does not gain the authority to apply judgment on its own.
+throughout. The cold critic proposes findings, but a repository artifact
+confirms them or a human rejects at Ops; it never blocks on its own text. The
+harness gains the context and tool levers and a compounding loop; it does not
+gain the authority to apply judgment on its own.

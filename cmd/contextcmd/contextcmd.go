@@ -15,10 +15,6 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 )
 
-const storeDir = ".adh/context"
-
-const maxWorkingSet = 8
-
 // Config holds the configuration for the context command.
 type Config struct {
 	*root.Config
@@ -47,7 +43,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("context: expected a verb: list, route, or lint")
 	}
-	units, err := contextstore.Load(storeDir)
+	units, err := contextstore.Load(contextstore.DefaultStoreDir)
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
@@ -64,7 +60,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		}
 		return nil
 	case "route":
-		for _, unit := range contextstore.Route(units, args[1:], nil, maxWorkingSet) {
+		for _, unit := range contextstore.Route(units, args[1:], nil, contextstore.DefaultWorkingSet) {
 			_, _ = fmt.Fprintln(cfg.Stdout, unit.ID)
 		}
 		return nil

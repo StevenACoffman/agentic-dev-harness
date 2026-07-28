@@ -25,6 +25,32 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
+func TestCriticDefaults(t *testing.T) {
+	cfg := config.Defaults()
+	if cfg.CriticUnconfirmed() != config.UnconfirmedLesson {
+		t.Errorf(
+			"default unconfirmed disposition = %q, want %q",
+			cfg.CriticUnconfirmed(),
+			config.UnconfirmedLesson,
+		)
+	}
+	if len(cfg.Critic.GroundFrom) == 0 || len(cfg.Critic.Deny) == 0 {
+		t.Errorf("default critic ground_from/deny should be populated: %+v", cfg.Critic)
+	}
+}
+
+func TestLoadRepoOverridesCriticUnconfirmed(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeRepoConfig(t, "[critic]\nunconfirmed = \"drop\"\n")
+	cfg, err := config.Load(noEnv)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.CriticUnconfirmed() != "drop" {
+		t.Errorf("unconfirmed = %q, want drop from repo config", cfg.CriticUnconfirmed())
+	}
+}
+
 func TestLoadRepoOverridesDefaults(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeRepoConfig(t, "autonomy = \"L4\"\n[models.gate]\njudgment_roles = [\"strategy\"]\n")

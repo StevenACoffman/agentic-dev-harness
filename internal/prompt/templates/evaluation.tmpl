@@ -1,0 +1,5 @@
+Run the checks for arc {{.ID}} and report whether its proof holds.
+{{if .ProofKind}}Required proof: {{.ProofKind}}.{{end}}
+
+Confirm each proof artifact exists and establishes its claim. Report a pass only
+when every required check succeeds; otherwise report the specific failure.

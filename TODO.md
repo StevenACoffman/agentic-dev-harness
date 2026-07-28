@@ -97,13 +97,58 @@ around them is partial.
 
 ## Effectful seams still mocked
 
-- [ ] `model.Client`: only `Mock`; no real LLM client.
+- [x] `model.Relay`: a third `model.Client` whose completion is supplied out of
+  band — `adh step --relay` emits the stage prompt (`internal/prompt` templates,
+  cold-critic view) and parks a pending turn; `--response` resumes and advances.
+  Drives the LLM from a skill (`.claude/skills/adh-relay`) instead of an API.
+- [ ] `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
+  `Relay` are the only backends. Follow-ups: structured/validated relay replies,
+  `[models] driver` config to pick the backend, and relay wired into `run`.
 - [ ] `device.Validator`: only `Mock`; no adb adapter.
 - [ ] No `VCS`/git adapter — `ops`/close do not branch, commit, or merge.
 - [ ] No injected `Clock` (deterministic timestamps) once state grows time
   fields.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
   reference build vs native port.
+
+## Cold-critic grounding and finding disposition (§19)
+
+- [x] §19.1 grounding contract: the critic prompt now carries the repository-owned
+  working set — touched paths, acceptance bar, the proof packet's artifacts, and
+  the context units routed by the arc's labels/paths (`internal/critic`,
+  `Arc.Labels/Paths/Proof`). The builder's transcript stays denied (cold).
+- [x] §19.1 routing gap: an arc that declared a footprint (labels/paths) but routed
+  no context and left no proof exits 12 on `adh step --relay` at the critic —
+  the environment did not teach it; the relay must not guess.
+- [x] §19.2 structured findings: a critic turn's reply is findings JSON, parsed
+  and validated (`critic.ParseFindings`, validate-and-reject) into `Arc.Findings`
+  on `step --relay --response` at the critic; each finding names the artifact
+  (oracle/invariant/device/nfr/contract) that would confirm it.
+- [x] §19.2 disposition: `adh eval <id>` adjudicates each finding against its
+  named artifact (`cmd/evalcmd`, pure `critic.Dispose`). Confirmed (the artifact
+  ran and failed) returns the arc to Execution + a `failures` registry entry and
+  exits 5–8 by kind; unconfirmed (passed, or unrunnable) becomes a §11 lesson
+  candidate (`.adh/lesson-candidates.json`) and the arc advances to ops. The Ops
+  human gate is unchanged; no new exit code. `step --relay` refuses evaluation and
+  points at `adh eval`.
+- [x] §19.3 convergence: recorded as `critic.ConvergenceConstraint`; the critic
+  runs once per arc — a bounded critic/author revision loop stays a design
+  constraint, not a runtime gate.
+- [x] §19.4 config: `[critic]` block parsed with defaults; `unconfirmed` is wired
+  into `adh eval` (`config.CriticUnconfirmed`). `ground_from`/`deny` are recorded
+  but enforced structurally (the grounding assembly and the cold renderer), not yet
+  read as behavior.
+- [ ] §19.2 real adjudication depth: oracle/invariant/device findings run the
+  self-contained checks (mocks pass → unconfirmed); only a `contract` finding
+  (proof.Verify) has a genuine confirmed path today. Real per-finding oracle/device
+  runs wait on those adapters. NFR findings have no runner yet (always unconfirmed).
+- [ ] §19.1 diff content: only touched *paths* are surfaced; the actual diff needs
+  the missing VCS/git adapter (see effectful seams above).
+- [ ] Populate `Arc.Labels/Paths/Proof` from a real Execution stage — today they
+  are plumbed and rendered but only set by hand / by tests; nothing fills them yet.
+- [ ] Unify the Mock path: `run` and non-relay `step` still model-advance through
+  evaluation; only the relay path routes it through the deterministic `adh eval`
+  disposition. Fold them together once `run` gains a real reasoner.
 
 ## End-to-end lifecycle wiring
 

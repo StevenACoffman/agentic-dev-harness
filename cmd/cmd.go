@@ -22,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/closecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/evalcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/harnesscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
@@ -75,6 +76,7 @@ func Run(
 	contextcmd.New(r)
 	toolcmd.New(r)
 	step.New(r)
+	evalcmd.New(r)
 	run.New(r)
 	lessoncmd.New(r)
 	metricscmd.New(r)

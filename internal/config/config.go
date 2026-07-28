@@ -26,6 +26,9 @@ const (
 	defaultLevel   = "L2"
 	classReasoning = "reasoning"
 	classFast      = "fast"
+	// UnconfirmedLesson is the default disposition for a critic finding no artifact
+	// confirmed (§19.2, §19.4): keep it as a §11 lesson candidate.
+	UnconfirmedLesson = "lesson"
 )
 
 // Config is the resolved harness configuration (SPEC §3.1).
@@ -33,6 +36,18 @@ type Config struct {
 	Autonomy string `toml:"autonomy"`
 	Models   Models `toml:"models"`
 	Gates    Gates  `toml:"gates"`
+	Critic   Critic `toml:"critic"`
+}
+
+// Critic is the cold-critic policy (SPEC-ADDITIONS §19.4). GroundFrom and Deny
+// declare the working set and the one denied input; both are enforced
+// structurally today (the grounding assembly and the renderer), so they are
+// recorded for documentation and future wiring. Unconfirmed is the disposition
+// of a finding no artifact confirmed and is acted on by the eval command.
+type Critic struct {
+	GroundFrom  []string `toml:"ground_from"`
+	Deny        []string `toml:"deny"`
+	Unconfirmed string   `toml:"unconfirmed"`
 }
 
 // Models is the per-class model binding and the model-gate's judgment set.
@@ -70,7 +85,21 @@ func Defaults() Config {
 			},
 		},
 		Gates: Gates{ApprovalPhraseRequired: true},
+		Critic: Critic{
+			GroundFrom:  []string{"diff", "proof", "acceptance_bar", "context"},
+			Deny:        []string{"transcript"},
+			Unconfirmed: UnconfirmedLesson,
+		},
 	}
+}
+
+// CriticUnconfirmed is the configured disposition for an unconfirmed critic
+// finding (§19.2), defaulting to the §11 lesson candidate when unset.
+func (c *Config) CriticUnconfirmed() string {
+	if c.Critic.Unconfirmed == "" {
+		return UnconfirmedLesson
+	}
+	return c.Critic.Unconfirmed
 }
 
 // Load resolves the configuration by precedence. getenv is injected so the

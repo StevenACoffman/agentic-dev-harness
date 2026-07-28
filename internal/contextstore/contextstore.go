@@ -14,6 +14,15 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
+const (
+	// DefaultStoreDir is the conventional repo path the context store lives under
+	// (SPEC-ADDITIONS §10).
+	DefaultStoreDir = ".adh/context"
+	// DefaultWorkingSet is the default cap on how many units Route returns for a
+	// single stage's working set.
+	DefaultWorkingSet = 8
+)
+
 // Unit is one routable piece of context: a runbook, skill, domain note, or an
 // executable nonfunctional-requirement check. It routes by its labels and the
 // repository paths it governs.

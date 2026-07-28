@@ -6,6 +6,22 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
+func TestFindingKindValid(t *testing.T) {
+	for _, k := range []adh.FindingKind{
+		adh.FindingOracle, adh.FindingInvariant, adh.FindingDevice,
+		adh.FindingNFR, adh.FindingContract,
+	} {
+		if !k.Valid() {
+			t.Errorf("FindingKind(%q).Valid() = false, want true", k)
+		}
+	}
+	for _, k := range []adh.FindingKind{"", "bogus", "Oracle"} {
+		if k.Valid() {
+			t.Errorf("FindingKind(%q).Valid() = true, want false", k)
+		}
+	}
+}
+
 func TestParseResolution(t *testing.T) {
 	for _, res := range []adh.Resolution{
 		adh.ResolutionChange, adh.ResolutionInvestigation,

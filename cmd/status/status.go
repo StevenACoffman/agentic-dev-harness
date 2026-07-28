@@ -47,8 +47,8 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		return fmt.Errorf("status: %w", err)
 	}
 	var open, blocked int
-	for _, arc := range arcs {
-		switch arc.Status {
+	for i := range arcs {
+		switch arcs[i].Status {
 		case adh.StatusOpen:
 			open++
 		case adh.StatusBlocked:

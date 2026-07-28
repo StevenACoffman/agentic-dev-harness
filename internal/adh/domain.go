@@ -25,6 +25,17 @@ const (
 	ResolutionDecision      Resolution = "decision"      // a recorded decision, often "do not build"
 )
 
+// FindingKind values name the repository artifact whose run would confirm a
+// critic finding (SPEC-ADDITIONS §19.2). The Evaluation stage runs that artifact;
+// a finding is never trusted on the critic's text alone.
+const (
+	FindingOracle    FindingKind = "oracle"    // a differential-oracle divergence
+	FindingInvariant FindingKind = "invariant" // a property/invariant check
+	FindingDevice    FindingKind = "device"    // an on-device (adb) check (§2.4)
+	FindingNFR       FindingKind = "nfr"       // a nonfunctional-requirement check (§10)
+	FindingContract  FindingKind = "contract"  // a named local contract (e.g. a proof packet)
+)
+
 // Stage is one station of the five-stage arc loop.
 type Stage string
 
@@ -34,6 +45,18 @@ type Status string
 // Resolution is how an arc closes; a non-change arc need not run the build stages.
 type Resolution string
 
+// FindingKind is the kind of repository artifact a critic finding names (§19.2).
+type FindingKind string
+
+// Finding is a critic's hypothesis about the change under review (§19.2): a
+// summary and the repository artifact (Kind + Ref) whose run would confirm it.
+// The Evaluation stage adjudicates it; the harness never blocks on its text.
+type Finding struct {
+	Summary string      `json:"summary"`
+	Kind    FindingKind `json:"kind"`
+	Ref     string      `json:"ref,omitempty"`
+}
+
 // Arc is a unit of work driven through the loop.
 type Arc struct {
 	ID         string     `json:"id"`
@@ -42,6 +65,40 @@ type Arc struct {
 	Status     Status     `json:"status"`
 	Resolution Resolution `json:"resolution,omitempty"`
 	History    []string   `json:"history,omitempty"`
+	Pending    *Pending   `json:"pending,omitempty"`
+	// Labels and Paths are the arc's routing footprint (SPEC-ADDITIONS §10, §19.1):
+	// its labels and the repository paths it touches. They ground the cold critic
+	// by selecting the context units routed to the review; an arc that declares
+	// them but routes nothing records a routing gap (§19.1).
+	Labels []string `json:"labels,omitempty"`
+	Paths  []string `json:"paths,omitempty"`
+	// Proof is the repository-relative path to the proof packet manifest the
+	// builder left (SPEC §5.4). Empty until Execution records one; the critic
+	// reviews against it when present (§19.1).
+	Proof string `json:"proof,omitempty"`
+	// Findings are the cold critic's hypotheses awaiting adjudication by the
+	// Evaluation stage (§19.2). Set when the critic turn resumes; cleared once
+	// Evaluation has disposed of them.
+	Findings []Finding `json:"findings,omitempty"`
+}
+
+// Pending is an outstanding model turn: a stage's prompt emitted to an operator
+// whose reply is supplied out-of-band (the relay, SPEC §1-2), awaiting a resume.
+// It is nil unless the arc is parked mid-turn between an emit and its response.
+type Pending struct {
+	Stage  Stage  `json:"stage"`
+	Prompt string `json:"prompt"`
+}
+
+// Valid reports whether k is a known finding kind (§19.2). A validated kind lets
+// callers switch on it without a default-panic path.
+func (k FindingKind) Valid() bool {
+	switch k {
+	case FindingOracle, FindingInvariant, FindingDevice, FindingNFR, FindingContract:
+		return true
+	default:
+		return false
+	}
 }
 
 // NextStage returns the stage after s in the change pipeline and whether one

@@ -83,7 +83,8 @@ func (cfg *Config) listArcs(store *state.Store) error {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no arcs")
 		return nil
 	}
-	for _, arc := range arcs {
+	for i := range arcs {
+		arc := &arcs[i]
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\t%s\n", arc.ID, arc.Stage, arc.Status, arc.Title)
 	}
 	return nil
