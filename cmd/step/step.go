@@ -29,6 +29,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
@@ -193,10 +194,14 @@ func (cfg *Config) emit(
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
 ) error {
-	// Ground the critic from repository state (§19.1): the configured proof
-	// contract (§19.4) as the acceptance bar and the diff of the change under
-	// review (the shell reads the diff; the engine renders and parks the prompt).
-	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
+	// Ground the stage from repository state (§10, §19.1): the acceptance bar (§19.4),
+	// the available tools (§13), and — for the critic — the diff of the change under
+	// review (the shell reads them; the engine routes context, renders, and parks).
+	reg, err := toolreg.LoadRepo(cfg.repoDir())
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 	}

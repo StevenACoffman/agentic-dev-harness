@@ -24,6 +24,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
@@ -175,7 +176,11 @@ func (cfg *Config) emitRelay(
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
 ) error {
-	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution)}
+	reg, err := toolreg.LoadRepo(cfg.repoDir())
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 	}

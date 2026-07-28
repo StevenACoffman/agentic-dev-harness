@@ -12,6 +12,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -65,7 +66,20 @@ func Emit(
 		return Outcome{}, &adh.Error{Op: "relay.Emit", Err: err}
 	}
 	arc.Pending = &adh.Pending{Stage: arc.Stage, Prompt: req.Prompt}
+	arc.Context = contextIDs(ground.Context) // record the loaded working set (§10.3)
 	return Outcome{Kind: Awaiting, Prompt: req.Prompt}, nil
+}
+
+// contextIDs is the IDs of the routed units, the working set recorded on the arc.
+func contextIDs(units []contextstore.Unit) []string {
+	if len(units) == 0 {
+		return nil
+	}
+	ids := make([]string, len(units))
+	for i := range units {
+		ids[i] = units[i].ID
+	}
+	return ids
 }
 
 // Resume validates replyText against the current stage's contract (critic.ParseReply)
