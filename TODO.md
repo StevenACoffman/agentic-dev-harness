@@ -166,8 +166,11 @@ around them is partial.
 - [x] `proof` is nested (real ff `create`/`verify` subcommands), so
   `proof create --out <path> <arc> <paths>` parses (`--out` restored); and `close`
   defaults `--proof` to `Arc.Proof` when omitted, closing the create → close loop.
-- [ ] Follow-up: the manifest could carry provenance (a git SHA) per §SPEC 5.4 —
-  an optional refinement.
+- [x] Provenance: the manifest carries an optional `Provenance{git_sha}` (§SPEC
+  5.4/§4). `proof create` records the repo's HEAD SHA (`vcs.HeadSHA`, best-effort:
+  no repo / no commit → none); it is informational, not a gate — `Verify` still
+  checks only existence + digest, so a proof created at one commit verifies at
+  another. Follow-up: screenshot-domain provenance (dimensions, redaction method).
 
 ## Cold-Critic Grounding and Finding Disposition (§19)
 
