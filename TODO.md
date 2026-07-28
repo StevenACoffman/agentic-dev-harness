@@ -288,10 +288,17 @@ close` (verifies proof, ships).
   reading `toolreg.LoadRepo`. The loaded working set is recorded on `Arc.Context`
   (§10.3). Composes with `arc --label` (labels route context at strategy/execution
   before Execution derives paths).
-- [ ] Still standalone (not force-fit into the single-arc ship path): `lesson`,
-  `loop`, `worker`. `harness`/consolidate is wired through `sleep`. A real
-  evaluation stage that fails an arc back to execution is modeled (`StatusFailed`)
-  but the mock never triggers it.
+- [x] `lesson` / `loop` / `worker` folded into the loop: `run`/`step` refuse with
+  exit 9 (reason `requalify`) when the worker changed from the recorded epoch (§14,
+  `worker.RequalifyNeeded`; a never-requalified workspace is ungated); `loop run`
+  senses the invariant and opens an arc under the loop's owner on a departure (§15);
+  and `lesson list` surfaces the Evaluation loop's candidate file, not just the
+  confirmed registry (§11.1). Deliberately still manual: **lesson promotion** is a
+  human-gated action (§11.2), and **loop scheduling** (`schedule = "daily"`) is the
+  deferred crontab item — `loop run` is the manual/agent-driven trigger. `harness`/
+  consolidate remains wired through `sleep`.
+- [ ] A real evaluation stage that fails an arc back to execution is modeled
+  (`StatusFailed`) but the mock never triggers it.
 
 ## Offload to a Mature Library (Undifferentiated Heavy Lifting)
 
