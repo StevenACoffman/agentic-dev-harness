@@ -105,7 +105,10 @@ around them is partial.
   `Relay` are the only backends. Follow-ups: structured/validated relay replies,
   `[models] driver` config to pick the backend, and relay wired into `run`.
 - [ ] `device.Validator`: only `Mock`; no adb adapter.
-- [ ] No `VCS`/git adapter — `ops`/close do not branch, commit, or merge.
+- [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
+  status/branch/commit; `internal/vcs.Mock` is the test double. Follow-ups:
+  merge/revert (go-git merge is experimental → a `git` shell-out) and wiring
+  branch/commit into the `ops`/`close` lifecycle.
 - [ ] No injected `Clock` (deterministic timestamps) once state grows time
   fields.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
@@ -142,8 +145,10 @@ around them is partial.
   self-contained checks (mocks pass → unconfirmed); only a `contract` finding
   (proof.Verify) has a genuine confirmed path today. Real per-finding oracle/device
   runs wait on those adapters. NFR findings have no runner yet (always unconfirmed).
-- [ ] §19.1 diff content: only touched *paths* are surfaced; the actual diff needs
-  the missing VCS/git adapter (see effectful seams above).
+- [ ] §19.1 diff content: only touched *paths* are surfaced. The `internal/vcs`
+  adapter now reports the working tree's changed paths (`Status.Changed`); the
+  *unified diff text* still needs a `git diff` shell-out — go-git's textual diff
+  is a weak spot — and the grounding is not yet wired to consult it.
 - [ ] Populate `Arc.Labels/Paths/Proof` from a real Execution stage — today they
   are plumbed and rendered but only set by hand / by tests; nothing fills them yet.
 - [ ] Unify the Mock path: `run` and non-relay `step` still model-advance through
@@ -187,19 +192,29 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       manager writes one workspace from many arcs.
 - [ ] `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
       counting → the official SDKs (`anthropic-sdk-go`, `openai-go`). Never a
-      hand-rolled HTTP/retry layer.
-- [ ] `VCS` (git branch/commit/merge/revert, protected path) → shell out to the
-      `git` binary for mutations; `go-git` for read-only inspection.
+      hand-rolled HTTP/retry layer. **Deferred**: needs API keys + network (no
+      deterministic test here), and `model.Relay` is the skill-driven backend the
+      tool actually uses today.
+- [x] `VCS` (branch/commit/status) → `internal/vcs` over `go-git/v6` + the `vcs`
+      command; `Mock` for tests. Merge/revert stay a `git` shell-out (go-git
+      merge is experimental), and lifecycle (`ops`/`close`) wiring is a follow-up.
 - [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
+      **Deferred**: needs a device; a shell-out adapter is untestable in CI.
 - [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
       decoding with `BurntSushi/toml` behind an explicit, pure precedence overlay
       (no config-framework globals — Viper avoided per go-advice §1/§3). See the
       Config wiring section.
-- [ ] Structured logging (§14) → stdlib `log/slog`.
+- [ ] Structured logging (§14) → stdlib `log/slog`. **Deferred**: no verbosity
+      toggle or destination contract yet (the `--quiet`/`--verbose` global flags
+      are themselves deferred under Command surface); tie the two together.
 - [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
-      not hand-grown regexes.
+      not hand-grown regexes. **Deferred**: the Go option is
+      `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
+      API) — a proper integration is its own focused effort, not a thin wrap, and
+      a curated regex set is exactly the "hand-grown" this bullet forbids.
 - [ ] Scheduling (`sleep schedule`, loops §15) → system crontab, or
-      `robfig/cron` in-process.
+      `robfig/cron` in-process. **Deferred**: the `sleep schedule` command does
+      not exist yet — build the command first, then offload the scheduler.
 
 Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
 (the "parse at the boundary" idiom), JSON via `encoding/json`, hashing via
