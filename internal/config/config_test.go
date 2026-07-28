@@ -72,6 +72,29 @@ func TestProofContractPerKeyOverrideFallsBack(t *testing.T) {
 	}
 }
 
+func TestStarterTOMLLoadsToSaneValues(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(config.RepoConfigFile, []byte(config.StarterTOML), 0o600); err != nil {
+		t.Fatalf("write starter: %v", err)
+	}
+	cfg, err := config.Load(noEnv)
+	if err != nil {
+		t.Fatalf("the starter config must load without error: %v", err)
+	}
+	if cfg.AutonomyLevel() != authority.L2 {
+		t.Errorf("starter autonomy = %s, want L2", cfg.AutonomyLevel())
+	}
+	if !cfg.JudgmentRoles().Requires(adh.StageStrategy) {
+		t.Errorf("starter judgment set should include strategy")
+	}
+	if cfg.ProofContract(adh.ResolutionChange) == "" {
+		t.Errorf("starter should define a change proof contract")
+	}
+}
+
 func TestLoadRepoOverridesCriticUnconfirmed(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writeRepoConfig(t, "[critic]\nunconfirmed = \"drop\"\n")

@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	repoConfigFile = ".adh/config.toml"
+	// RepoConfigFile is the repo-level config path (SPEC §3): the loader's repo
+	// layer and the path `adh init` writes the starter config to.
+	RepoConfigFile = ".adh/config.toml"
 	autonomyFile   = ".adh/autonomy"
 	defaultLevel   = "L2"
 	classReasoning = "reasoning"
@@ -30,6 +32,38 @@ const (
 	// confirmed (§19.2, §19.4): keep it as a §11 lesson candidate.
 	UnconfirmedLesson = "lesson"
 )
+
+// StarterTOML is the documented starter config `adh init` writes to
+// .adh/config.toml (SPEC §3.1). It resolves to the built-in defaults with the
+// knobs surfaced and commented so an operator can tailor a deployment; unknown
+// keys (illustrative sections like [oracle]) are ignored by the loader.
+const StarterTOML = `autonomy = "L2"                 # current autonomy level (L0-L4)
+
+[models]
+# The model-gate enforces that "judgment" roles run on a "reasoning" class.
+reasoning = "strong-cold-model" # Strategy, Critic, Evaluation
+fast      = "fast-model"        # Execution, Ops
+
+[models.gate]
+# Roles that MUST run on a reasoning-class model.
+judgment_roles = ["strategy", "critic", "eval"]
+
+[gates]
+approval_phrase_required = true
+
+[critic]
+# What an unconfirmed critic finding becomes (§19.2): a §11 lesson candidate.
+unconfirmed = "lesson"
+
+[proof.contract]
+# The acceptance bar each resolution's proof must meet to close (§SPEC 5.4, §12).
+# Generic defaults; a mobile port might set change = "oracle, invariant, and
+# on-device proof".
+change        = "the change's tests pass and its review/CI checks are green"
+investigation = "the sources inspected and the reproducible finding"
+experiment    = "the instrumentation and the readout that answers the product question"
+decision      = "the evidence and the rationale behind the call"
+`
 
 // Config is the resolved harness configuration (SPEC §3.1).
 type Config struct {
@@ -196,7 +230,7 @@ func configDocs(getenv func(string) string) ([][]byte, error) {
 	if explicit := getenv("ADH_CONFIG"); explicit != "" {
 		return readLayers(explicit)
 	}
-	return readLayers(userConfigPath(getenv), repoConfigFile)
+	return readLayers(userConfigPath(getenv), RepoConfigFile)
 }
 
 func readLayers(paths ...string) ([][]byte, error) {
