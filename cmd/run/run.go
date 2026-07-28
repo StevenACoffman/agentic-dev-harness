@@ -93,6 +93,11 @@ func (cfg *Config) drive(
 		if err := store.Save(arc); err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
+		// Per-stage progress on the diagnostic stream (Info): visible under
+		// --verbose even in --jsonl mode, where stdout carries only the terminal
+		// outcome.
+		cfg.Log.InfoContext(ctx, "stage advanced",
+			"op", "run", "arc", arc.ID, "from", string(from), "to", string(arc.Stage))
 		if !cfg.JSONL {
 			_, _ = fmt.Fprintf(cfg.Stdout, "ran %s\n", from)
 		}

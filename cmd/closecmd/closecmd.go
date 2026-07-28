@@ -55,7 +55,7 @@ func New(parent *root.Config) *Config {
 	return &cfg
 }
 
-func (cfg *Config) exec(_ context.Context, args []string) error {
+func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("close: requires an arc id")
 	}
@@ -85,16 +85,16 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	// The gates have passed (approved at ops + verified proof), so the ship is the
 	// irreversible VCS mutation — commit the change (§SPEC 5.2, §12).
-	hash, branch := cfg.ship(&arc)
+	hash, branch := cfg.ship(ctx, &arc)
 	arc.Status = adh.StatusClosed
 	arc.History = append(arc.History, "closed as "+string(arc.Resolution))
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("close: %w", err)
 	}
 	// Effectiveness accounting (§16): record the closed arc's cost. The ship is
-	// authoritative; a metrics-write failure is surfaced, not fatal.
+	// authoritative; a metrics-write failure is a diagnostic, not fatal.
 	if err := recordMetric(&arc); err != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: metrics not recorded: %s\n", err)
+		cfg.Log.WarnContext(ctx, "metrics not recorded", "op", "close", "arc", arc.ID, "err", err)
 	}
 	return cfg.reportClosed(&arc, hash, branch)
 }
@@ -242,7 +242,7 @@ func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
 // surfaced warning, not a failed close. Non-`change` resolutions carry no commit.
 // It returns the short commit hash and the branch it landed on, or empty strings
 // when nothing was committed; the caller renders the outcome.
-func (cfg *Config) ship(arc *adh.Arc) (hash, branch string) {
+func (cfg *Config) ship(ctx context.Context, arc *adh.Arc) (hash, branch string) {
 	if arc.Resolution != adh.ResolutionChange {
 		return "", ""
 	}
@@ -254,10 +254,22 @@ func (cfg *Config) ship(arc *adh.Arc) (hash, branch string) {
 	who := vcs.Signature{Name: "adh", Email: "adh@localhost"}
 	hash, err = repo.Commit(arc.ID+": "+arc.Title, who, time.Now())
 	if err != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: commit skipped: %s\n", err)
+		cfg.Log.WarnContext(ctx, "commit skipped", "op", "close", "arc", arc.ID, "err", err)
 		return "", ""
 	}
 	arc.History = append(arc.History, "committed "+hash+" on "+branch)
+	cfg.Log.InfoContext(
+		ctx,
+		"committed",
+		"op",
+		"close",
+		"arc",
+		arc.ID,
+		"commit",
+		hash,
+		"branch",
+		branch,
+	)
 	return hash, branch
 }
 

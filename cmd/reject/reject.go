@@ -44,7 +44,7 @@ func New(parent *root.Config) *Config {
 	return &cfg
 }
 
-func (cfg *Config) exec(_ context.Context, args []string) error {
+func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("reject: requires an arc id")
 	}
@@ -58,7 +58,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if arc.Status != adh.StatusBlocked {
 		return fmt.Errorf("reject: arc %s is not waiting at a gate (status %s)", id, arc.Status)
 	}
-	reverted := cfg.revert(arc.Paths)
+	reverted := cfg.revert(ctx, arc.Paths)
 	returnToExecution(&arc)
 	arc.History = append(arc.History, cfg.rejectNote(reverted))
 	if err := store.Save(&arc); err != nil {
@@ -83,7 +83,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 // best-effort: outside a git repo (or with no footprint) there is nothing to undo,
 // and a revert error is a surfaced warning, not a failed reject — the arc still
 // returns to Execution. It reports whether the working tree was reverted.
-func (cfg *Config) revert(paths []string) bool {
+func (cfg *Config) revert(ctx context.Context, paths []string) bool {
 	if len(paths) == 0 {
 		return false
 	}
@@ -92,7 +92,7 @@ func (cfg *Config) revert(paths []string) bool {
 		return false // no git repo here — nothing to undo
 	}
 	if err := repo.Revert(paths); err != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "reject: warning: revert skipped: %s\n", err)
+		cfg.Log.WarnContext(ctx, "revert skipped", "op", "reject", "err", err)
 		return false
 	}
 	return true
