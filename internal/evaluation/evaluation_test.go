@@ -55,16 +55,20 @@ func TestApplyConfirmedReturnsToExecution(t *testing.T) {
 	arc := adh.Arc{
 		ID:       "arc-0001",
 		Stage:    adh.StageEvaluation,
+		Status:   adh.StatusOpen,
 		Findings: []adh.Finding{{Kind: adh.FindingDevice}},
 	}
 	v := critic.Verdict{
 		Confirmed: []adh.Finding{{Summary: "screen wrong", Kind: adh.FindingDevice}},
 	}
-	if err := evaluation.Apply(&arc, &v, true); err != nil {
+	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if arc.Stage != adh.StageExecution {
-		t.Errorf("stage = %s, want execution", arc.Stage)
+	if arc.Stage != adh.StageExecution || arc.Status != adh.StatusOpen {
+		t.Errorf("(stage, status) = (%s, %s), want (execution, open)", arc.Stage, arc.Status)
+	}
+	if arc.Reworks != 1 {
+		t.Errorf("reworks = %d, want 1 (a rework within budget)", arc.Reworks)
 	}
 	if len(arc.Findings) != 0 {
 		t.Errorf("findings not cleared: %+v", arc.Findings)
@@ -75,11 +79,72 @@ func TestApplyConfirmedReturnsToExecution(t *testing.T) {
 	}
 }
 
+// TestApplyFailsTerminallyPastBudget: once an arc has spent its rework budget, a
+// still-confirmed finding fails it terminally (StatusFailed) rather than looping —
+// the "loop ends" closure (SPEC §4.1, §19.3).
+func TestApplyFailsTerminallyPastBudget(t *testing.T) {
+	t.Chdir(t.TempDir())
+	arc := adh.Arc{
+		ID:       "arc-0001",
+		Stage:    adh.StageEvaluation,
+		Status:   adh.StatusOpen,
+		Reworks:  evaluation.DefaultMaxReworks, // budget already spent
+		Findings: []adh.Finding{{Kind: adh.FindingDevice}},
+	}
+	v := critic.Verdict{
+		Confirmed: []adh.Finding{{Summary: "still wrong", Kind: adh.FindingDevice}},
+	}
+	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if arc.Status != adh.StatusFailed {
+		t.Errorf("status = %s, want failed (rework budget spent)", arc.Status)
+	}
+	if arc.Reworks != evaluation.DefaultMaxReworks {
+		t.Errorf("reworks = %d, want it unchanged at the budget on a terminal fail", arc.Reworks)
+	}
+	if len(arc.Findings) != 0 {
+		t.Errorf("findings not cleared: %+v", arc.Findings)
+	}
+	if notes, _ := failures.Load(failures.RegistryFile); len(notes) != 1 {
+		t.Errorf("failure registry = %v, want the terminal failure recorded", notes)
+	}
+}
+
+// TestDecide covers the three-way disposition and the budget boundary.
+func TestDecide(t *testing.T) {
+	t.Parallel()
+	confirmed := &critic.Verdict{Confirmed: []adh.Finding{{Kind: adh.FindingDevice}}}
+	clean := &critic.Verdict{Unconfirmed: []adh.Finding{{Kind: adh.FindingOracle}}}
+	tests := []struct {
+		name    string
+		verdict *critic.Verdict
+		reworks int
+		max     int
+		want    evaluation.Disposition
+	}{
+		{"clean advances", clean, 0, 2, evaluation.AdvanceToOps},
+		{"confirmed under budget reworks", confirmed, 0, 2, evaluation.ReturnToExecution},
+		{"confirmed one below budget reworks", confirmed, 1, 2, evaluation.ReturnToExecution},
+		{"confirmed at budget fails", confirmed, 2, 2, evaluation.Fail},
+		{"zero budget fails on first confirm", confirmed, 0, 0, evaluation.Fail},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := evaluation.Decide(tt.verdict, tt.reworks, tt.max); got != tt.want {
+				t.Errorf("Decide(reworks=%d, max=%d) = %d, want %d",
+					tt.reworks, tt.max, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyUnconfirmedAdvancesAndRecordsLesson(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, true); err != nil {
+	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Stage != adh.StageOps {
@@ -95,7 +160,7 @@ func TestApplyUnconfirmedSkipsLessonWhenDisabled(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, false); err != nil {
+	if err := evaluation.Apply(&arc, &v, false, evaluation.DefaultMaxReworks); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if candidates, _ := failures.Load(failures.CandidatesFile); len(candidates) != 0 {

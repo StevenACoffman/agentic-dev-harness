@@ -14,7 +14,7 @@ const (
 	StatusOpen    Status = "open"    // moving through the loop
 	StatusBlocked Status = "blocked" // waiting at a human gate
 	StatusClosed  Status = "closed"  // finished with proof
-	StatusFailed  Status = "failed"  // returned to execution by a failed check
+	StatusFailed  Status = "failed"  // failed evaluation past its rework budget; terminal, awaiting a human
 )
 
 // Resolution values (SPEC-ADDITIONS §12); each carries its own proof contract.
@@ -84,6 +84,10 @@ type Arc struct {
 	// Evaluation stage (§19.2). Set when the critic turn resumes; cleared once
 	// Evaluation has disposed of them.
 	Findings []Finding `json:"findings,omitempty"`
+	// Reworks counts the times Evaluation confirmed a finding and returned this arc
+	// to Execution (SPEC §4.1). It bounds the rework loop: once it reaches the
+	// evaluation budget the arc fails terminally (StatusFailed) rather than looping.
+	Reworks int `json:"reworks,omitempty"`
 }
 
 // Pending is an outstanding model turn: a stage's prompt emitted to an operator

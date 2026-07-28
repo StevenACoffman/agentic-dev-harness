@@ -32,6 +32,24 @@ const (
 	oracleHues   = 3
 )
 
+// DefaultMaxReworks bounds the rework loop (SPEC §4.1, §19.3): the number of times
+// Evaluation may confirm a finding and return an arc to Execution before the arc
+// fails terminally instead of looping. A sensible default beats a config knob no
+// one tunes; a caller that knows better passes its own budget.
+const DefaultMaxReworks = 2
+
+// Disposition values (see Disposition).
+const (
+	AdvanceToOps      Disposition = iota // no finding confirmed; on to the ops gate
+	ReturnToExecution                    // a finding confirmed, within the rework budget
+	Fail                                 // a finding confirmed, rework budget exhausted
+)
+
+// Disposition is what Evaluation does with an arc given a verdict and the arc's
+// rework history (SPEC §4.1): advance to the ops gate, return to Execution to
+// rework, or fail terminally once the rework budget is spent.
+type Disposition int
+
 // Adjudicator runs the repository artifact a critic finding names and reports
 // whether it could be run and whether it failed (§19.2). It is the point-of-use
 // seam: RepoAdjudicator is the real one; tests inject a fake.
@@ -115,6 +133,20 @@ func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, r
 	return false, false // could not start the check
 }
 
+// Decide picks the arc's disposition (SPEC §4.1): a clean verdict advances to the
+// ops gate; a confirmed finding returns the arc to Execution to rework until the
+// budget is spent, after which the arc fails terminally rather than looping. It is
+// pure — the caller (Apply) mutates the arc.
+func Decide(verdict *critic.Verdict, reworks, maxReworks int) Disposition {
+	if !verdict.ReturnsToExecution() {
+		return AdvanceToOps
+	}
+	if reworks >= maxReworks {
+		return Fail
+	}
+	return ReturnToExecution
+}
+
 // Adjudicate runs each finding's artifact and disposes of the results (§19.2). It
 // is pure with respect to the arc — the caller applies the verdict.
 func Adjudicate(
@@ -134,42 +166,48 @@ func Adjudicate(
 	return critic.Dispose(results), nil
 }
 
-// Apply records the verdict and moves the arc on (§19.2): confirmed findings are
-// appended to the failure registry and return the arc to Execution; unconfirmed
-// ones become lesson candidates (when recordLessons is set) and the arc advances
-// to the ops gate. It clears the arc's findings. It mutates arc and writes the
-// registries; it neither saves the arc nor sets an exit code — those stay with the
-// caller.
-func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool) error {
+// Apply records the verdict and moves the arc on (SPEC §4.1, §19.2): unconfirmed
+// findings become lesson candidates (when recordLessons is set), and the arc's
+// disposition follows Decide — advance to the ops gate, return to Execution to
+// rework (within maxReworks, incrementing Reworks), or fail terminally once the
+// budget is spent. A confirmed finding is appended to the failure registry on both
+// the rework and the terminal path. It clears the arc's findings. It mutates arc
+// and writes the registries; it neither saves the arc nor sets an exit code — those
+// stay with the caller.
+func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool, maxReworks int) error {
 	const op = "evaluation.Apply"
 	if recordLessons {
 		if err := failures.Append(failures.CandidatesFile, verdict.LessonNotes()...); err != nil {
 			return &adh.Error{Op: op, Err: err}
 		}
 	}
-	if verdict.ReturnsToExecution() {
+	disposition := Decide(verdict, arc.Reworks, maxReworks)
+	if disposition != AdvanceToOps { // both the rework and the terminal path failed a check
 		if err := failures.Append(failures.RegistryFile, verdict.FailureNotes()...); err != nil {
 			return &adh.Error{Op: op, Err: err}
 		}
-		arc.Stage = adh.StageExecution
-		arc.History = append(
-			arc.History,
-			fmt.Sprintf(
-				"evaluation: %d finding(s) confirmed; returned to execution",
-				len(verdict.Confirmed),
-			),
-		)
-		arc.Findings = nil
-		return nil
 	}
-	arc.Stage = adh.StageOps
-	arc.History = append(
-		arc.History,
-		fmt.Sprintf(
+	switch disposition {
+	case ReturnToExecution:
+		arc.Reworks++
+		arc.Stage = adh.StageExecution
+		arc.History = append(arc.History, fmt.Sprintf(
+			"evaluation: %d finding(s) confirmed; returned to execution (rework %d/%d)",
+			len(verdict.Confirmed), arc.Reworks, maxReworks,
+		))
+	case Fail:
+		arc.Status = adh.StatusFailed
+		arc.History = append(arc.History, fmt.Sprintf(
+			"evaluation: %d finding(s) confirmed; failed after %d rework(s), escalate to a human",
+			len(verdict.Confirmed), arc.Reworks,
+		))
+	case AdvanceToOps:
+		arc.Stage = adh.StageOps
+		arc.History = append(arc.History, fmt.Sprintf(
 			"evaluation: no findings confirmed; %d lesson candidate(s)",
 			len(verdict.Unconfirmed),
-		),
-	)
+		))
+	}
 	arc.Findings = nil
 	return nil
 }
