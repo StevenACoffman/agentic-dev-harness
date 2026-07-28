@@ -206,14 +206,14 @@ around them is partial.
   (proof.Verify) has a genuine confirmed path today. Real per-finding oracle/device
   runs wait on those adapters (adb; a real oracle target). NFR findings have no
   runner yet (always unconfirmed).
-- [ ] §19.1 unified diff *text*: `Arc.Paths` now reflects the change, but the diff
-  *text* still needs generating (go-git's working-tree textual diff is a weak spot)
-  and a `Grounding.Diff` field + template line to surface it to the critic. Offload
-  the generation to `github.com/hexops/gotextdiff` (maintained unified-diff
-  generator), **scoped to the pre-commit critic-grounding case only** — feed it the
-  HEAD-blob vs worktree content read via the existing go-git handle, keeping tests
-  hermetic (no `git` binary). The post-commit (tree-to-tree) diff needs no library:
-  go-git's native `(*object.Patch).String()` already emits it.
+- [x] §19.1 unified diff *text*: `vcs.Diff(paths)` renders a unified diff of the
+  HEAD-blob vs worktree content via the go-git handle, formatted with
+  `github.com/hexops/gotextdiff` (no `git` binary — tests stay hermetic). The critic
+  grounding carries it (`Grounding.Diff`, via a `critic.Inputs` bundle so the pure
+  core reads no config or vcs), `step` gathers it best-effort for the critic stage
+  (size-capped with a truncation marker), and `critic.tmpl` renders it. Follow-up:
+  the post-commit tree-to-tree diff (go-git's native `(*object.Patch).String()`)
+  for a critic that runs after a branch-per-arc commit — not needed pre-commit.
 - [x] Populate `Arc.Labels` from Execution + smooth the exit-12 wall. Resuming a
   relayed execution turn derives area labels from the changed paths
   (`contextstore.AreaLabels`, top-level dir) and unions them into `Arc.Labels`, so
