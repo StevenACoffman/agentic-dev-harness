@@ -1,5 +1,8 @@
-// Package reject implements the "reject" CLI command: reject a pending human
-// gate on an arc, returning it to a failed state with an optional reason.
+// Package reject implements the "reject" CLI command: the negative half of the
+// human gate (SPEC §5.2, §2.3). Rejecting a blocked arc returns it to Execution
+// and undoes the change it was carrying — the symmetric counterpart of approve,
+// which advances the same gate. The arc's working-tree changes are reverted so a
+// re-execution starts from the base, not the rejected attempt.
 package reject
 
 import (
@@ -12,6 +15,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
 // Config holds the configuration for the reject command.
@@ -30,9 +34,9 @@ func New(parent *root.Config) *Config {
 	cfg.Flags.StringVar(&cfg.Reason, 'r', "reason", "", "why the gate was rejected")
 	cfg.Command = &ff.Command{
 		Name:      "reject",
-		Usage:     "agentic-dev-harness reject <arc-id> [--reason text]",
-		ShortHelp: "reject a pending human gate on an arc",
-		LongHelp:  "Reject a pending gate, returning the arc to a failed state with an optional reason.",
+		Usage:     "agentic-dev-harness reject [--reason text] <arc-id>",
+		ShortHelp: "reject a pending human gate, returning the arc to Execution",
+		LongHelp:  "Reject a pending gate (SPEC §5.2): revert the arc's working-tree changes and return it to Execution to be reworked.",
 		Flags:     cfg.Flags,
 		Exec:      cfg.exec,
 	}
@@ -50,15 +54,68 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("reject: %w", err)
 	}
+	// Symmetric with approve: only a blocked arc is waiting at a gate to reject.
+	if arc.Status != adh.StatusBlocked {
+		return fmt.Errorf("reject: arc %s is not waiting at a gate (status %s)", id, arc.Status)
+	}
+	reverted := cfg.revert(arc.Paths)
+	returnToExecution(&arc)
+	arc.History = append(arc.History, cfg.rejectNote(reverted))
+	if err := store.Save(&arc); err != nil {
+		return fmt.Errorf("reject: %w", err)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "rejected %s; returned to execution\n", id)
+	return nil
+}
+
+// revert undoes the arc's working-tree changes, restoring paths to HEAD. It is
+// best-effort: outside a git repo (or with no footprint) there is nothing to undo,
+// and a revert error is a surfaced warning, not a failed reject — the arc still
+// returns to Execution. It reports whether the working tree was reverted.
+func (cfg *Config) revert(paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	repo, err := vcs.Open(cfg.repoDir())
+	if err != nil {
+		return false // no git repo here — nothing to undo
+	}
+	if err := repo.Revert(paths); err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "reject: warning: revert skipped: %s\n", err)
+		return false
+	}
+	return true
+}
+
+// returnToExecution sends the arc back to the start of the loop, open for rework,
+// and clears the footprint of the rejected attempt: its pending turn, findings,
+// and routing footprint (paths/labels). Re-execution re-derives them.
+func returnToExecution(arc *adh.Arc) {
+	arc.Stage = adh.StageExecution
+	arc.Status = adh.StatusOpen
+	arc.Pending = nil
+	arc.Findings = nil
+	arc.Paths = nil
+	arc.Labels = nil
+}
+
+// rejectNote records the disposition for the arc's history: the reason (if given)
+// and whether the working tree was reverted.
+func (cfg *Config) rejectNote(reverted bool) string {
 	note := "gate rejected"
 	if cfg.Reason != "" {
 		note += ": " + cfg.Reason
 	}
-	arc.Status = adh.StatusFailed
-	arc.History = append(arc.History, note)
-	if err := store.Save(&arc); err != nil {
-		return fmt.Errorf("reject: %w", err)
+	if reverted {
+		note += " (reverted)"
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "rejected %s\n", id)
-	return nil
+	return note + "; returned to execution"
+}
+
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
 }
