@@ -63,11 +63,57 @@ func Run(
 	stdout, stderr io.Writer,
 ) error {
 	r := root.New(getenv, stdin, stdout, stderr)
+	register(r)
+	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
+		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
+		return fmt.Errorf("parse: %w", err)
+	}
+	// --quiet suppresses non-error output for every command at once: they all write
+	// through the embedded *root.Config, so redirecting stdout here is enough.
+	// Errors still go to stderr.
+	if r.Quiet {
+		r.Stdout = io.Discard
+	}
+
+	if runErr := runSelected(ctx, r, stderr); runErr != nil {
+		return runErr
+	}
+	return nil
+}
+
+// runSelected runs the parsed command and translates its error: an ExitError,
+// ErrNoExec, or ErrHelp passes through; under --jsonl any other error becomes one
+// structured error outcome (no usage banner) carried by an ExitError; otherwise
+// the usage banner is printed and the error returned.
+func runSelected(ctx context.Context, r *root.Config, stderr io.Writer) error {
+	if err := r.Command.Run(ctx); err != nil {
+		var exitErr root.ExitError
+		switch {
+		case errors.As(err, &exitErr), errors.Is(err, ff.ErrNoExec), errors.Is(err, ff.ErrHelp):
+			// Already reported (ExitError) or not a failure (no subcommand / help).
+			return err
+		case r.JSONL:
+			// Machine consumers get one structured error outcome instead of the
+			// usage banner; the ExitError carries the code so main stays quiet.
+			code := root.CodeForError(err)
+			_ = r.EmitError(code, root.ReasonForError(err), err.Error())
+			return root.ExitError(code)
+		default:
+			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command.GetSelected()))
+			return err
+		}
+	}
+
+	return nil
+}
+
+// register wires every subcommand onto the root config. main is the only place
+// concrete command packages are composed (go-advice §1); this keeps Run focused on
+// parse-and-dispatch.
+func register(r *root.Config) {
 	version.New(r)
 	vcscmd.New(r)
 	gatecmd.New(r)
-	// register new commands here
-
 	arc.New(r)
 	status.New(r)
 	initcmd.New(r)
@@ -93,26 +139,4 @@ func Run(
 	workercmd.New(r)
 	judgecmd.New(r)
 	harnesscmd.New(r)
-	if err := r.Command.Parse(args, ff.WithEnvVarPrefix("AGENTIC_DEV_HARNESS")); err != nil {
-		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command))
-		return fmt.Errorf("parse: %w", err)
-	}
-	// --quiet suppresses non-error output for every command at once: they all write
-	// through the embedded *root.Config, so redirecting stdout here is enough.
-	// Errors still go to stderr.
-	if r.Quiet {
-		r.Stdout = io.Discard
-	}
-
-	if err := r.Command.Run(ctx); err != nil {
-		// Don't print usage help for ErrNoExec (no subcommand given) or
-		// ExitError (command already reported its own outcome).
-		var exitErr root.ExitError
-		if !errors.Is(err, ff.ErrNoExec) && !errors.As(err, &exitErr) {
-			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(r.Command.GetSelected()))
-		}
-		return err
-	}
-
-	return nil
 }

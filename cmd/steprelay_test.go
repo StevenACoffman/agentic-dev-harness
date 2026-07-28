@@ -14,7 +14,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
-// stepResult mirrors the JSON the step command emits under --jsonl.
+// stepResult mirrors the payload the step command carries in an --jsonl outcome's
+// data field.
 type stepResult struct {
 	Arc    string `json:"arc"`
 	Stage  string `json:"stage"`
@@ -35,11 +36,19 @@ func seedOpenArc(t *testing.T) string {
 
 func decodeStep(t *testing.T, out string) stepResult {
 	t.Helper()
-	var got stepResult
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
+	// step emits the outcome envelope {status, code, data:{...}}; the step payload
+	// is the data.
+	var env struct {
+		Status string     `json:"status"`
+		Data   stepResult `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("decode step JSON %q: %v", out, err)
 	}
-	return got
+	if env.Status != root.StatusOK {
+		t.Fatalf("step outcome status = %q, want ok\n%s", env.Status, out)
+	}
+	return env.Data
 }
 
 func TestStepRelayEmitParksPending(t *testing.T) {

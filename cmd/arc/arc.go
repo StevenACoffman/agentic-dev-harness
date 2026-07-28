@@ -112,7 +112,7 @@ func (cfg *Config) listArcs(store *state.Store) error {
 				Status: string(arc.Status),
 				Title:  arc.Title,
 			}
-			if err := cfg.EmitJSONL(line); err != nil {
+			if err := cfg.EmitOK(line); err != nil {
 				return fmt.Errorf("arc: %w", err)
 			}
 		}
@@ -140,7 +140,7 @@ func (cfg *Config) showArc(store *state.Store, args []string) error {
 	if cfg.JSONL {
 		// The full arc: adh.Arc's JSON tags give the agent stage history, findings,
 		// footprint, and proof in one record.
-		if err := cfg.EmitJSONL(&arc); err != nil {
+		if err := cfg.EmitOK(&arc); err != nil {
 			return fmt.Errorf("arc: %w", err)
 		}
 		return nil

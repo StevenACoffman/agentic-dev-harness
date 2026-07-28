@@ -41,6 +41,11 @@ const (
 	// maxCriticDiffBytes caps the diff surfaced to the critic so a large change
 	// never bloats the prompt unbounded; the excess is dropped with a marker.
 	maxCriticDiffBytes = 16 << 10
+	// opsGateCode is the exit code when an arc has reached the ops ship gate
+	// (SPEC §7 code 4: a pending human gate blocks advancement); routingGapCode is
+	// the §10 routing gap (exit 12).
+	opsGateCode    = 4
+	routingGapCode = 12
 )
 
 // Config holds the configuration for the step command.
@@ -94,7 +99,15 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("step: arc %s is not open (status %s)", arc.ID, arc.Status)
 	}
 	if arc.Stage == adh.StageOps {
-		return fmt.Errorf("step: arc %s is at ops; ship it with `close`", arc.ID)
+		msg := fmt.Sprintf("arc %s is at the ops gate; ship it with `close`", arc.ID)
+		if cfg.JSONL {
+			if err := cfg.EmitBlocked(opsGateCode, root.ReasonAtOps, msg); err != nil {
+				return fmt.Errorf("step: %w", err)
+			}
+		} else {
+			_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+		}
+		return root.ExitError(opsGateCode)
 	}
 	// Evaluation is deterministic on the relay path (§19.2): it adjudicates the
 	// critic's findings against repository artifacts, not by relaying another
@@ -201,12 +214,18 @@ func (cfg *Config) emit(
 		return fmt.Errorf("step: %w", err)
 	}
 	if gap {
-		_, _ = fmt.Fprintf(
-			cfg.Stderr,
-			"step: critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof, do not guess\n",
+		msg := fmt.Sprintf(
+			"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof, do not guess",
 			arc.ID,
 		)
-		return root.ExitError(12)
+		if cfg.JSONL {
+			if err := cfg.EmitBlocked(routingGapCode, root.ReasonUngrounded, msg); err != nil {
+				return fmt.Errorf("step: %w", err)
+			}
+		} else {
+			_, _ = fmt.Fprintf(cfg.Stderr, "step: %s\n", msg)
+		}
+		return root.ExitError(routingGapCode)
 	}
 	relay := model.Relay{}
 	req, err := stage.Request(renderer, arc, ground, relay.ModelClass(), judgment)
@@ -363,7 +382,7 @@ func (cfg *Config) readResponse() (string, error) {
 func (cfg *Config) report(arc *adh.Arc, status, promptText string) error {
 	if cfg.JSONL {
 		rec := result{Arc: arc.ID, Stage: string(arc.Stage), Status: status, Prompt: promptText}
-		if err := cfg.EmitJSONL(rec); err != nil {
+		if err := cfg.EmitOK(rec); err != nil {
 			return fmt.Errorf("step: %w", err)
 		}
 		return nil

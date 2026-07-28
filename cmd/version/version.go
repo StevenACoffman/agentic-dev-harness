@@ -199,7 +199,7 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	bi, _ := debug.ReadBuildInfo()
 	info := GetVersionInfoFrom(bi, Version)
 	if cfg.JSONL {
-		if err := cfg.EmitJSONL(info); err != nil {
+		if err := cfg.EmitOK(info); err != nil {
 			return fmt.Errorf("version: %w", err)
 		}
 		return nil

@@ -79,17 +79,26 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	required := authority.RequiredApprovalPhrase(id)
 	if !authority.GateSatisfied(required, cfg.Phrase, cfg.DryRun) {
-		_, _ = fmt.Fprintf(
-			cfg.Stderr,
-			"gate not satisfied: pass --phrase %s to approve\n",
-			required,
-		)
+		msg := "gate not satisfied: pass --phrase " + required + " to approve"
+		if cfg.JSONL {
+			if err := cfg.EmitBlocked(4, root.ReasonGate, msg); err != nil {
+				return fmt.Errorf("approve: %w", err)
+			}
+		} else {
+			_, _ = fmt.Fprintln(cfg.Stderr, msg)
+		}
 		return root.ExitError(4)
 	}
 	arc.Status = adh.StatusOpen
 	arc.History = append(arc.History, "gate approved")
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("approve: %w", err)
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]string{"arc": id, "status": "approved"}); err != nil {
+			return fmt.Errorf("approve: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "approved %s\n", id)
 	return nil

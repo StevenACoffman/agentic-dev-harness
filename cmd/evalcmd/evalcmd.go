@@ -38,14 +38,13 @@ type Config struct {
 	Command     *ff.Command
 }
 
-// result is the machine-readable disposition emitted under --jsonl.
+// result is the machine-readable disposition on the success (advanced) path,
+// carried as the outcome's data. A confirmed finding is an error outcome instead,
+// its reason the finding kind and its code the Evaluation exit code.
 type result struct {
-	Arc                 string `json:"arc"`
-	Confirmed           int    `json:"confirmed"`
-	Unconfirmed         int    `json:"unconfirmed"`
-	ReturnedToExecution bool   `json:"returned_to_execution"`
-	BlockingKind        string `json:"blocking_kind,omitempty"`
-	Stage               string `json:"stage"`
+	Arc         string `json:"arc"`
+	Unconfirmed int    `json:"unconfirmed"`
+	Stage       string `json:"stage"`
 }
 
 // New creates and registers the eval command with the given parent config.
@@ -110,35 +109,39 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	return cfg.report(&arc, &verdict)
 }
 
-// report emits the disposition (one JSONL record under --jsonl, else a human
-// line) and returns the Evaluation exit code: a confirmed finding surfaces as
-// exit 5–8 by kind, an unconfirmed disposition as success.
+// report emits the disposition (one outcome under --jsonl, else a human line) and
+// returns the Evaluation exit code: a confirmed finding is an error outcome (exit
+// 5–8, reason = the finding kind); an unconfirmed disposition is a success outcome.
 func (cfg *Config) report(arc *adh.Arc, verdict *critic.Verdict) error {
-	if cfg.JSONL {
-		if err := cfg.EmitJSONL(result{
-			Arc:                 arc.ID,
-			Confirmed:           len(verdict.Confirmed),
-			Unconfirmed:         len(verdict.Unconfirmed),
-			ReturnedToExecution: verdict.ReturnsToExecution(),
-			BlockingKind:        string(verdict.BlockingKind()),
-			Stage:               string(arc.Stage),
-		}); err != nil {
-			return fmt.Errorf("eval: %w", err)
-		}
-	}
 	if verdict.ReturnsToExecution() {
-		if !cfg.JSONL {
+		kind := verdict.BlockingKind()
+		code := exitFor(kind)
+		if cfg.JSONL {
+			msg := fmt.Sprintf("%d finding(s) confirmed; arc %s returned to execution",
+				len(verdict.Confirmed), arc.ID)
+			if err := cfg.EmitError(code, string(kind), msg); err != nil {
+				return fmt.Errorf("eval: %w", err)
+			}
+		} else {
 			_, _ = fmt.Fprintf(cfg.Stdout,
 				"eval: %d finding(s) confirmed; arc %s returned to execution\n",
 				len(verdict.Confirmed), arc.ID)
 		}
-		return root.ExitError(exitFor(verdict.BlockingKind()))
+		return root.ExitError(code)
 	}
-	if !cfg.JSONL {
-		_, _ = fmt.Fprintf(cfg.Stdout,
-			"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
-			arc.ID, len(verdict.Unconfirmed))
+	if cfg.JSONL {
+		if err := cfg.EmitOK(result{
+			Arc:         arc.ID,
+			Unconfirmed: len(verdict.Unconfirmed),
+			Stage:       string(arc.Stage),
+		}); err != nil {
+			return fmt.Errorf("eval: %w", err)
+		}
+		return nil
 	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
+		arc.ID, len(verdict.Unconfirmed))
 	return nil
 }
 

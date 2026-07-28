@@ -64,6 +64,17 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("reject: %w", err)
 	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"arc":      id,
+			"status":   "rejected",
+			"reverted": reverted,
+			"stage":    string(arc.Stage),
+		}); err != nil {
+			return fmt.Errorf("reject: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "rejected %s; returned to execution\n", id)
 	return nil
 }

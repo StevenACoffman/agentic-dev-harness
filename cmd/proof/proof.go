@@ -110,6 +110,16 @@ func (cfg *Config) create(args []string) error {
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("proof: %w", err)
 	}
+	if cfg.JSONL {
+		data := map[string]any{"arc": arc.ID, "artifacts": len(pkt.Artifacts), "manifest": out}
+		if pkt.Provenance != nil && pkt.Provenance.GitSHA != "" {
+			data["git_sha"] = pkt.Provenance.GitSHA
+		}
+		if err := cfg.EmitOK(data); err != nil {
+			return fmt.Errorf("proof: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"proof created: %d artifacts for %s at %s%s\n",
 		len(pkt.Artifacts), arc.ID, out, provenanceNote(&pkt))
@@ -154,8 +164,28 @@ func (cfg *Config) verify(args []string) error {
 		return fmt.Errorf("proof: %w", err)
 	}
 	if verifyErr := prooflib.Verify(cfg.repoDir(), &pkt); verifyErr != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "proof failed: %s\n", verifyErr)
+		if cfg.JSONL {
+			if err := cfg.EmitError(
+				8,
+				root.ReasonProof,
+				"proof failed: "+verifyErr.Error(),
+			); err != nil {
+				return fmt.Errorf("proof: %w", err)
+			}
+		} else {
+			_, _ = fmt.Fprintf(cfg.Stderr, "proof failed: %s\n", verifyErr)
+		}
 		return root.ExitError(8)
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"arc":       pkt.Arc,
+			"artifacts": len(pkt.Artifacts),
+			"verified":  true,
+		}); err != nil {
+			return fmt.Errorf("proof: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"proof verified: %d artifacts for %s\n", len(pkt.Artifacts), pkt.Arc)

@@ -53,9 +53,6 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	level := conf.AutonomyLevel()
-	judgment := conf.JudgmentRoles()
-	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	renderer, err := prompt.Default()
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -65,21 +62,62 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
+	return cfg.drive(ctx, store, &arc, &conf, renderer)
+}
+
+// drive relays the arc through stages until it parks at a gate or closes, honoring
+// the autonomy level. It emits the terminal outcome (blocked or completed).
+func (cfg *Config) drive(
+	ctx context.Context,
+	store *state.Store,
+	arc *adh.Arc,
+	conf *config.Config,
+	renderer stage.Prompter,
+) error {
+	level := conf.AutonomyLevel()
+	judgment := conf.JudgmentRoles()
+	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	for arc.Status == adh.StatusOpen {
 		if arc.Stage == adh.StageOps {
-			return cfg.block(store, &arc, "ops is the ship gate; approve then `close`")
+			return cfg.block(
+				store,
+				arc,
+				root.ReasonAtOps,
+				"ops is the ship gate; approve then `close`",
+			)
 		}
 		from := arc.Stage
-		if err := cfg.advanceStage(ctx, renderer, &arc, judgment, recordLessons); err != nil {
+		if err := cfg.advanceStage(ctx, renderer, arc, judgment, recordLessons); err != nil {
 			return err
 		}
-		if err := store.Save(&arc); err != nil {
+		if err := store.Save(arc); err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
-		_, _ = fmt.Fprintf(cfg.Stdout, "ran %s\n", from)
-		if !stage.AutoAdvances(from, level) {
-			return cfg.block(store, &arc, string(arc.Stage)+" requires a human gate")
+		if !cfg.JSONL {
+			_, _ = fmt.Fprintf(cfg.Stdout, "ran %s\n", from)
 		}
+		if !stage.AutoAdvances(from, level) {
+			return cfg.block(
+				store,
+				arc,
+				root.ReasonGate,
+				string(arc.Stage)+" requires a human gate",
+			)
+		}
+	}
+	return cfg.reportDone(arc)
+}
+
+// reportDone emits the terminal outcome when the loop completes (the arc left the
+// open state): a success outcome under --jsonl, else a human line.
+func (cfg *Config) reportDone(arc *adh.Arc) error {
+	if cfg.JSONL {
+		if err := cfg.EmitOK(
+			map[string]string{"arc": arc.ID, "status": string(arc.Status)},
+		); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "arc %s %s\n", arc.ID, arc.Status)
 	return nil
@@ -125,13 +163,20 @@ func (cfg *Config) repoDir() string {
 }
 
 // block parks the arc at a human gate (StatusBlocked) and records why, so the
-// approve/reject loop can act on it. Blocking at a gate is not an error.
-func (cfg *Config) block(store *state.Store, arc *adh.Arc, reason string) error {
+// approve/reject loop can act on it. Blocking at a gate is not an error, so run
+// exits 0; the outcome's status is blocked with the machine reason token.
+func (cfg *Config) block(store *state.Store, arc *adh.Arc, reason, message string) error {
 	arc.Status = adh.StatusBlocked
-	arc.History = append(arc.History, "blocked: "+reason)
+	arc.History = append(arc.History, "blocked: "+message)
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "blocked at %s: %s\n", arc.Stage, reason)
+	if cfg.JSONL {
+		if err := cfg.EmitBlocked(0, reason, message); err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "blocked at %s: %s\n", arc.Stage, message)
 	return nil
 }

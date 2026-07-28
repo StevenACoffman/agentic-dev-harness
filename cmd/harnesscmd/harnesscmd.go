@@ -234,7 +234,7 @@ func (cfg *Config) readOutput() (string, error) {
 
 func (cfg *Config) render(report *harness.EvalReport) error {
 	if cfg.JSONL {
-		if err := cfg.EmitJSONL(report); err != nil {
+		if err := cfg.EmitOK(report); err != nil {
 			return fmt.Errorf("harness: %w", err)
 		}
 		return nil
@@ -255,7 +255,7 @@ func (cfg *Config) render(report *harness.EvalReport) error {
 
 func (cfg *Config) renderGate(res gatelib.Result) error {
 	if cfg.JSONL {
-		if err := cfg.EmitJSONL(res); err != nil {
+		if err := cfg.EmitOK(res); err != nil {
 			return fmt.Errorf("harness: %w", err)
 		}
 		return nil

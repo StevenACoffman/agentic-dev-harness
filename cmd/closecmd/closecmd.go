@@ -79,14 +79,13 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	// an unset resolution is EINVALID → a plain error.
 	if err := adh.CanClose(&arc, hasProof); err != nil {
 		if adh.ErrorCode(err) == adh.ECONFLICT {
-			_, _ = fmt.Fprintf(cfg.Stderr, "close: %s\n", err)
-			return root.ExitError(8)
+			return cfg.proofFail(err.Error())
 		}
 		return fmt.Errorf("close: %w", err)
 	}
 	// The gates have passed (approved at ops + verified proof), so the ship is the
 	// irreversible VCS mutation — commit the change (§SPEC 5.2, §12).
-	cfg.ship(&arc)
+	hash, branch := cfg.ship(&arc)
 	arc.Status = adh.StatusClosed
 	arc.History = append(arc.History, "closed as "+string(arc.Resolution))
 	if err := store.Save(&arc); err != nil {
@@ -97,8 +96,41 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err := recordMetric(&arc); err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: metrics not recorded: %s\n", err)
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "closed %s as %s\n", id, arc.Resolution)
+	return cfg.reportClosed(&arc, hash, branch)
+}
+
+// reportClosed emits the close outcome: a success outcome carrying the resolution
+// and any commit under --jsonl, else the human commit/closed lines.
+func (cfg *Config) reportClosed(arc *adh.Arc, hash, branch string) error {
+	if cfg.JSONL {
+		data := map[string]any{"arc": arc.ID, "resolution": string(arc.Resolution)}
+		if hash != "" {
+			data["commit"] = hash
+			data["branch"] = branch
+		}
+		if err := cfg.EmitOK(data); err != nil {
+			return fmt.Errorf("close: %w", err)
+		}
+		return nil
+	}
+	if hash != "" {
+		_, _ = fmt.Fprintf(cfg.Stdout, "committed %s as %s on %s\n", arc.ID, hash, branch)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "closed %s as %s\n", arc.ID, arc.Resolution)
 	return nil
+}
+
+// proofFail renders a proof-gate failure (exit 8, SPEC §5.4): an error outcome
+// under --jsonl, else a stderr line.
+func (cfg *Config) proofFail(message string) error {
+	if cfg.JSONL {
+		if err := cfg.EmitError(8, root.ReasonProof, message); err != nil {
+			return fmt.Errorf("close: %w", err)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stderr, "close: %s\n", message)
+	}
+	return root.ExitError(8)
 }
 
 // recordMetric appends the closed arc's cost to the effectiveness ledger. The
@@ -196,8 +228,7 @@ func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
 		return false, fmt.Errorf("close: %w", err)
 	}
 	if verifyErr := prooflib.Verify(cfg.repoDir(), &pkt); verifyErr != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "close: proof failed: %s\n", verifyErr)
-		return false, root.ExitError(8)
+		return false, cfg.proofFail("proof failed: " + verifyErr.Error())
 	}
 	return true, nil
 }
@@ -209,23 +240,25 @@ func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
 // outside a git repo the arc closes without a commit (silently, since not every
 // workspace is under git), and a commit error (e.g. nothing to commit) is a
 // surfaced warning, not a failed close. Non-`change` resolutions carry no commit.
-func (cfg *Config) ship(arc *adh.Arc) {
+// It returns the short commit hash and the branch it landed on, or empty strings
+// when nothing was committed; the caller renders the outcome.
+func (cfg *Config) ship(arc *adh.Arc) (hash, branch string) {
 	if arc.Resolution != adh.ResolutionChange {
-		return
+		return "", ""
 	}
 	repo, err := vcs.Open(cfg.repoDir())
 	if err != nil {
-		return // no git repo here — nothing to commit
+		return "", "" // no git repo here — nothing to commit
 	}
-	branch := shipBranch(repo, arc)
+	branch = shipBranch(repo, arc)
 	who := vcs.Signature{Name: "adh", Email: "adh@localhost"}
-	hash, err := repo.Commit(arc.ID+": "+arc.Title, who, time.Now())
+	hash, err = repo.Commit(arc.ID+": "+arc.Title, who, time.Now())
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: commit skipped: %s\n", err)
-		return
+		return "", ""
 	}
 	arc.History = append(arc.History, "committed "+hash+" on "+branch)
-	_, _ = fmt.Fprintf(cfg.Stdout, "committed %s as %s on %s\n", arc.ID, hash, branch)
+	return hash, branch
 }
 
 // shipBranch isolates the arc's commit on its own branch adh/<arc-id>, created

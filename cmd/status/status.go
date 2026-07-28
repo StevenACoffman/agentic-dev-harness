@@ -65,7 +65,7 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		}
 	}
 	if cfg.JSONL {
-		if err := cfg.EmitJSONL(summary{
+		if err := cfg.EmitOK(summary{
 			Autonomy:     defaultAutonomy,
 			ArcsTotal:    len(arcs),
 			ArcsOpen:     open,

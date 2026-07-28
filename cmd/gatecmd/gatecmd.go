@@ -72,7 +72,7 @@ func (cfg *Config) list() error {
 		}
 		pending++
 		if cfg.JSONL {
-			if err := cfg.EmitJSONL(pendingGate{
+			if err := cfg.EmitOK(pendingGate{
 				Arc:    arc.ID,
 				Stage:  string(arc.Stage),
 				Reason: gateReason(arc),
