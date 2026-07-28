@@ -297,8 +297,15 @@ close` (verifies proof, ships).
   human-gated action (§11.2), and **loop scheduling** (`schedule = "daily"`) is the
   deferred crontab item — `loop run` is the manual/agent-driven trigger. `harness`/
   consolidate remains wired through `sleep`.
-- [ ] A real evaluation stage that fails an arc back to execution is modeled
-  (`StatusFailed`) but the mock never triggers it.
+- [x] Evaluation fails an arc back to Execution for real (§4.1): a confirmed
+  finding (`evaluation.Decide`) returns the arc to Execution and records a failure,
+  bounded by `DefaultMaxReworks` — once the budget is spent the arc is marked
+  `StatusFailed` (terminal) and `run`/`step` report a `failed` error outcome (exit
+  1) so an autonomous drive stops for a human. Previously `StatusFailed` was
+  defined but never set, and a pure mock run never confirmed a finding (its arc has
+  no findings), so the edge was untriggered; it is now covered end-to-end.
+  Follow-up (deferred): a `[evaluation] max_reworks` config key (a default constant
+  today).
 
 ## Offload to a Mature Library (Undifferentiated Heavy Lifting)
 

@@ -239,7 +239,10 @@ created → strategy → execution → critic → evaluation → ops → closed
 - On **close**, a `change` arc's commit lands on its own branch `adh/<arc-id>`
   (branch-per-arc), leaving the base untouched and the change ready to open as a PR.
 - A **fail** at Evaluation (oracle divergence, invariant break, device failure)
-  returns the arc to Execution and records an entry in the failure registry.
+  returns the arc to Execution and records an entry in the failure registry. The
+  rework loop is bounded: after `max_reworks` returns (default 2), a still-failing
+  arc is marked `failed` (terminal) for a human rather than looping forever — the
+  driving `run`/`step` reports a `failed` error outcome and stops.
 - An arc reaches `closed` only after `adh proof verify` passes — **the loop
   physically cannot skip proof.**
 
