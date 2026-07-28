@@ -191,9 +191,10 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
 - [ ] `VCS` (git branch/commit/merge/revert, protected path) → shell out to the
       `git` binary for mutations; `go-git` for read-only inspection.
 - [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
-- [ ] `.adh/config.toml` + precedence → ff/v4's own config providers
-      (`fftoml`/`ffyaml`), or `knadh/koanf`. Avoid Viper (package globals fight
-      go-advice §1/§3).
+- [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
+      decoding with `BurntSushi/toml` behind an explicit, pure precedence overlay
+      (no config-framework globals — Viper avoided per go-advice §1/§3). See the
+      Config wiring section.
 - [ ] Structured logging (§14) → stdlib `log/slog`.
 - [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
       not hand-grown regexes.
