@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -20,6 +21,7 @@ import (
 	metricslib "github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
 	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
 // metricsFile is the effectiveness ledger the metrics command summarizes.
@@ -69,7 +71,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if err := cfg.applyResolution(&arc); err != nil {
 		return err
 	}
-	hasProof, err := cfg.verifyProof()
+	hasProof, err := cfg.verifyProof(&arc)
 	if err != nil {
 		return err
 	}
@@ -82,6 +84,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		}
 		return fmt.Errorf("close: %w", err)
 	}
+	// The gates have passed (approved at ops + verified proof), so the ship is the
+	// irreversible VCS mutation — commit the change (§SPEC 5.2, §12).
+	cfg.ship(&arc)
 	arc.Status = adh.StatusClosed
 	arc.History = append(arc.History, "closed as "+string(arc.Resolution))
 	if err := store.Save(&arc); err != nil {
@@ -174,20 +179,57 @@ func (cfg *Config) applyResolution(arc *adh.Arc) error {
 	return nil
 }
 
-// verifyProof loads and verifies the proof packet under the working directory,
-// reporting whether matching proof is present. A declared-but-failing packet is
-// itself a proof failure (exit 8); no packet means no proof.
-func (cfg *Config) verifyProof() (bool, error) {
-	if cfg.Proof == "" {
+// verifyProof loads and verifies the proof packet, reporting whether matching
+// proof is present. The manifest is --proof, or the path `adh proof create`
+// recorded on the arc (Arc.Proof) when the flag is omitted. A declared-but-failing
+// packet is itself a proof failure (exit 8); no packet means no proof.
+func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
+	manifest := cfg.Proof
+	if manifest == "" {
+		manifest = arc.Proof
+	}
+	if manifest == "" {
 		return false, nil
 	}
-	pkt, err := prooflib.Load(cfg.Proof)
+	pkt, err := prooflib.Load(manifest)
 	if err != nil {
 		return false, fmt.Errorf("close: %w", err)
 	}
-	if verifyErr := prooflib.Verify(".", &pkt); verifyErr != nil {
+	if verifyErr := prooflib.Verify(cfg.repoDir(), &pkt); verifyErr != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "close: proof failed: %s\n", verifyErr)
 		return false, root.ExitError(8)
 	}
 	return true, nil
+}
+
+// ship commits a `change` arc's work — the irreversible action the ops gate
+// protects. It runs only past the approval + proof gates, so the commit is gated.
+// It is best-effort: outside a git repo the arc closes without a commit (silently,
+// since not every workspace is under git), and a commit error (e.g. nothing to
+// commit) is a surfaced warning, not a failed close. Non-`change` resolutions
+// carry no code commit.
+func (cfg *Config) ship(arc *adh.Arc) {
+	if arc.Resolution != adh.ResolutionChange {
+		return
+	}
+	repo, err := vcs.Open(cfg.repoDir())
+	if err != nil {
+		return // no git repo here — nothing to commit
+	}
+	who := vcs.Signature{Name: "adh", Email: "adh@localhost"}
+	hash, err := repo.Commit(arc.ID+": "+arc.Title, who, time.Now())
+	if err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "close: warning: commit skipped: %s\n", err)
+		return
+	}
+	arc.History = append(arc.History, "committed "+hash)
+	_, _ = fmt.Fprintf(cfg.Stdout, "committed %s as %s\n", arc.ID, hash)
+}
+
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
 }
