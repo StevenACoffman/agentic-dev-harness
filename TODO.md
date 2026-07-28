@@ -64,15 +64,31 @@ around them is partial.
 
 ## Command surface (PLAN Phase 9 follow-ups)
 
-- [ ] Per-stage direct commands `strategy`/`execute`/`critic`/`eval`/`ops`
-  (currently only via `step`/`run`).
-- [ ] `gate list` (pending human gates), `registry audit`, `failures list`,
-  `selfeval` as their own commands.
-- [ ] Real ff subcommand nesting (today `arc new`, `sleep run`, etc. use
-  positional-verb dispatch); regroup the ratchet under `harness gate`/`hash`.
-- [ ] Bind the global flags declared in `PLAN.md` on `root.Config`: `--config`,
-  `--profile`, `--repo`, `--json`, `--quiet`, `--no-color`, `--yes`,
-  `--dry-run`. Today `--json` exists only on `gate`.
+- [x] Per-stage direct commands `strategy`/`execute`/`critic`/`ops` (`cmd/stagecmd`):
+  strategy/execute/critic run one Mock stage on an arc already at it; `ops` reports
+  the ship gate. `eval` shipped earlier (§19.2).
+- [x] `gate list` (`cmd/gatecmd`) lists blocked arcs with their gate reason;
+  `failures list` (`cmd/failurescmd`) and `selfeval` (`cmd/selfeval`) compose
+  `failures.Load` + `lesson.Distill` + `metrics.Summarize` (a new `metrics.Load`
+  single-owns the ledger, replacing the inline reader).
+- [x] Real ff subcommand nesting for the ratchet regroup: `harness` now has nested
+  `eval`/`gate`/`hash` subcommands (each its own flagset); the top-level `gate`
+  ratchet moved to `harness gate` and `cmd/gate` was deleted, freeing `gate` for
+  the human-gate listing.
+- [x] Global flags on `root.Config`: `--config`, `--profile`, `--repo`,
+  `--verbose`, `--quiet`, `--no-color` bound once on `root.Flags`. `--quiet` is
+  wired (discards stdout in `cmd.Run`); `--config` is wired (`root.ConfigGetenv`
+  threaded into every `config.Load` site).
+- [ ] Deferred — global `--json`/`--yes`/`--dry-run`: each is a **local** flag
+  today (version/harness/step; approve owns `--yes`/`--dry-run` for the safety
+  gate). Binding them globally collides; a unification pass must first remove the
+  locals and route commands through `root.Config`.
+- [ ] Deferred — `registry audit`: no artifact-registry model exists; auditing only
+  proof packets would be a partial interpretation of "orphans/missing-manifests/SHA
+  mismatches". Needs the registry concept first.
+- [ ] Deferred — broad ff nesting for `arc`/`sleep`/`oracle`/`lesson`/`context`/
+  `tool`: positional-verb dispatch works; converting is broad and low-payoff. Only
+  the ratchet regroup (above) needed real nesting.
 
 ## Config wiring
 
@@ -91,9 +107,10 @@ around them is partial.
     (§5.2) — a config-settable phrase would be a self-grant route.
   - [x] `worker requalify` binds the per-role baseline from `[models]`
     (`config.BaselineModels`); editing `[models]` opens a new epoch (§14).
-  - [ ] Deferred: the `--profile` layer (SPEC §3 tier 3) and the global
-    `--config`/`--profile`/`--repo` flags (tracked under Command surface); no
-    `adh init` writing a starter `.adh/config.toml`; secrets stay env-only.
+  - [ ] Deferred: the `--profile` layer (SPEC §3 tier 3). `--config`/`--repo`/
+    `--profile` are now bound on `root.Config` (Command surface) and `--config` is
+    wired, but `--profile` selects no profile yet; no `adh init` writing a starter
+    `.adh/config.toml`; secrets stay env-only.
 
 ## Effectful seams still mocked
 
@@ -104,15 +121,48 @@ around them is partial.
 - [ ] `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
   `Relay` are the only backends. Follow-ups: structured/validated relay replies,
   `[models] driver` config to pick the backend, and relay wired into `run`.
-- [ ] `device.Validator`: only `Mock`; no adb adapter.
+- [ ] `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
+  port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
-  status/branch/commit; `internal/vcs.Mock` is the test double. Follow-ups:
-  merge/revert (go-git merge is experimental → a `git` shell-out) and wiring
-  branch/commit into the `ops`/`close` lifecycle.
+  status/branch/commit; `internal/vcs.Mock` is the test double. `close` now
+  commits a `change` arc past the approval+proof gates (best-effort: no repo /
+  clean tree → the arc still closes), so the ship is a real, gated VCS mutation.
+  Follow-ups: merge/revert (go-git merge is experimental → a `git` shell-out) and
+  a branch-per-arc.
 - [ ] No injected `Clock` (deterministic timestamps) once state grows time
   fields.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
-  reference build vs native port.
+  reference build vs native port. Domain-specific (a mobile-port profile) — see
+  the proof-contract note below.
+
+## Proof contract generalization
+
+- [x] SPEC/SPEC-ADDITIONS decision: the `change` resolution's proof contract is
+  generalized and made **configurable** per deployment (§SPEC 3.1
+  `[proof.contract]`, §12). The generic default is code-level (tests/review/CI);
+  the oracle + invariant + on-device triad is one deployment profile, not a
+  built-in requirement. Screenshot sanitization (screen dims, redaction) is now
+  documented as domain-specific, not part of proof in general.
+- [x] Code follow-up: the contract is config-driven. Validity split from text:
+  `adh.Resolution.Valid()` is the domain fact; `ProofKind()` is a generic default
+  text (change → code-level, no longer oracle/device). `config.ProofContract(res)`
+  returns the `[proof.contract]` override or the default, and the critic's
+  acceptance bar is threaded from it (`critic.Ground` takes the bar as data, so it
+  never reads config). Remaining: `prompt`'s non-critic `.ProofKind` view field
+  still shows the built-in default (not the config override) — a minor follow-up.
+
+## Proof packet generation
+
+- [x] `adh proof create <arc-id> <path>...` hashes an arc's artifacts into a
+  manifest (`internal/proof.Create` + `Save`, beside `Load`/`Verify`), writes it
+  to `.adh/proof/<arc>.json`, records it on `Arc.Proof`, and verifies it — so an
+  agent driving adh via a skill can satisfy NO-PROOF-NO-CLOSE without hand-computing
+  `identity.Hash` digests. This is the wall that used to dead-end every arc at close.
+- [x] `proof` is nested (real ff `create`/`verify` subcommands), so
+  `proof create --out <path> <arc> <paths>` parses (`--out` restored); and `close`
+  defaults `--proof` to `Arc.Proof` when omitted, closing the create → close loop.
+- [ ] Follow-up: the manifest could carry provenance (a git SHA) per §SPEC 5.4 —
+  an optional refinement.
 
 ## Cold-critic grounding and finding disposition (§19)
 
@@ -141,19 +191,27 @@ around them is partial.
   into `adh eval` (`config.CriticUnconfirmed`). `ground_from`/`deny` are recorded
   but enforced structurally (the grounding assembly and the cold renderer), not yet
   read as behavior.
+- [x] Unified evaluation: the disposition orchestration moved to
+  `internal/evaluation` (`Adjudicator`, `RepoAdjudicator`, `Adjudicate`, `Apply`),
+  and `run`, non-relay `step`, and `adh eval` all route the evaluation stage
+  through it — evaluation is deterministic on every path, never a model step. The
+  relay path already refused evaluation and pointed at `adh eval`.
+- [x] §19.1 changed-path grounding: resuming a relayed *execution* turn records the
+  working tree's changed code paths into `Arc.Paths` from `internal/vcs`
+  (`.adh/` state filtered), so the cold critic is grounded on the real change, not
+  hand-seeded paths. Best-effort: outside a git repo it is a no-op.
 - [ ] §19.2 real adjudication depth: oracle/invariant/device findings run the
   self-contained checks (mocks pass → unconfirmed); only a `contract` finding
   (proof.Verify) has a genuine confirmed path today. Real per-finding oracle/device
-  runs wait on those adapters. NFR findings have no runner yet (always unconfirmed).
-- [ ] §19.1 diff content: only touched *paths* are surfaced. The `internal/vcs`
-  adapter now reports the working tree's changed paths (`Status.Changed`); the
-  *unified diff text* still needs a `git diff` shell-out — go-git's textual diff
-  is a weak spot — and the grounding is not yet wired to consult it.
-- [ ] Populate `Arc.Labels/Paths/Proof` from a real Execution stage — today they
-  are plumbed and rendered but only set by hand / by tests; nothing fills them yet.
-- [ ] Unify the Mock path: `run` and non-relay `step` still model-advance through
-  evaluation; only the relay path routes it through the deterministic `adh eval`
-  disposition. Fold them together once `run` gains a real reasoner.
+  runs wait on those adapters (adb; a real oracle target). NFR findings have no
+  runner yet (always unconfirmed).
+- [ ] §19.1 unified diff *text*: `Arc.Paths` now reflects the change, but the diff
+  *text* still needs a `git diff` shell-out (go-git's textual diff is a weak spot)
+  and a `Grounding.Diff` field + template line to surface it to the critic.
+- [ ] Populate `Arc.Labels` from Execution (`Arc.Proof` is now set by
+  `adh proof create`): `Arc.Paths` is now filled
+  from VCS on execution resume, but Labels (semantic tags) and Proof (a
+  builder-written manifest path) are still set only by hand / by tests.
 
 ## End-to-end lifecycle wiring
 
@@ -196,17 +254,18 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       deterministic test here), and `model.Relay` is the skill-driven backend the
       tool actually uses today.
 - [x] `VCS` (branch/commit/status) → `internal/vcs` over `go-git/v6` + the `vcs`
-      command; `Mock` for tests. Merge/revert stay a `git` shell-out (go-git
-      merge is experimental), and lifecycle (`ops`/`close`) wiring is a follow-up.
+      command; `Mock` for tests. `close` now commits a `change` arc past the
+      approval+proof gates. Merge/revert stay a `git` shell-out (go-git merge is
+      experimental), and a branch-per-arc is a follow-up.
 - [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
       **Deferred**: needs a device; a shell-out adapter is untestable in CI.
 - [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
       decoding with `BurntSushi/toml` behind an explicit, pure precedence overlay
       (no config-framework globals — Viper avoided per go-advice §1/§3). See the
       Config wiring section.
-- [ ] Structured logging (§14) → stdlib `log/slog`. **Deferred**: no verbosity
-      toggle or destination contract yet (the `--quiet`/`--verbose` global flags
-      are themselves deferred under Command surface); tie the two together.
+- [ ] Structured logging (§14) → stdlib `log/slog`. **Deferred**: the
+      `--quiet`/`--verbose` global flags are bound now (Command surface), but there
+      is no destination/level contract yet; wire slog to those flags when it lands.
 - [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
       not hand-grown regexes. **Deferred**: the Go option is
       `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
