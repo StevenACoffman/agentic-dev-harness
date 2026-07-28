@@ -282,10 +282,16 @@ close` (verifies proof, ships).
   `stage.Execute` — a judgment role on a fast-class model is EUNAUTHORIZED) and
   `metrics` (a `close` records the shipped arc's cost to the ledger the
   `metrics` command summarizes).
-- [ ] Still standalone (not force-fit into the single-arc ship path):
-  `lesson`, `context`, `tool`, `loop`, `worker`. `harness`/consolidate is wired
-  through `sleep`. A real evaluation stage that fails an arc back to execution
-  is modeled (`StatusFailed`) but the mock never triggers it.
+- [x] `context` + `tool` folded into the loop (§10, §13): every relayed stage now
+  loads its routed context units and the available tools into the prompt (not just
+  the critic), via `critic.ForStage` grounding all stages and the emit shells
+  reading `toolreg.LoadRepo`. The loaded working set is recorded on `Arc.Context`
+  (§10.3). Composes with `arc --label` (labels route context at strategy/execution
+  before Execution derives paths).
+- [ ] Still standalone (not force-fit into the single-arc ship path): `lesson`,
+  `loop`, `worker`. `harness`/consolidate is wired through `sleep`. A real
+  evaluation stage that fails an arc back to execution is modeled (`StatusFailed`)
+  but the mock never triggers it.
 
 ## Offload to a Mature Library (Undifferentiated Heavy Lifting)
 
