@@ -41,7 +41,6 @@ type Config struct {
 func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
-	cfg.adjudicator = evaluation.RepoAdjudicator{}
 	cfg.Flags = ff.NewFlagSet("eval").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "eval",
@@ -76,6 +75,15 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
+	// The real adjudicator loads the repo's tool registry (§13) for NFR checks; a
+	// test injects a fake. Build it once, only when not already set.
+	if cfg.adjudicator == nil {
+		adj, adjErr := evaluation.RepoAdjudicatorFor(cfg.repoDir())
+		if adjErr != nil {
+			return fmt.Errorf("eval: %w", adjErr)
+		}
+		cfg.adjudicator = adj
+	}
 
 	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, arc.Findings)
 	if err != nil {
@@ -98,6 +106,14 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
 		arc.ID, len(verdict.Unconfirmed))
 	return nil
+}
+
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
 }
 
 // exitFor maps a confirmed finding's kind to its Evaluation gate exit code. An

@@ -141,7 +141,11 @@ func (cfg *Config) disposeEval(
 	conf *config.Config,
 	arc *adh.Arc,
 ) error {
-	verdict, err := evaluation.Adjudicate(ctx, evaluation.RepoAdjudicator{}, arc.Findings)
+	adjudicator, err := evaluation.RepoAdjudicatorFor(cfg.repoDir())
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}

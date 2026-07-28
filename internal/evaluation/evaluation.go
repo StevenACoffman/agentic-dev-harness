@@ -9,7 +9,11 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
@@ -17,6 +21,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 // oracle corpus for adjudicating oracle/invariant findings; a small deterministic
@@ -38,8 +43,84 @@ type Adjudicator interface {
 
 // RepoAdjudicator runs the concrete repository artifacts a finding can name. The
 // oracle/invariant/device runs are self-contained checks; a contract finding names
-// a proof manifest and is verified against it.
-type RepoAdjudicator struct{}
+// a proof manifest verified against it; an NFR finding names a declared check in
+// the tool registry, run by runner. dir is the repository root the checks run in.
+// The zero value is usable (dir defaults to ".", a nil runner makes NFR findings
+// unrunnable), so a caller with no registry configured needs no setup.
+type RepoAdjudicator struct {
+	dir    string
+	checks toolreg.Registry
+	runner CheckRunner
+}
+
+// CheckRunner runs a repository-declared executable check (an NFR constraint, §10)
+// and reports whether it passed (exited zero) and whether it ran at all. ran is
+// false when the check could not start (the command is absent or the context was
+// canceled). There is no error channel: a non-zero exit is a finding confirmation
+// (§19.2), not an error, and an unstartable check is unconfirmed, not a failure of
+// the Evaluation stage. The command is repository-owned config, never model input.
+type CheckRunner interface {
+	RunCheck(ctx context.Context, command, dir string) (passed, ran bool)
+}
+
+// ShellRunner runs a check as `sh -c <command>` in dir. It is the one effectful
+// edge of adjudication; RepoAdjudicator holds it behind CheckRunner so tests
+// inject a fake.
+type ShellRunner struct{}
+
+// NewRepoAdjudicator builds an adjudicator rooted at dir, resolving NFR findings
+// against checks and running them with runner. An empty dir means the current
+// directory; an empty registry or nil runner leaves NFR findings unrunnable.
+func NewRepoAdjudicator(dir string, checks toolreg.Registry, runner CheckRunner) RepoAdjudicator {
+	return RepoAdjudicator{dir: dir, checks: checks, runner: runner}
+}
+
+// RepoAdjudicatorFor is the real adjudicator for a repository: it loads the tool
+// registry (§13) that resolves NFR findings and wires the shell runner. A repo
+// with no registry file adjudicates NFR findings as unrunnable, not an error, so
+// the common case needs no setup. It is the one call the `eval`, `run`, and `step`
+// shells make.
+func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
+	checks, err := loadChecks(repoDir)
+	if err != nil {
+		return RepoAdjudicator{}, err
+	}
+	return NewRepoAdjudicator(repoDir, checks, ShellRunner{}), nil
+}
+
+// loadChecks reads the tool registry under repoDir, treating an absent file as an
+// empty registry (the repository declares no NFR checks) rather than an error.
+func loadChecks(repoDir string) (toolreg.Registry, error) {
+	const op = "evaluation.loadChecks"
+	path := filepath.Join(repoDir, toolreg.DefaultRegistryFile)
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return toolreg.Registry{}, nil
+	}
+	reg, err := toolreg.Load(path)
+	if err != nil {
+		return toolreg.Registry{}, &adh.Error{Op: op, Err: err}
+	}
+	return reg, nil
+}
+
+// RunCheck runs command via the shell in dir. A clean exit passes; a non-zero exit
+// ran-and-failed; a command that could not start (not found, canceled) did not run.
+func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, ran bool) {
+	// The command is a repository-owned tool-registry entry (§13), authored by the
+	// maintainer, not agent or critic input — the critic supplies only the tool ID
+	// to select, so there is no injection path from the model.
+	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // repo-owned config
+	cmd.Dir = dir
+	err := cmd.Run()
+	if err == nil {
+		return true, true
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return false, true // the check ran and reported failure
+	}
+	return false, false // could not start the check
+}
 
 // Adjudicate runs each finding's artifact and disposes of the results (§19.2). It
 // is pure with respect to the arc — the caller applies the verdict.
@@ -102,9 +183,12 @@ func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool) error {
 
 // Adjudicate runs the artifact finding names. oracle/invariant/device are
 // self-contained checks; a contract finding names a proof manifest and fails when
-// the packet is missing or does not verify. An NFR finding has no runner yet, so
-// it is unrunnable (ran=false) and disposes as unconfirmed (§19.2).
-func (RepoAdjudicator) Adjudicate(
+// the packet is missing or does not verify; an NFR finding names a declared check
+// in the tool registry and fails when that check exits non-zero. A finding whose
+// artifact cannot be run (an NFR check the repository does not declare, an NFR
+// finding with no runner) is unrunnable (ran=false) and disposes as unconfirmed —
+// the gate drops a prior the repository does not hold (§19.2).
+func (a RepoAdjudicator) Adjudicate(
 	ctx context.Context,
 	finding adh.Finding,
 ) (ran, failed bool, err error) {
@@ -127,20 +211,42 @@ func (RepoAdjudicator) Adjudicate(
 		}
 		return true, !report.OK, nil
 	case adh.FindingContract:
-		ran, failed = adjudicateContract(finding.Ref)
+		ran, failed = a.adjudicateContract(finding.Ref)
 		return ran, failed, nil
 	case adh.FindingNFR:
-		return false, false, nil
+		ran, failed = a.adjudicateNFR(ctx, finding.Ref)
+		return ran, failed, nil
 	default:
 		return false, false, nil
 	}
+}
+
+// adjudicateNFR runs the executable check an NFR finding names (§10, §19.2). The
+// finding's ref is a tool ID in the registry; the check's own command is run in
+// the repository. A finding that names no check, names one the registry does not
+// declare, or has no runner wired is unrunnable — an invented requirement the
+// repository does not hold, which the gate drops as unconfirmed. A declared check
+// that exits non-zero confirms the finding.
+func (a RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, failed bool) {
+	if ref == "" || a.runner == nil {
+		return false, false
+	}
+	tool, ok := a.checks.FindByID(ref)
+	if !ok {
+		return false, false
+	}
+	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
+	if !ranCheck {
+		return false, false
+	}
+	return true, !passed
 }
 
 // adjudicateContract verifies the proof manifest a contract finding names. A
 // finding that names no manifest is unrunnable; a manifest that is missing,
 // unreadable, or fails verification confirms the finding (the named proof does not
 // hold).
-func adjudicateContract(ref string) (ran, failed bool) {
+func (a RepoAdjudicator) adjudicateContract(ref string) (ran, failed bool) {
 	if ref == "" {
 		return false, false // unrunnable → unconfirmed
 	}
@@ -148,5 +254,14 @@ func adjudicateContract(ref string) (ran, failed bool) {
 	if err != nil {
 		return true, true // named proof missing or unreadable = failed
 	}
-	return true, proof.Verify(".", &pkt) != nil
+	return true, proof.Verify(a.repoRoot(), &pkt) != nil
+}
+
+// repoRoot is the directory the checks run in, defaulting to the current directory
+// so the zero-value adjudicator stays usable.
+func (a RepoAdjudicator) repoRoot() string {
+	if a.dir == "" {
+		return "."
+	}
+	return a.dir
 }

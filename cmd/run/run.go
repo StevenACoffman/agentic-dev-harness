@@ -97,7 +97,11 @@ func (cfg *Config) advanceStage(
 	recordLessons bool,
 ) error {
 	if arc.Stage == adh.StageEvaluation {
-		verdict, err := evaluation.Adjudicate(ctx, evaluation.RepoAdjudicator{}, arc.Findings)
+		adjudicator, err := evaluation.RepoAdjudicatorFor(cfg.repoDir())
+		if err != nil {
+			return fmt.Errorf("run: %w", err)
+		}
+		verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
 		if err != nil {
 			return fmt.Errorf("run: %w", err)
 		}
@@ -110,6 +114,14 @@ func (cfg *Config) advanceStage(
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
+}
+
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
 }
 
 // block parks the arc at a human gate (StatusBlocked) and records why, so the

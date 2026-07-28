@@ -8,16 +8,25 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 // fakeAdjudicator confirms exactly the findings whose kind is failKind.
 type fakeAdjudicator struct{ failKind adh.FindingKind }
+
+// fakeRunner reports a fixed (passed, ran) for any command, so an NFR check's
+// disposition is exercised without spawning a process.
+type fakeRunner struct{ passed, ran bool }
 
 func (f fakeAdjudicator) Adjudicate(
 	_ context.Context,
 	finding adh.Finding,
 ) (ran, failed bool, err error) {
 	return true, finding.Kind == f.failKind, nil
+}
+
+func (f fakeRunner) RunCheck(_ context.Context, _, _ string) (passed, ran bool) {
+	return f.passed, f.ran
 }
 
 func TestAdjudicateSplitsConfirmed(t *testing.T) {
@@ -107,5 +116,62 @@ func TestRepoAdjudicatorContractFailsOnMissingProof(t *testing.T) {
 	}
 	if !ran || !failed {
 		t.Errorf("missing-proof contract = (ran %v, failed %v), want (true, true)", ran, failed)
+	}
+}
+
+func TestRepoAdjudicatorNFR(t *testing.T) {
+	t.Parallel()
+	reg := toolreg.Registry{Tools: []toolreg.Tool{
+		{ID: "nfr-lint", Run: "golangci-lint run", Verifies: "style floor"},
+	}}
+	tests := []struct {
+		name         string
+		ref          string
+		runner       evaluation.CheckRunner
+		wantRan      bool
+		wantFailed   bool
+		wantConfirms bool
+	}{
+		{
+			"declared check fails",
+			"nfr-lint",
+			fakeRunner{passed: false, ran: true},
+			true,
+			true,
+			true,
+		},
+		{
+			"declared check passes",
+			"nfr-lint",
+			fakeRunner{passed: true, ran: true},
+			true,
+			false,
+			false,
+		},
+		{"check could not start", "nfr-lint", fakeRunner{ran: false}, false, false, false},
+		{"undeclared ref", "nfr-absent", fakeRunner{passed: false, ran: true}, false, false, false},
+		{"empty ref", "", fakeRunner{passed: false, ran: true}, false, false, false},
+		{"no runner wired", "nfr-lint", nil, false, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, tt.runner)
+			ran, failed, err := adj.Adjudicate(
+				context.Background(),
+				adh.Finding{Summary: "slow path", Kind: adh.FindingNFR, Ref: tt.ref},
+			)
+			if err != nil {
+				t.Fatalf("Adjudicate: %v", err)
+			}
+			if ran != tt.wantRan || failed != tt.wantFailed {
+				t.Errorf("(ran, failed) = (%v, %v), want (%v, %v)",
+					ran, failed, tt.wantRan, tt.wantFailed)
+			}
+			// A finding confirms only when its check ran and failed (critic.Dispose).
+			if confirms := ran && failed; confirms != tt.wantConfirms {
+				t.Errorf("confirms = %v, want %v", confirms, tt.wantConfirms)
+			}
+		})
 	}
 }
