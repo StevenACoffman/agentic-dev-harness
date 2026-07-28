@@ -16,6 +16,13 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
+// pendingGate is the machine-readable record for one blocked arc under --jsonl.
+type pendingGate struct {
+	Arc    string `json:"arc"`
+	Stage  string `json:"stage"`
+	Reason string `json:"reason"`
+}
+
 // Config holds the configuration for the gate command.
 type Config struct {
 	*root.Config
@@ -64,9 +71,20 @@ func (cfg *Config) list() error {
 			continue
 		}
 		pending++
+		if cfg.JSONL {
+			if err := cfg.EmitJSONL(pendingGate{
+				Arc:    arc.ID,
+				Stage:  string(arc.Stage),
+				Reason: gateReason(arc),
+			}); err != nil {
+				return fmt.Errorf("gate: %w", err)
+			}
+			continue
+		}
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\n", arc.ID, arc.Stage, gateReason(arc))
 	}
-	if pending == 0 {
+	// In JSONL mode, no gates is an empty stream (zero lines); the human path says so.
+	if pending == 0 && !cfg.JSONL {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no pending gates")
 	}
 	return nil

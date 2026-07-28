@@ -25,6 +25,14 @@ type Config struct {
 	Command *ff.Command
 }
 
+// arcLine is the machine-readable per-arc record `arc list` emits under --jsonl.
+type arcLine struct {
+	ID     string `json:"id"`
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	Title  string `json:"title"`
+}
+
 // New creates and registers the arc command with the given parent config.
 func New(parent *root.Config) *Config {
 	var cfg Config
@@ -95,6 +103,21 @@ func (cfg *Config) listArcs(store *state.Store) error {
 	if err != nil {
 		return fmt.Errorf("arc: %w", err)
 	}
+	if cfg.JSONL {
+		for i := range arcs {
+			arc := &arcs[i]
+			line := arcLine{
+				ID:     arc.ID,
+				Stage:  string(arc.Stage),
+				Status: string(arc.Status),
+				Title:  arc.Title,
+			}
+			if err := cfg.EmitJSONL(line); err != nil {
+				return fmt.Errorf("arc: %w", err)
+			}
+		}
+		return nil
+	}
 	if len(arcs) == 0 {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no arcs")
 		return nil
@@ -113,6 +136,14 @@ func (cfg *Config) showArc(store *state.Store, args []string) error {
 	arc, err := store.Get(args[0])
 	if err != nil {
 		return fmt.Errorf("arc: %w", err)
+	}
+	if cfg.JSONL {
+		// The full arc: adh.Arc's JSON tags give the agent stage history, findings,
+		// footprint, and proof in one record.
+		if err := cfg.EmitJSONL(&arc); err != nil {
+			return fmt.Errorf("arc: %w", err)
+		}
+		return nil
 	}
 	res := string(arc.Resolution)
 	if res == "" {

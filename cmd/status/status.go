@@ -17,6 +17,14 @@ import (
 // makes it configurable; SPEC §6 sets L2 as the default.
 const defaultAutonomy = "L2"
 
+// summary is the machine-readable harness state emitted under --jsonl.
+type summary struct {
+	Autonomy     string `json:"autonomy"`
+	ArcsTotal    int    `json:"arcs_total"`
+	ArcsOpen     int    `json:"arcs_open"`
+	PendingGates int    `json:"pending_gates"`
+}
+
 // Config holds the configuration for the status command.
 type Config struct {
 	*root.Config
@@ -55,6 +63,17 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 			blocked++
 		case adh.StatusClosed, adh.StatusFailed:
 		}
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitJSONL(summary{
+			Autonomy:     defaultAutonomy,
+			ArcsTotal:    len(arcs),
+			ArcsOpen:     open,
+			PendingGates: blocked,
+		}); err != nil {
+			return fmt.Errorf("status: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"autonomy:      %s\narcs total:    %d\narcs open:     %d\npending gates: %d\n",
