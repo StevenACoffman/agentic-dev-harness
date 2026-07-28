@@ -309,7 +309,10 @@ Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
   already tracked) and the `gowheels` PyPI-wheel distribution. Follow-up: the
   `.github/workflows/postrelease.yaml` that doc references (auto-publish wheels on
   release) is not present yet.
-- [ ] `PLAN.md`, `SPEC-ADDITIONS.md`, `README.md`, and this file have not been
-  run through the repo's `mdformat`/`rumdl`/prettier config (outside the
-  golangci gate; may drift).
+- [x] All tracked markdown is formatted with `rumdl fmt .` (per `.rumdl.toml`:
+  aligned tables, title-case headings, canonical rules/fences) and checked with
+  `vale`. Only the vendored `internal/atomicfile/README.md` is left as upstream.
+  Follow-up: `mdformat`/prettier are not installed here, and vale's prose
+  suggestions (E-Prime, passive voice, em-dash/semicolon house style) are not
+  enforced — treat them as advisory.
 - [ ] No per-command docs or man pages.
