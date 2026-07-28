@@ -98,6 +98,20 @@ func (g *Git) CurrentBranch() (string, error) {
 	return ref.Target().Short(), nil
 }
 
+// HeadSHA returns the full commit hash at HEAD, for recording proof provenance
+// (SPEC §5.4). Before the first commit there is no commit to name, so it returns
+// "" (not an error) — provenance is simply absent.
+func (g *Git) HeadSHA() (string, error) {
+	ref, err := g.repo.Head()
+	switch {
+	case errors.Is(err, plumbing.ErrReferenceNotFound):
+		return "", nil // no commit yet — no provenance to record
+	case err != nil:
+		return "", &adh.Error{Op: "vcs.Git.HeadSHA", Err: err}
+	}
+	return ref.Hash().String(), nil
+}
+
 // Status reports the branch, cleanliness, and changed paths of the working tree.
 func (g *Git) Status() (Status, error) {
 	branch, err := g.CurrentBranch()

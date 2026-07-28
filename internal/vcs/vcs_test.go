@@ -30,6 +30,7 @@ type repo interface {
 	Commit(msg string, who vcs.Signature, when time.Time) (string, error)
 	Diff(paths []string) (string, error)
 	Revert(paths []string) error
+	HeadSHA() (string, error)
 }
 
 func TestGitLifecycle(t *testing.T) {
@@ -253,5 +254,33 @@ func TestMockRevertDropsPaths(t *testing.T) {
 	}
 	if len(st.Changed) != 2 {
 		t.Errorf("changed = %v, want 2 remaining", st.Changed)
+	}
+}
+
+func TestHeadSHAAfterCommit(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	// Before any commit, HEAD names no commit, so there is no provenance SHA.
+	if sha, err := repo.HeadSHA(); err != nil || sha != "" {
+		t.Errorf("HeadSHA before commit = (%q, %v), want (\"\", nil)", sha, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	hash, err := repo.Commit("seed", who, at)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	sha, err := repo.HeadSHA()
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	// Commit returns the short hash; HeadSHA returns the full 40-char hash that
+	// starts with it.
+	if len(sha) != 40 || !strings.HasPrefix(sha, hash) {
+		t.Errorf("HeadSHA = %q, want a 40-char hash prefixed by %q", sha, hash)
 	}
 }

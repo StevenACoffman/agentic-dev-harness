@@ -9,6 +9,7 @@ type Mock struct {
 	Branch  string
 	Changed []string
 	Patch   string // scripted Diff output
+	SHA     string // scripted HeadSHA output
 	commits int
 }
 
@@ -41,6 +42,12 @@ func (m *Mock) CurrentBranch() (string, error) {
 		return "main", nil
 	}
 	return m.Branch, nil
+}
+
+// HeadSHA returns the scripted commit SHA (empty by default, mirroring a repo with
+// no commit yet).
+func (m *Mock) HeadSHA() (string, error) {
+	return m.SHA, nil
 }
 
 // Status reports the scripted branch and changed set; clean when Changed empty.
