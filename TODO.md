@@ -205,11 +205,20 @@ around them is partial.
   working tree's changed code paths into `Arc.Paths` from `internal/vcs`
   (`.adh/` state filtered), so the cold critic is grounded on the real change, not
   hand-seeded paths. Best-effort: outside a git repo it is a no-op.
-- [ ] §19.2 real adjudication depth: oracle/invariant/device findings run the
-  self-contained checks (mocks pass → unconfirmed); only a `contract` finding
-  (proof.Verify) has a genuine confirmed path today. Real per-finding oracle/device
-  runs wait on those adapters (adb; a real oracle target). NFR findings have no
-  runner yet (always unconfirmed).
+- [x] §19.2 NFR adjudication: an `nfr` finding's `Ref` resolves to a declared
+  check in the tool registry (§13, `toolreg.FindByID`) and runs it via a
+  `CheckRunner` seam (`evaluation.ShellRunner`, `sh -c` in the repo). A non-zero
+  exit confirms the finding (returns the arc to Execution); a Ref the registry does
+  not declare is unrunnable → unconfirmed, so the gate still drops an invented
+  requirement (§19.2). The command is repo-owned config, never model input — the
+  critic supplies only the tool ID. `RepoAdjudicatorFor` wires it for `eval`,
+  `run`, and `step`; the contract path's `proof.Verify` is now rooted at the same
+  repo dir instead of `.`.
+- [ ] §19.2 remaining adjudication depth: `oracle`/`invariant` findings run the
+  in-package React/Native equivalence + invariant checks, which pass (the pair is
+  the correct oracle), so a per-arc confirmed path waits on a **real oracle
+  target**; `device` findings run `device.Mock{Healthy:true}`, pending an **adb
+  adapter**. Both are domain-specific (mobile port) and deferred.
 - [x] §19.1 unified diff *text*: `vcs.Diff(paths)` renders a unified diff of the
   HEAD-blob vs worktree content via the go-git handle, formatted with
   `github.com/hexops/gotextdiff` (no `git` binary — tests stay hermetic). The critic
@@ -226,8 +235,10 @@ around them is partial.
   nothing for a declared arc — an empty/absent store is ungrounded, not a gap
   (§19.1, updated). `adh init` scaffolds a starter store keyed by top-level dir so
   a typical change grounds out of the box. (`Arc.Proof` is set by `adh proof create`.)
-- [ ] Follow-up: richer semantic labels than the top-level directory (e.g. from
-  arc title or an `arc new --label` flag), for finer context routing.
+- [x] Richer semantic labels than the top-level directory: `arc --label <l>... new
+  <title>` (`cmd/arc`, ff `StringSetVar`) seeds `Arc.Labels` for finer context
+  routing (§10); Execution unions its derived area labels on top. Follow-up
+  (optional): deriving labels from the arc title.
 
 ## End-to-End Lifecycle Wiring
 
