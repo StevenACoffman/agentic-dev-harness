@@ -11,6 +11,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 func TestRenderStageAndID(t *testing.T) {
@@ -28,6 +29,29 @@ func TestRenderStageAndID(t *testing.T) {
 	}
 	if !strings.Contains(out, "widen the gate") {
 		t.Errorf("strategy prompt missing title:\n%s", out)
+	}
+}
+
+// TestRenderStrategyShowsContextAndTools confirms non-critic stages load their
+// routed working set (§10, §13) into the prompt.
+func TestRenderStrategyShowsContextAndTools(t *testing.T) {
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Labels: []string{"auth"}}
+	ground := &critic.Grounding{
+		Context: []contextstore.Unit{{ID: "u-auth", Kind: "runbook"}},
+		Tools:   []toolreg.Tool{{ID: "oracle-diff", Verifies: "equivalence", Run: "make oracle"}},
+	}
+	out, err := r.Render(arc, ground)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	for _, want := range []string{"u-auth", "oracle-diff", "equivalence"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("strategy prompt missing %q:\n%s", want, out)
+		}
 	}
 }
 

@@ -9,10 +9,7 @@ Change under review (unified diff):
 {{.Diff}}{{end}}{{if .Proof}}
 Proof artifacts the builder left:
 {{range .Proof}}- {{.Path}}
-{{end}}{{end}}{{if .Context}}
-Routed repository guidance for this change (§10):
-{{range .Context}}- {{.ID}} ({{.Kind}}){{if .Owner}} — owner {{.Owner}}{{end}}
-{{end}}{{end}}{{if not .HasGrounding}}
+{{end}}{{end}}{{template "context" .}}{{template "tools" .}}{{if not .HasGrounding}}
 No repository grounding was routed for this review.
 {{end}}{{else}}
 No repository grounding was routed for this review.

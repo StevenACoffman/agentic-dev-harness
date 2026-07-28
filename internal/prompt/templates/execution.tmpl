@@ -3,5 +3,5 @@ Build the work for arc {{.ID}}{{if .Title}} — {{.Title}}{{end}}.
 {{if .History}}
 Prior stages:
 {{range .History}}- {{.}}
-{{end}}{{end}}
+{{end}}{{end}}{{with .Ground}}{{template "context" .}}{{template "tools" .}}{{end}}
 Make the change and prepare the proof {{if .ProofKind}}({{.ProofKind}}){{else}}the resolution requires{{end}}.

@@ -27,12 +27,12 @@ var defaults embed.FS
 // embedded defaults are overlaid by any override filesystems, later ones winning.
 type Renderer struct{ tmpl *template.Template }
 
-// view is the data a stage template sees. The critic's view deliberately omits
-// History: the critic runs cold (SPEC §1), reviewing only the change and its
-// proof, never the builder's transcript. The guarantee is enforced here in the
-// data, so a hand-edited critic template still cannot leak the transcript. Ground
-// is the critic's repository-owned working set (§19.1); it is nil for every other
-// stage and for an ungrounded critic.
+// view is the data a stage template sees. Ground is the stage's routed working set
+// (§10) — context and tools — carried for every stage; the critic additionally
+// reviews the diff and proof in it. The critic's view deliberately omits History:
+// it runs cold (SPEC §1), reviewing only the change and its grounding, never the
+// builder's transcript. The guarantee is enforced here in the data, so a
+// hand-edited critic template still cannot leak the transcript.
 type view struct {
 	ID         string
 	Title      string
@@ -77,11 +77,10 @@ func Default() (*Renderer, error) {
 	return New(os.DirFS(RepoOverrideDir))
 }
 
-// Render produces the prompt for arc's current stage. ground is the critic's
-// working set (§19.1); it is ignored for other stages and may be nil for an
-// ungrounded critic. Ops has no prompt (it ships via close, not a model step)
-// and an unknown stage has no template; both return EINVALID rather than a
-// silent empty prompt.
+// Render produces the prompt for arc's current stage. ground is the stage's routed
+// working set (§10, §19.1); it may be nil (an ungrounded stage). Ops has no prompt
+// (it ships via close, not a model step) and an unknown stage has no template; both
+// return EINVALID rather than a silent empty prompt.
 func (r *Renderer) Render(arc *adh.Arc, ground *critic.Grounding) (string, error) {
 	const op = "prompt.Renderer.Render"
 	name := string(arc.Stage) + ".tmpl"
@@ -98,9 +97,11 @@ func (r *Renderer) Render(arc *adh.Arc, ground *critic.Grounding) (string, error
 		Resolution: arc.Resolution,
 		ProofKind:  arc.Resolution.ProofKind(),
 	}
-	if arc.Stage == adh.StageCritic {
-		v.Ground = ground
-	} else {
+	// Every stage acts against its routed working set (§10). The critic alone stays
+	// cold: it sees the grounding but never the builder's history (§19.1); other
+	// stages see both.
+	v.Ground = ground
+	if arc.Stage != adh.StageCritic {
 		v.History = arc.History
 	}
 	var b bytes.Buffer
