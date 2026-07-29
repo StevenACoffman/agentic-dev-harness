@@ -62,6 +62,30 @@ func TestTickFiresDueAndAdvances(t *testing.T) {
 	}
 }
 
+func TestNextSleep(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 29, 10, 0, 0, 0, time.UTC)
+	poll := time.Minute
+	tests := []struct {
+		name string
+		next time.Time
+		want time.Duration
+	}{
+		{"nothing scheduled sleeps the poll cap", time.Time{}, poll},
+		{"far deadline is capped at poll", now.Add(time.Hour), poll},
+		{"near deadline wins over poll", now.Add(10 * time.Second), 10 * time.Second},
+		{"past-due is floored, not negative", now.Add(-time.Hour), 100 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := schedule.NextSleep(tt.next, now, poll); got != tt.want {
+				t.Errorf("NextSleep = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTickContinuesOnFailure(t *testing.T) {
 	t.Parallel()
 	st := openStore(t)

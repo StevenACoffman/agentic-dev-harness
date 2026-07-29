@@ -6,19 +6,40 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 )
 
-// scheduleStoreDir holds the schedule database beside the rest of the .adh state.
-const scheduleStoreDir = ".adh"
+const (
+	// adhDir is the per-repo state directory the schedule database lives in.
+	adhDir = ".adh"
+	// pollInterval caps how long the run daemon sleeps between ticks, so a job
+	// added or removed out of band is noticed within it (there is no wake channel).
+	pollInterval = time.Minute
+)
 
 // execRunner runs a scheduled job by re-invoking the adh binary with the job's
 // command (e.g. `adh loop run dep-scan`). The command is a repository-owned
 // schedule entry an operator authored with `sleep schedule add`, never model
 // input, so there is no injection path from the model.
 type execRunner struct{}
+
+// repoDir is the repository root the schedule store lives under — the --repo
+// global, or the current directory — so a daemon launched from elsewhere (e.g.
+// launchd) still finds the repo's jobs.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
+}
+
+// scheduleDir is the directory holding the schedule database for this repo.
+func (cfg *Config) scheduleDir() string {
+	return filepath.Join(cfg.repoDir(), adhDir)
+}
 
 // Run execs the adh binary with the job's arguments. Child output is discarded in
 // this first cut; captured run history is a documented follow-up.
@@ -37,9 +58,9 @@ func (execRunner) Run(ctx context.Context, command []string) error {
 // schedule dispatches the `sleep schedule` verbs over the SQLite job store.
 func (cfg *Config) schedule(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: schedule expects a verb: add, list, remove, or tick")
+		return errors.New("sleep: schedule expects a verb: add, list, remove, tick, or run")
 	}
-	store, err := schedule.Open(ctx, scheduleStoreDir)
+	store, err := schedule.Open(ctx, cfg.scheduleDir())
 	if err != nil {
 		return fmt.Errorf("sleep: %w", err)
 	}
@@ -54,12 +75,64 @@ func (cfg *Config) schedule(ctx context.Context, args []string) error {
 		return cfg.scheduleRemove(ctx, store, args[1:])
 	case "tick":
 		return cfg.scheduleTick(ctx, store)
+	case "run":
+		return cfg.scheduleRun(ctx, store)
 	default:
 		return fmt.Errorf(
-			"sleep: unknown schedule verb %q; want add, list, remove, or tick",
+			"sleep: unknown schedule verb %q; want add, list, remove, tick, or run",
 			args[0],
 		)
 	}
+}
+
+// scheduleRun is the blocking daemon: it ticks the due jobs, then sleeps until the
+// earlier of the next deadline and the poll cap, and repeats until the context is
+// canceled (SIGINT/SIGTERM, wired in main). It reports through the diagnostic
+// stream so stdout stays clean for a long-runner. Run at most one daemon per store
+// — there is no cross-process lock yet (the arc store shares that gap).
+func (cfg *Config) scheduleRun(ctx context.Context, store *schedule.Store) error {
+	cfg.Log.InfoContext(
+		ctx,
+		"schedule daemon started",
+		"op",
+		"sleep",
+		"poll",
+		pollInterval.String(),
+	)
+	for {
+		now := time.Now().UTC()
+		fired, err := schedule.Tick(ctx, store, now, cfg.runner)
+		if err != nil {
+			return cfg.daemonStop(ctx, err)
+		}
+		if len(fired) > 0 {
+			cfg.Log.InfoContext(ctx, "schedule tick fired jobs", "op", "sleep", "count", len(fired))
+		}
+		next, err := store.SoonestDeadline(ctx, now)
+		if err != nil {
+			return cfg.daemonStop(ctx, err)
+		}
+		timer := time.NewTimer(schedule.NextSleep(next, now, pollInterval))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			cfg.Log.InfoContext(ctx, "schedule daemon stopped", "op", "sleep")
+			return nil
+		case <-timer.C:
+		}
+	}
+}
+
+// daemonStop maps a store error to the daemon's exit. An error while the context
+// is still live is a real failure that stops the daemon. A cancellation
+// interrupting an in-flight query mid-tick is instead a graceful shutdown — a job
+// may then re-run on the next start, at-least-once being the shutdown trade.
+func (cfg *Config) daemonStop(ctx context.Context, err error) error {
+	if ctx.Err() == nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	cfg.Log.InfoContext(ctx, "schedule daemon stopped", "op", "sleep")
+	return nil
 }
 
 // scheduleAdd registers a cron job: `schedule add <name> <cron> <command...>`. The

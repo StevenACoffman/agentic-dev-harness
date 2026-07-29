@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// minSleep floors a daemon's sleep so a past-due or near deadline cannot spin the
+// loop. It is small enough not to delay a genuinely-due job.
+const minSleep = 100 * time.Millisecond
+
 // Runner runs one job's command and reports whether it succeeded. A nil error is
 // success (the command exited zero); any error — a non-zero exit or a failure to
 // start — marks the run failed. It is the point-of-use seam: the sleep command
@@ -46,4 +50,22 @@ func Tick(ctx context.Context, store *Store, now time.Time, runner Runner) ([]Fi
 		fired = append(fired, Fired{Name: job.Name, Status: status})
 	}
 	return fired, nil
+}
+
+// NextSleep is how long a daemon should sleep after a tick: until the earlier of
+// the next deadline and the poll cap, floored above zero. The poll cap bounds how
+// long an out-of-band add or remove goes unnoticed (there is no wake channel); a
+// zero next (nothing scheduled) sleeps the full cap. It is pure so the loop's
+// timing is tested without a clock.
+func NextSleep(next, now time.Time, poll time.Duration) time.Duration {
+	sleep := poll
+	if !next.IsZero() {
+		if d := next.Sub(now); d < sleep {
+			sleep = d
+		}
+	}
+	if sleep < minSleep {
+		return minSleep
+	}
+	return sleep
 }

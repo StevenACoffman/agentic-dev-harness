@@ -12,11 +12,18 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 )
 
-// fakeRunner records commands without spawning a process.
-type fakeRunner struct{ ran [][]string }
+// fakeRunner records commands without spawning a process. When fired is set it
+// also signals each run there, so a daemon test can wait for a job to fire.
+type fakeRunner struct {
+	ran   [][]string
+	fired chan []string
+}
 
 func (f *fakeRunner) Run(_ context.Context, command []string) error {
 	f.ran = append(f.ran, command)
+	if f.fired != nil {
+		f.fired <- command
+	}
 	return nil
 }
 
@@ -72,7 +79,7 @@ func TestScheduleTickFiresDueJob(t *testing.T) {
 		t.Fatalf("add: %v", err)
 	}
 	// Force the job due by backdating its next fire directly in the store.
-	forceDue(ctx, t, "dep")
+	forceDue(ctx, t, cfg.scheduleDir(), "dep")
 
 	out.Reset()
 	if err := cfg.schedule(ctx, []string{"tick"}); err != nil {
@@ -95,10 +102,59 @@ func TestScheduleTickFiresDueJob(t *testing.T) {
 	}
 }
 
+// TestScheduleRunFiresThenStops runs the daemon against a due job, waits for it to
+// fire through the fake runner, then cancels the context and asserts the daemon
+// shuts down cleanly (graceful stop from SIGINT/SIGTERM's ctx).
+func TestScheduleRunFiresThenStops(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out bytes.Buffer
+	runner := &fakeRunner{fired: make(chan []string, 1)}
+	cfg := testCfg(t, &out, false, runner)
+	ctx := context.Background()
+
+	if err := cfg.schedule(
+		ctx,
+		[]string{"add", "dep", "@every 1h", "loop", "run", "dep"},
+	); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	store, err := schedule.Open(ctx, cfg.scheduleDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.AdvanceNextFire(ctx, "dep", time.Now().UTC().Add(-time.Minute)); err != nil {
+		t.Fatalf("force due: %v", err)
+	}
+
+	daemonCtx, cancel := context.WithCancel(ctx)
+	errc := make(chan error, 1)
+	go func() { errc <- cfg.scheduleRun(daemonCtx, store) }()
+
+	select {
+	case cmd := <-runner.fired:
+		if strings.Join(cmd, " ") != "loop run dep" {
+			t.Errorf("daemon fired %v, want the due job's command", cmd)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("daemon did not fire the due job in time")
+	}
+	cancel()
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Errorf("daemon returned %v, want nil on shutdown", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("daemon did not stop after context cancel")
+	}
+}
+
 // forceDue backdates a job's next fire so the next tick runs it.
-func forceDue(ctx context.Context, t *testing.T, name string) {
+func forceDue(ctx context.Context, t *testing.T, dir, name string) {
 	t.Helper()
-	store, err := schedule.Open(ctx, scheduleStoreDir)
+	store, err := schedule.Open(ctx, dir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
