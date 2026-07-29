@@ -360,11 +360,15 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       trace log through it with `op`/`arc` attrs. Follow-up: broaden Info/Debug
       tracing across the other stages/commands as needed, and redact secrets in log
       attrs alongside the sleep-evidence work.
-- [ ] Secret redaction in `sleep` evidence (§18.4-6) → a gitleaks-style ruleset,
-      not hand-grown regexes. **Deferred**: the Go option is
-      `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
-      API) — a proper integration is its own focused effort, not a thin wrap, and
-      a curated regex set is exactly the "hand-grown" this bullet forbids.
+- [x] Secret redaction in `sleep` evidence and staged text (§18.4): `internal/redact`
+      wraps `github.com/betterleaks/betterleaks` (MIT) — `detect.NewDetectorDefaultConfig()`
+      + `DetectString()` with the embedded ruleset — and replaces each detected
+      secret with `[REDACTED]`, preserving context. `sleep run` redacts the proposed
+      artifact, longitudinal guidance, and every evidence note once after `Plan`, so
+      the top-level `evidence.jsonl` and all staged files (proposal, report,
+      evidence, longitudinal) are scrubbed. Always on — the safe default (§18.5).
+      Deferred follow-ups: a `[sleep] redact = false` opt-out (needs unset-vs-false
+      handling), slog log-attribute redaction, and a repo-tunable ruleset/allowlist.
 - [x] Scheduling (`sleep schedule`, loops §15): `adh sleep schedule
       add|list|remove|tick` persists cron jobs that fire an adh command on a
       cadence. `internal/schedule` holds the pure cron layer (`ParseCron`/`NextFire`
