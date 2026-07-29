@@ -375,4 +375,11 @@ Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
   Follow-up: `mdformat`/prettier are not installed here, and vale's prose
   suggestions (E-Prime, passive voice, em-dash/semicolon house style) are not
   enforced — treat them as advisory.
-- [ ] No per-command docs or man pages.
+- [x] Man pages: `adh docs` renders roff man pages from the live `ff.Command` tree
+  via `mango-ff`, so they never drift from the flags — the root page to stdout, or
+  one page per command into `--dir` (`adh.1`, `adh-<command>.1`). The root page is
+  enriched with the machine vocabulary ff cannot derive from flags: EXIT STATUS,
+  REASON TOKENS (built from the `root.Reason*` constants), and ENVIRONMENT (the
+  `AGENTIC_DEV_HARNESS_` override rule). Follow-up (deferred): richer per-command
+  `LongHelp` prose (only root's placeholder was fixed) and a `--man` global flag /
+  markdown reference are out of scope.

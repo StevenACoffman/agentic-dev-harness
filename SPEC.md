@@ -67,15 +67,16 @@ Global flags (available on every command):
 
 ### 2.1 Lifecycle Commands
 
-| Command               | Purpose                                                                  |
-| --------------------- | ------------------------------------------------------------------------ |
-| `adh init`            | Scaffold `.adh/` config, state store, and artifact registry in the repo. |
-| `adh arc new <title>` | Create a new work arc and print its ID.                                  |
-| `adh arc list`        | List arcs with current stage and status.                                 |
-| `adh arc show <id>`   | Show an arc's full detail: stage history, artifacts, approvals.          |
-| `adh run [<id>]`      | Advance an arc through the loop until it hits a gate or completes.       |
-| `adh step <id>`       | Run exactly one stage transition, then stop.                             |
-| `adh status`          | Show the harness state: active arcs, pending gates, autonomy level.      |
+| Command                | Purpose                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `adh init`             | Scaffold `.adh/` config, state store, and artifact registry in the repo.                           |
+| `adh arc new <title>`  | Create a new work arc and print its ID.                                                            |
+| `adh arc list`         | List arcs with current stage and status.                                                           |
+| `adh arc show <id>`    | Show an arc's full detail: stage history, artifacts, approvals.                                    |
+| `adh run [<id>]`       | Advance an arc through the loop until it hits a gate or completes.                                 |
+| `adh step <id>`        | Run exactly one stage transition, then stop.                                                       |
+| `adh status`           | Show the harness state: active arcs, pending gates, autonomy level.                                |
+| `adh docs [--dir <d>]` | Generate man pages from the command tree: root page to stdout, or one page per command into `<d>`. |
 
 ### 2.2 Stage Commands
 
@@ -309,17 +310,20 @@ ______________________________________________________________________
 
 ## 7. Exit Codes
 
-| Code | Meaning                                                      |
-| ---- | ------------------------------------------------------------ |
-| `0`  | Success.                                                     |
-| `1`  | Generic error.                                               |
-| `2`  | Usage / invalid arguments.                                   |
-| `3`  | Model-gate refused (judgment role on under-powered model).   |
-| `4`  | Pending human gate — advancement blocked, approval required. |
-| `5`  | Oracle divergence detected.                                  |
-| `6`  | Invariant violation.                                         |
-| `7`  | On-device validation failed.                                 |
-| `8`  | Proof verification failed (NO-PROOF-NO-CLOSE).               |
+| Code | Meaning                                                                |
+| ---- | ---------------------------------------------------------------------- |
+| `0`  | Success.                                                               |
+| `1`  | Generic error.                                                         |
+| `2`  | Usage / invalid arguments.                                             |
+| `3`  | Model-gate refused (judgment role on under-powered model).             |
+| `4`  | Pending human gate — advancement blocked, approval required.           |
+| `5`  | Oracle divergence detected.                                            |
+| `6`  | Invariant violation.                                                   |
+| `7`  | On-device validation failed.                                           |
+| `8`  | Proof verification failed (NO-PROOF-NO-CLOSE).                         |
+| `9`  | Worker changed; requalify before continuing (§14).                     |
+| `12` | Critic routing gap: the environment did not ground the review (§19.1). |
+| `13` | Lesson promotion to an executable owner requires approval (§11.2).     |
 
 `--jsonl` mode returns the same information as structured JSON, so the harness
 can be scripted and chained by hooks. The exit code remains the primary machine
