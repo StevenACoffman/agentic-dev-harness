@@ -379,6 +379,19 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       stay out), one-shot `at` jobs, per-job enable/disable, captured run history +
       GC, and auto-installing the `[sleep] schedule`/loop `schedule` config cadence
       (today `schedule add` is explicit).
+- [x] `sleep schedule run` daemon: a blocking loop that ticks due jobs (reusing
+      `Tick`), then sleeps `schedule.NextSleep` (the earlier of the next deadline
+      and a 1-minute poll cap, floored) until the next tick, until the context is
+      canceled. Graceful shutdown is free from `main`'s `signal.NotifyContext`
+      (SIGINT/SIGTERM → the command ctx); a cancellation interrupting an in-flight
+      query mid-tick returns cleanly (at-least-once on shutdown). Single-instance by
+      convention — a cross-process run-lock is the same open gap as the arc store's
+      missing flock, tracked there.
+- [x] `sleep schedule` repo-root awareness: the store now opens under
+      `cfg.repoDir()` (the `--repo` global, else cwd), so a daemon launched from
+      elsewhere (e.g. launchd) finds the repo's jobs. `sleep`'s other paths and the
+      global arc store stay cwd-relative — a broader repo-relative-state sweep is
+      separate.
 
 Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
 (the "parse at the boundary" idiom), JSON via `encoding/json`, hashing via

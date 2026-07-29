@@ -409,15 +409,16 @@ the failure registry (§SPEC) does not encode:
 A scheduled, offline loop that turns operating history into staged, gated harness
 improvements without touching live files.
 
-| Command                                       | Purpose                                                                                                                          |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `adh sleep run`                               | One consolidation cycle: harvest → mine → reflect+gate → stage.                                                                  |
-| `adh sleep adopt <staging-id>`                | Apply a staged, accepted proposal to the live artifacts, backing them up first. The only command that mutates live guiding docs. |
-| `adh sleep status`                            | Show staged proposals and the last cycle.                                                                                        |
-| `adh sleep schedule add <name> <cron> <cmd…>` | Register a cron job firing an adh command (e.g. `sleep run`, `loop run dep-scan`). Quote a multi-field cron.                     |
-| `adh sleep schedule list`                     | List scheduled jobs with cadence, next fire, and last outcome.                                                                   |
-| `adh sleep schedule remove <name>`            | Remove a scheduled job.                                                                                                          |
-| `adh sleep schedule tick`                     | Run every job due now, record each outcome, and advance its next fire. Drive it from one system-cron line (or the agent).        |
+| Command                                       | Purpose                                                                                                                           |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `adh sleep run`                               | One consolidation cycle: harvest → mine → reflect+gate → stage.                                                                   |
+| `adh sleep adopt <staging-id>`                | Apply a staged, accepted proposal to the live artifacts, backing them up first. The only command that mutates live guiding docs.  |
+| `adh sleep status`                            | Show staged proposals and the last cycle.                                                                                         |
+| `adh sleep schedule add <name> <cron> <cmd…>` | Register a cron job firing an adh command (e.g. `sleep run`, `loop run dep-scan`). Quote a multi-field cron.                      |
+| `adh sleep schedule list`                     | List scheduled jobs with cadence, next fire, and last outcome.                                                                    |
+| `adh sleep schedule remove <name>`            | Remove a scheduled job.                                                                                                           |
+| `adh sleep schedule tick`                     | Run every job due now, record each outcome, and advance its next fire. Drive it from one system-cron line (or the agent).         |
+| `adh sleep schedule run`                      | Blocking daemon: sleep to the next deadline, fire due jobs, repeat until SIGINT/SIGTERM. Launch with `--repo`; run one per store. |
 
 The cycle:
 
