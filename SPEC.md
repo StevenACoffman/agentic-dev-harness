@@ -170,6 +170,11 @@ judgment_roles = ["strategy", "critic", "eval"]
 approval_phrase_required = true
 irreversible = ["device_deploy", "git_commit", "git_push", "release"]
 
+[evaluation]
+# How many times a confirmed finding may return an arc to Execution before it
+# fails terminally (§4.1). 0 uses the built-in default (2).
+max_reworks = 2
+
 [oracle]
 reference_cmd = "make ref-build"
 native_cmd    = "make native-build"
@@ -191,6 +196,11 @@ investigation = "the sources inspected and the reproducible finding"
 experiment    = "the instrumentation and the readout that answers the product question"
 decision      = "the evidence and the rationale behind the call"
 ```
+
+`--profile <name>` (or `ADH_PROFILE`) selects a repo-local profile overlay
+`.adh/config.<name>.toml` (precedence tier 3): it overlays the repo config and is
+itself overridden by environment variables then command-line flags. A named
+profile with no file is skipped, not an error.
 
 ### 3.2 Environment Variables
 

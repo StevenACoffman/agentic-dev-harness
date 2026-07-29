@@ -122,9 +122,17 @@ around them is partial.
     (`config.BaselineModels`); editing `[models]` opens a new epoch (§14).
   - [x] `adh init` writes a starter `.adh/config.toml` (`config.StarterTOML`,
     idempotent — kept if present) and scaffolds `.adh/context` + `.adh/artifacts`.
-  - [ ] Deferred: the `--profile` layer (SPEC §3 tier 3). `--config`/`--repo`/
-    `--profile` are now bound on `root.Config` (Command surface) and `--config` is
-    wired, but `--profile` selects no profile yet; secrets stay env-only.
+  - [x] The `--profile` layer (SPEC §3 tier 3): `--profile <name>` (or
+    `ADH_PROFILE`) selects a repo-local overlay `.adh/config.<name>.toml` that
+    overlays the repo config and is overridden by env then flags. Wired through the
+    `ConfigGetenv` bridge (flag → `ADH_PROFILE`, flag wins) so no call site changed;
+    `configDocs` appends the profile layer; a missing profile file is a no-op.
+    Follow-up (deferred): a profile overlay at the user (XDG) layer; secrets stay
+    env-only.
+  - [x] `[evaluation] max_reworks`: the Evaluation rework budget (§4.1) is
+    config-driven (`config.MaxReworks()`, default owned by
+    `evaluation.DefaultMaxReworks`), threaded into the `eval`/`run`/`step`
+    disposition sites.
 
 ## Effectful Seams Still Mocked
 
@@ -141,8 +149,10 @@ around them is partial.
   `run --relay [--response]` now drives the relay, chaining a resume through inline
   evaluation to the next emitted prompt in one call.
 - [ ] `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
-  `Relay` are the only backends. Follow-up: a `[models] driver` config to pick the
-  backend. (The API client itself stays deprioritized — the relay is the backend.)
+  `Relay` are the only backends, selected by the `--relay` flag. (A `[models]
+  driver` config to pick the default backend was considered and dropped — the
+  driving agent passes `--relay` anyway, so it earned no keep. The API client
+  itself stays deprioritized — the relay is the backend.)
 - [ ] `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
   port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
@@ -155,8 +165,12 @@ around them is partial.
   `.adh` workspace or unrelated work. Follow-up: merge of the arc branch to base
   (go-git merge is experimental → a `git` shell-out via
   `github.com/ldez/go-git-cmd-wrapper/v2`); returning to the base branch after ship.
-- [ ] No injected `Clock` (deterministic timestamps) once state grows time
-  fields.
+- [ ] No injected `Clock` (deterministic timestamps). **Deferred deliberately**:
+  the precondition is unmet — no `time.Time` on `adh.Arc`/state, and the only
+  `time.Now()` sites are commit-authorship (go-git, never pinned by a test) and
+  `sleep.stamp`, which already isolates time to a one-line shell so the consolidate
+  core stays pure. A `Clock` seam today would be a speculative abstraction with no
+  consumer. Revisit when a state time field or a test needs deterministic time.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
   reference build vs native port. Domain-specific (a mobile-port profile) — see
   the proof-contract note below.
@@ -351,9 +365,21 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
       API) — a proper integration is its own focused effort, not a thin wrap, and
       a curated regex set is exactly the "hand-grown" this bullet forbids.
-- [ ] Scheduling (`sleep schedule`, loops §15) → system crontab, or
-      `robfig/cron` in-process. **Deferred**: the `sleep schedule` command does
-      not exist yet — build the command first, then offload the scheduler.
+- [ ] Scheduling (`sleep schedule`, loops §15). **Deferred**: the `sleep schedule`
+      command does not exist yet — build the command first, then offload the
+      scheduler. Evaluated `github.com/rednafi/eon`: its root package is exactly the
+      right shape (pure `ParseCron`/`ParseAt`/`NextFire` over `robfig/cron/v3` — a
+      "when does this next fire / is it due now" calculator, no daemon), but **not
+      adoptable as a dependency**: it ships **no LICENSE** (all-rights-reserved),
+      and its scheduler/store/daemon layers are a heavyweight in-process SQLite
+      daemon (pulling `modernc.org/sqlite`, `spf13/cobra` — depguard-banned in
+      first-party code — and `charmbracelet/fang`) that does not fit adh's
+      stateless-per-invocation model, where the driving agent or an external cron
+      triggers `loop run`/`sleep`. Plan of record: when `sleep schedule` is built,
+      depend on **`robfig/cron/v3` directly** (which eon itself wraps) for cron-spec
+      parsing + next-fire; keep eon as the design reference for the pure calculator
+      shape, not a runtime dependency. A system crontab entry remains the zero-dep
+      alternative.
 
 Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
 (the "parse at the boundary" idiom), JSON via `encoding/json`, hashing via
