@@ -27,6 +27,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
@@ -43,6 +44,7 @@ const (
 type Config struct {
 	*root.Config
 	Artifact string
+	runner   schedule.Runner
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -61,24 +63,27 @@ type manifest struct {
 func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
+	cfg.runner = execRunner{}
 	cfg.Flags = ff.NewFlagSet("sleep").SetParent(parent.Flags)
 	cfg.Flags.StringVar(&cfg.Artifact, 'a', "artifact", artifactDefault,
 		"the managed guiding artifact the cycle may edit")
 	cfg.Command = &ff.Command{
 		Name:      "sleep",
-		Usage:     "agentic-dev-harness sleep [--artifact path] <run|adopt|status>",
+		Usage:     "agentic-dev-harness sleep [--artifact path] <run|adopt|status|schedule>",
 		ShortHelp: "run the offline consolidation cycle",
-		LongHelp:  "Run the offline self-optimization cycle behind a held-out gate with a negative-control self-test (SPEC-ADDITIONS §18.4).",
-		Flags:     cfg.Flags,
-		Exec:      cfg.exec,
+		LongHelp: "Run the offline self-optimization cycle behind a held-out gate with a " +
+			"negative-control self-test (SPEC-ADDITIONS §18.4). `schedule` manages cron " +
+			"jobs that fire an adh command on a cadence (§15, §18).",
+		Flags: cfg.Flags,
+		Exec:  cfg.exec,
 	}
 	parent.Command.Subcommands = append(parent.Command.Subcommands, cfg.Command)
 	return &cfg
 }
 
-func (cfg *Config) exec(_ context.Context, args []string) error {
+func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: expected a verb: run, adopt, or status")
+		return errors.New("sleep: expected a verb: run, adopt, status, or schedule")
 	}
 	switch args[0] {
 	case "run":
@@ -87,8 +92,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		return cfg.adopt(args[1:])
 	case "status":
 		return cfg.status()
+	case "schedule":
+		return cfg.schedule(ctx, args[1:])
 	default:
-		return fmt.Errorf("sleep: unknown verb %q; want run, adopt, or status", args[0])
+		return fmt.Errorf("sleep: unknown verb %q; want run, adopt, status, or schedule", args[0])
 	}
 }
 

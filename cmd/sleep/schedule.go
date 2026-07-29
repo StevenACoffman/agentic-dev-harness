@@ -1,0 +1,159 @@
+package sleep
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"time"
+
+	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
+)
+
+// scheduleStoreDir holds the schedule database beside the rest of the .adh state.
+const scheduleStoreDir = ".adh"
+
+// execRunner runs a scheduled job by re-invoking the adh binary with the job's
+// command (e.g. `adh loop run dep-scan`). The command is a repository-owned
+// schedule entry an operator authored with `sleep schedule add`, never model
+// input, so there is no injection path from the model.
+type execRunner struct{}
+
+// Run execs the adh binary with the job's arguments. Child output is discarded in
+// this first cut; captured run history is a documented follow-up.
+func (execRunner) Run(ctx context.Context, command []string) error {
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate adh binary: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, self, command...) //nolint:gosec // repo-owned schedule command
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("run scheduled command: %w", err)
+	}
+	return nil
+}
+
+// schedule dispatches the `sleep schedule` verbs over the SQLite job store.
+func (cfg *Config) schedule(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return errors.New("sleep: schedule expects a verb: add, list, remove, or tick")
+	}
+	store, err := schedule.Open(ctx, scheduleStoreDir)
+	if err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	switch args[0] {
+	case "add":
+		return cfg.scheduleAdd(ctx, store, args[1:])
+	case "list":
+		return cfg.scheduleList(ctx, store)
+	case "remove":
+		return cfg.scheduleRemove(ctx, store, args[1:])
+	case "tick":
+		return cfg.scheduleTick(ctx, store)
+	default:
+		return fmt.Errorf(
+			"sleep: unknown schedule verb %q; want add, list, remove, or tick",
+			args[0],
+		)
+	}
+}
+
+// scheduleAdd registers a cron job: `schedule add <name> <cron> <command...>`. The
+// cron expression must be a single argument, so a multi-field crontab is quoted
+// (`"0 3 * * *"`).
+func (cfg *Config) scheduleAdd(ctx context.Context, store *schedule.Store, args []string) error {
+	if len(args) < 3 {
+		return errors.New(
+			"sleep: schedule add <name> <cron> <command...> (quote a multi-field cron)",
+		)
+	}
+	spec := schedule.JobSpec{Name: args[0], Cron: args[1], Command: args[2:]}
+	job, err := store.Add(ctx, spec, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	if cfg.JSONL {
+		return cfg.emitOK(map[string]any{
+			"name": job.Name, "cron": job.Cron, "next_fire": job.NextFire.Format(time.RFC3339),
+		})
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "scheduled %q (%s), next fire %s\n",
+		job.Name, job.Cron, job.NextFire.Format(time.RFC3339))
+	return nil
+}
+
+// scheduleList prints every job with its cadence, next fire, and last outcome.
+func (cfg *Config) scheduleList(ctx context.Context, store *schedule.Store) error {
+	jobs, err := store.List(ctx)
+	if err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	if cfg.JSONL {
+		return cfg.emitOK(map[string]any{"jobs": jobs})
+	}
+	for i := range jobs {
+		j := &jobs[i]
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\tnext %s\tlast %s\n",
+			j.Name, j.Cron, formatTime(j.NextFire), lastRun(j.LastRun, j.LastStatus))
+	}
+	return nil
+}
+
+// scheduleRemove deletes a named job.
+func (cfg *Config) scheduleRemove(ctx context.Context, store *schedule.Store, args []string) error {
+	if len(args) == 0 {
+		return errors.New("sleep: schedule remove <name>")
+	}
+	if err := store.Remove(ctx, args[0]); err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	if cfg.JSONL {
+		return cfg.emitOK(map[string]any{"removed": args[0]})
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "removed %q\n", args[0])
+	return nil
+}
+
+// scheduleTick fires every job due now through the runner, reporting each.
+func (cfg *Config) scheduleTick(ctx context.Context, store *schedule.Store) error {
+	fired, err := schedule.Tick(ctx, store, time.Now().UTC(), cfg.runner)
+	if err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	if cfg.JSONL {
+		return cfg.emitOK(map[string]any{"fired": len(fired), "jobs": fired})
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "fired %d job(s)\n", len(fired))
+	for i := range fired {
+		_, _ = fmt.Fprintf(cfg.Stdout, "  %s\t%s\n", fired[i].Name, fired[i].Status)
+	}
+	return nil
+}
+
+// emitOK wraps the root success envelope with the sleep error prefix.
+func (cfg *Config) emitOK(data any) error {
+	if err := cfg.EmitOK(data); err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	return nil
+}
+
+// formatTime renders a schedule time, or a dash when it never fires again.
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Format(time.RFC3339)
+}
+
+// lastRun renders a job's last-run summary, or a dash when it has never run.
+func lastRun(at time.Time, status schedule.RunStatus) string {
+	if at.IsZero() {
+		return "-"
+	}
+	return string(status) + "@" + at.Format(time.RFC3339)
+}
