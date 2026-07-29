@@ -110,8 +110,14 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 	cfg.Command = &ff.Command{
 		Name:      "agentic-dev-harness",
 		Usage:     "agentic-dev-harness [global flags] <SUBCOMMAND> ...",
-		ShortHelp: "TODO: describe agentic-dev-harness here",
-		Flags:     cfg.Flags,
+		ShortHelp: "drive a change through the five-stage arc loop",
+		LongHelp: "Agentic Development Harness (adh): a deterministic CLI that drives a " +
+			"change through the five-stage arc loop — strategy, execution, critic, " +
+			"evaluation, ops — one gated step at a time (SPEC §1). The model turns are " +
+			"relayed to a driving agent (Claude or Gemini running adh as a skill), so adh " +
+			"itself needs no API key; --jsonl makes every outcome machine-readable and the " +
+			"exit code the primary signal. `docs` generates the full man-page reference.",
+		Flags: cfg.Flags,
 	}
 	return &cfg
 }

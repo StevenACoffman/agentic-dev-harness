@@ -22,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/closecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/docscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/evalcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/failurescmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gatecmd"
@@ -143,4 +144,5 @@ func register(r *root.Config) {
 	workercmd.New(r)
 	judgecmd.New(r)
 	harnesscmd.New(r)
+	docscmd.New(r)
 }
