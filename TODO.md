@@ -365,21 +365,20 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       `zricethezav/gitleaks` (a CLI-shaped module, heavy deps, unstable detect
       API) — a proper integration is its own focused effort, not a thin wrap, and
       a curated regex set is exactly the "hand-grown" this bullet forbids.
-- [ ] Scheduling (`sleep schedule`, loops §15). **Deferred**: the `sleep schedule`
-      command does not exist yet — build the command first, then offload the
-      scheduler. Evaluated `github.com/rednafi/eon`: its root package is exactly the
-      right shape (pure `ParseCron`/`ParseAt`/`NextFire` over `robfig/cron/v3` — a
-      "when does this next fire / is it due now" calculator, no daemon), but **not
-      adoptable as a dependency**: it ships **no LICENSE** (all-rights-reserved),
-      and its scheduler/store/daemon layers are a heavyweight in-process SQLite
-      daemon (pulling `modernc.org/sqlite`, `spf13/cobra` — depguard-banned in
-      first-party code — and `charmbracelet/fang`) that does not fit adh's
-      stateless-per-invocation model, where the driving agent or an external cron
-      triggers `loop run`/`sleep`. Plan of record: when `sleep schedule` is built,
-      depend on **`robfig/cron/v3` directly** (which eon itself wraps) for cron-spec
-      parsing + next-fire; keep eon as the design reference for the pure calculator
-      shape, not a runtime dependency. A system crontab entry remains the zero-dep
-      alternative.
+- [x] Scheduling (`sleep schedule`, loops §15): `adh sleep schedule
+      add|list|remove|tick` persists cron jobs that fire an adh command on a
+      cadence. `internal/schedule` holds the pure cron layer (`ParseCron`/`NextFire`
+      over `robfig/cron/v3`, time as a parameter so it is deterministic), a SQLite
+      job store (cgo-free `ncruces/go-sqlite3`), and a `Tick` executor behind a
+      point-of-use `Runner` seam (the command's runner execs the adh binary; tests
+      inject a fake). `tick` fires every due job, records its outcome, and advances
+      its next fire — driven by one system-cron line or the agent, so adh stays
+      stateless-per-invocation. The store code is adapted from a private scheduler
+      (design reference only). Deferred follow-ups: a blocking `run` daemon (the
+      store's `SoonestDeadline` + `Due` are the seam; signals/run-lock/launchd
+      stay out), one-shot `at` jobs, per-job enable/disable, captured run history +
+      GC, and auto-installing the `[sleep] schedule`/loop `schedule` config cadence
+      (today `schedule add` is explicit).
 
 Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
 (the "parse at the boundary" idiom), JSON via `encoding/json`, hashing via
