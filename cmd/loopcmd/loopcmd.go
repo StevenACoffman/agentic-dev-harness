@@ -8,13 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	looplib "github.com/StevenACoffman/agentic-dev-harness/internal/loop"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
@@ -32,8 +32,9 @@ type sensorRunner interface {
 	Sense(ctx context.Context, command, dir string) (finding bool)
 }
 
-// shellSensor runs the sensor as `sh -c <command>` in dir; a non-zero exit is a
-// finding. The command is a repository-owned loop-registry entry, never model input.
+// shellSensor runs the sensor as `sh -c <command>` in dir through the shared
+// internal/shell edge; a non-zero exit is a finding. The command is a
+// repository-owned loop-registry entry, never model input.
 type shellSensor struct{}
 
 // Config holds the configuration for the loop command.
@@ -44,12 +45,11 @@ type Config struct {
 	Command *ff.Command
 }
 
-// Sense runs command via the shell in dir; a non-zero exit means the invariant
-// departed (a finding).
+// Sense runs command via the shell in dir; a non-zero exit (or an unstartable
+// command) means the invariant departed (a finding).
 func (shellSensor) Sense(ctx context.Context, command, dir string) bool {
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // repo-owned loop config
-	cmd.Dir = dir
-	return cmd.Run() != nil
+	code, ran := shell.Runner{}.Run(ctx, command, dir)
+	return !ran || code != 0
 }
 
 // New creates and registers the loop command with the given parent config.

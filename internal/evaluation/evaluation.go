@@ -9,9 +9,7 @@ package evaluation
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
@@ -19,6 +17,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
@@ -79,9 +78,9 @@ type CheckRunner interface {
 	RunCheck(ctx context.Context, command, dir string) (passed, ran bool)
 }
 
-// ShellRunner runs a check as `sh -c <command>` in dir. It is the one effectful
-// edge of adjudication; RepoAdjudicator holds it behind CheckRunner so tests
-// inject a fake.
+// ShellRunner runs a check as `sh -c <command>` in dir through the shared
+// internal/shell edge. RepoAdjudicator holds it behind CheckRunner so tests inject
+// a fake.
 type ShellRunner struct{}
 
 // NewRepoAdjudicator builds an adjudicator rooted at dir, resolving NFR findings
@@ -117,20 +116,8 @@ func loadChecks(repoDir string) (toolreg.Registry, error) {
 // RunCheck runs command via the shell in dir. A clean exit passes; a non-zero exit
 // ran-and-failed; a command that could not start (not found, canceled) did not run.
 func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, ran bool) {
-	// The command is a repository-owned tool-registry entry (§13), authored by the
-	// maintainer, not agent or critic input — the critic supplies only the tool ID
-	// to select, so there is no injection path from the model.
-	cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // repo-owned config
-	cmd.Dir = dir
-	err := cmd.Run()
-	if err == nil {
-		return true, true
-	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return false, true // the check ran and reported failure
-	}
-	return false, false // could not start the check
+	code, ran := shell.Runner{}.Run(ctx, command, dir)
+	return code == 0, ran
 }
 
 // Decide picks the arc's disposition (SPEC §4.1): a clean verdict advances to the
