@@ -1,6 +1,7 @@
 // Package run implements the "run" CLI command: relay an arc through stages
 // until it reaches a human gate or closes (SPEC §2.1), honoring the autonomy
-// level. Until config wiring lands it relays at the default level L2.
+// level and rework budget resolved from config. --relay drives via the relay;
+// otherwise the deterministic mock advances the stages.
 package run
 
 import (
@@ -120,6 +121,7 @@ func (cfg *Config) driveRelay(
 ) error {
 	judgment := conf.JudgmentRoles()
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
+	maxReworks := conf.MaxReworks()
 	if cfg.Response != "" {
 		if err := cfg.resumeRelay(ctx, store, arc, renderer, judgment); err != nil {
 			return err
@@ -135,7 +137,7 @@ func (cfg *Config) driveRelay(
 				"ops is the ship gate; approve then `close`",
 			)
 		case adh.StageEvaluation:
-			if err := cfg.adjudicate(ctx, arc, recordLessons); err != nil {
+			if err := cfg.adjudicate(ctx, arc, recordLessons, maxReworks); err != nil {
 				return err
 			}
 			if err := store.Save(arc); err != nil {
@@ -280,6 +282,7 @@ func (cfg *Config) drive(
 	level := conf.AutonomyLevel()
 	judgment := conf.JudgmentRoles()
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
+	maxReworks := conf.MaxReworks()
 	for arc.Status == adh.StatusOpen {
 		if arc.Stage == adh.StageOps {
 			return cfg.block(
@@ -290,7 +293,14 @@ func (cfg *Config) drive(
 			)
 		}
 		from := arc.Stage
-		if err := cfg.advanceStage(ctx, renderer, arc, judgment, recordLessons); err != nil {
+		if err := cfg.advanceStage(
+			ctx,
+			renderer,
+			arc,
+			judgment,
+			recordLessons,
+			maxReworks,
+		); err != nil {
 			return err
 		}
 		if err := store.Save(arc); err != nil {
@@ -361,9 +371,10 @@ func (cfg *Config) advanceStage(
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
 	recordLessons bool,
+	maxReworks int,
 ) error {
 	if arc.Stage == adh.StageEvaluation {
-		return cfg.adjudicate(ctx, arc, recordLessons)
+		return cfg.adjudicate(ctx, arc, recordLessons, maxReworks)
 	}
 	if err := stage.Execute(ctx, model.Mock{}, renderer, arc, judgment); err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -374,7 +385,12 @@ func (cfg *Config) advanceStage(
 // adjudicate runs the deterministic Evaluation disposition (§19.2) on the arc's
 // findings and applies the verdict, mutating the arc. It is shared by the mock
 // drive and the relay drive; the caller persists the arc.
-func (cfg *Config) adjudicate(ctx context.Context, arc *adh.Arc, recordLessons bool) error {
+func (cfg *Config) adjudicate(
+	ctx context.Context,
+	arc *adh.Arc,
+	recordLessons bool,
+	maxReworks int,
+) error {
 	adjudicator, err := evaluation.RepoAdjudicatorFor(cfg.repoDir())
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -383,12 +399,7 @@ func (cfg *Config) adjudicate(ctx context.Context, arc *adh.Arc, recordLessons b
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	if err := evaluation.Apply(
-		arc,
-		&verdict,
-		recordLessons,
-		evaluation.DefaultMaxReworks,
-	); err != nil {
+	if err := evaluation.Apply(arc, &verdict, recordLessons, maxReworks); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil

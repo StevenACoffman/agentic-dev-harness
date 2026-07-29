@@ -195,18 +195,25 @@ func NewLogger(w io.Writer, jsonl bool, level slog.Level) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, opts))
 }
 
-// ConfigGetenv returns an environment accessor that honors --config: when set, it
-// overrides ADH_CONFIG so config.Load reads the chosen file; other keys pass
-// through to the injected Getenv. The approval phrase is still never sourced from
-// the environment (§5.2) — ADH_APPROVAL_PHRASE stays ignored downstream.
+// ConfigGetenv returns an environment accessor that bridges the config flags into
+// the injected environment: --config overrides ADH_CONFIG (the chosen file) and
+// --profile overrides ADH_PROFILE (the config.Load profile layer, SPEC §3 tier 3);
+// other keys pass through to the injected Getenv. The approval phrase is still
+// never sourced from the environment (§5.2) — ADH_APPROVAL_PHRASE stays ignored.
 func (c *Config) ConfigGetenv() func(string) string {
-	if c.ConfigPath == "" {
+	if c.ConfigPath == "" && c.Profile == "" {
 		return c.Getenv
 	}
+	// The flags win over their environment variables; an unset flag falls through
+	// to the real environment, so --profile and ADH_PROFILE both resolve here.
 	return func(key string) string {
-		if key == "ADH_CONFIG" {
+		switch {
+		case key == "ADH_CONFIG" && c.ConfigPath != "":
 			return c.ConfigPath
+		case key == "ADH_PROFILE" && c.Profile != "":
+			return c.Profile
+		default:
+			return c.Getenv(key)
 		}
-		return c.Getenv(key)
 	}
 }

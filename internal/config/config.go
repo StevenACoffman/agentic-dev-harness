@@ -18,6 +18,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 )
 
 const (
@@ -55,6 +56,11 @@ approval_phrase_required = true
 # What an unconfirmed critic finding becomes (§19.2): a §11 lesson candidate.
 unconfirmed = "lesson"
 
+[evaluation]
+# How many times a confirmed finding may return an arc to Execution before it
+# fails terminally (§4.1). 0 uses the built-in default (2).
+max_reworks = 2
+
 [proof.contract]
 # The acceptance bar each resolution's proof must meet to close (§SPEC 5.4, §12).
 # Generic defaults; a mobile port might set change = "oracle, invariant, and
@@ -67,11 +73,20 @@ decision      = "the evidence and the rationale behind the call"
 
 // Config is the resolved harness configuration (SPEC §3.1).
 type Config struct {
-	Autonomy string `toml:"autonomy"`
-	Models   Models `toml:"models"`
-	Gates    Gates  `toml:"gates"`
-	Critic   Critic `toml:"critic"`
-	Proof    Proof  `toml:"proof"`
+	Autonomy   string     `toml:"autonomy"`
+	Models     Models     `toml:"models"`
+	Gates      Gates      `toml:"gates"`
+	Critic     Critic     `toml:"critic"`
+	Proof      Proof      `toml:"proof"`
+	Evaluation Evaluation `toml:"evaluation"`
+}
+
+// Evaluation is the Evaluation-stage policy (SPEC §4.1). MaxReworks bounds the
+// rework loop: the times a confirmed finding may return an arc to Execution before
+// it fails terminally. Zero means unset — MaxReworks() then falls back to the
+// evaluation package's default, so that default keeps a single owner.
+type Evaluation struct {
+	MaxReworks int `toml:"max_reworks"`
 }
 
 // Proof is the proof policy (SPEC §3.1, §5.4). Contract maps each resolution to
@@ -133,6 +148,15 @@ func Defaults() Config {
 			Unconfirmed: UnconfirmedLesson,
 		},
 	}
+}
+
+// MaxReworks is the configured Evaluation rework budget (§4.1), falling back to
+// evaluation.DefaultMaxReworks when unset so the default has a single owner.
+func (c *Config) MaxReworks() int {
+	if c.Evaluation.MaxReworks <= 0 {
+		return evaluation.DefaultMaxReworks
+	}
+	return c.Evaluation.MaxReworks
 }
 
 // CriticUnconfirmed is the configured disposition for an unconfirmed critic
@@ -223,14 +247,27 @@ func resolve(docs [][]byte) (Config, error) {
 	return cfg, nil
 }
 
+// ProfileConfigFile is the repo-local profile config path (SPEC §3 tier 3): the
+// layer `--profile <name>` (or ADH_PROFILE) selects, overlaying the repo config.
+func ProfileConfigFile(profile string) string {
+	return ".adh/config." + profile + ".toml"
+}
+
 // configDocs reads the config file layers lowest precedence first. ADH_CONFIG,
-// when set, is the single explicit config file and replaces the search. A
-// missing file is skipped; any other read error propagates.
+// when set, is the single explicit config file and replaces the search. Otherwise
+// the layers are user config, repo config, then — when ADH_PROFILE is set — the
+// profile config (SPEC §3 tier 3), which overlays the repo config and is itself
+// overridden by env then flags. A missing file is skipped; any other read error
+// propagates.
 func configDocs(getenv func(string) string) ([][]byte, error) {
 	if explicit := getenv("ADH_CONFIG"); explicit != "" {
 		return readLayers(explicit)
 	}
-	return readLayers(userConfigPath(getenv), RepoConfigFile)
+	paths := []string{userConfigPath(getenv), RepoConfigFile}
+	if profile := getenv("ADH_PROFILE"); profile != "" {
+		paths = append(paths, ProfileConfigFile(profile))
+	}
+	return readLayers(paths...)
 }
 
 func readLayers(paths ...string) ([][]byte, error) {

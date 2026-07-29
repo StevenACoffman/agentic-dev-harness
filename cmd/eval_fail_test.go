@@ -1,6 +1,8 @@
 package cmd_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
@@ -72,6 +74,35 @@ func TestEvalFailsTerminallyPastBudget(t *testing.T) {
 	}
 	if arc.Status != adh.StatusFailed {
 		t.Errorf("status = %s, want failed (rework budget spent)", arc.Status)
+	}
+}
+
+// TestEvalHonorsConfiguredMaxReworks: a repo config lowering the rework budget to
+// 1 fails an arc terminally at Reworks=1, where the built-in default (2) would
+// still rework — proving [evaluation] max_reworks is threaded through eval.
+func TestEvalHonorsConfiguredMaxReworks(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(".adh", "config.toml"),
+		[]byte("[evaluation]\nmax_reworks = 1\n"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	id := seedFailingEvalArc(t, 1) // one rework already spent
+
+	out, err := run(t, "eval", "--jsonl", id)
+	assertError(t, out, err, 8, string(adh.FindingContract))
+
+	arc, gerr := state.Default().Get(id)
+	if gerr != nil {
+		t.Fatalf("reload arc: %v", gerr)
+	}
+	if arc.Status != adh.StatusFailed {
+		t.Errorf("status = %s, want failed at the configured budget of 1", arc.Status)
 	}
 }
 

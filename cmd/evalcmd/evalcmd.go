@@ -100,12 +100,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("eval: %w", err)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
-	if err := evaluation.Apply(
-		&arc,
-		&verdict,
-		recordLessons,
-		evaluation.DefaultMaxReworks,
-	); err != nil {
+	if err := evaluation.Apply(&arc, &verdict, recordLessons, conf.MaxReworks()); err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
 	if err := store.Save(&arc); err != nil {

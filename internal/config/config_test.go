@@ -9,6 +9,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 )
 
 func noEnv(string) string { return "" }
@@ -119,6 +120,83 @@ func TestLoadRepoOverridesDefaults(t *testing.T) {
 	}
 	if cfg.JudgmentRoles().Requires(adh.StageCritic) {
 		t.Errorf("repo config narrowed judgment_roles to [strategy]; critic should be excluded")
+	}
+}
+
+func TestMaxReworksDefaultsAndOverride(t *testing.T) {
+	def := config.Defaults()
+	if got := def.MaxReworks(); got != evaluation.DefaultMaxReworks {
+		t.Errorf("unset MaxReworks = %d, want the evaluation default %d",
+			got, evaluation.DefaultMaxReworks)
+	}
+	t.Chdir(t.TempDir())
+	writeRepoConfig(t, "[evaluation]\nmax_reworks = 5\n")
+	cfg, err := config.Load(noEnv)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxReworks() != 5 {
+		t.Errorf("MaxReworks = %d, want 5 from repo config", cfg.MaxReworks())
+	}
+}
+
+// writeProfileConfig writes a repo-local profile config for the named profile.
+func writeProfileConfig(t *testing.T, profile, body string) {
+	t.Helper()
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir .adh: %v", err)
+	}
+	if err := os.WriteFile(config.ProfileConfigFile(profile), []byte(body), 0o600); err != nil {
+		t.Fatalf("write profile config: %v", err)
+	}
+}
+
+// envMap returns a getenv that reads from m — a test env without touching os.
+func envMap(m map[string]string) func(string) string {
+	return func(k string) string { return m[k] }
+}
+
+func TestProfileOverlaysRepoConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeRepoConfig(t, "autonomy = \"L4\"\n")
+	writeProfileConfig(t, "ci", "autonomy = \"L0\"\n")
+	cfg, err := config.Load(envMap(map[string]string{"ADH_PROFILE": "ci"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AutonomyLevel() != authority.L0 {
+		t.Errorf(
+			"autonomy = %s, want L0 — the ci profile overlays the repo config",
+			cfg.AutonomyLevel(),
+		)
+	}
+}
+
+func TestEnvOverridesProfile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeProfileConfig(t, "ci", "autonomy = \"L0\"\n")
+	cfg, err := config.Load(envMap(map[string]string{"ADH_PROFILE": "ci", "ADH_AUTONOMY": "L4"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AutonomyLevel() != authority.L4 {
+		t.Errorf("autonomy = %s, want L4 — env outranks the profile layer", cfg.AutonomyLevel())
+	}
+}
+
+func TestMissingProfileIsNoop(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeRepoConfig(t, "autonomy = \"L4\"\n")
+	// ADH_PROFILE names a profile with no file; it is skipped, not an error.
+	cfg, err := config.Load(envMap(map[string]string{"ADH_PROFILE": "absent"}))
+	if err != nil {
+		t.Fatalf("Load with a missing profile file: %v", err)
+	}
+	if cfg.AutonomyLevel() != authority.L4 {
+		t.Errorf(
+			"autonomy = %s, want L4 from repo — the absent profile is a no-op",
+			cfg.AutonomyLevel(),
+		)
 	}
 }
 

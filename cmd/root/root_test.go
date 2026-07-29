@@ -27,6 +27,28 @@ func decodeOutcome(t *testing.T, out string) map[string]any {
 	return rec
 }
 
+// TestConfigGetenvBridgesProfile checks the --profile flag reaches config.Load as
+// ADH_PROFILE and wins over the real env, while an unset flag falls through.
+func TestConfigGetenvBridgesProfile(t *testing.T) {
+	env := func(k string) string {
+		if k == "ADH_PROFILE" {
+			return "from-env"
+		}
+		return ""
+	}
+	// Flag set → the flag value, over the environment.
+	withFlag := root.New(env, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	withFlag.Profile = "from-flag"
+	if got := withFlag.ConfigGetenv()("ADH_PROFILE"); got != "from-flag" {
+		t.Errorf("ADH_PROFILE = %q, want the --profile flag to win", got)
+	}
+	// Flag unset → the real environment shows through.
+	noFlag := root.New(env, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if got := noFlag.ConfigGetenv()("ADH_PROFILE"); got != "from-env" {
+		t.Errorf("ADH_PROFILE = %q, want the env value to pass through when the flag is unset", got)
+	}
+}
+
 func TestEmitOK(t *testing.T) {
 	var out bytes.Buffer
 	cfg := newConfig(&out)
