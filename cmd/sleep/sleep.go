@@ -45,6 +45,7 @@ type Config struct {
 	*root.Config
 	Artifact string
 	runner   schedule.Runner
+	redactor redactor
 	Flags    *ff.FlagSet
 	Command  *ff.Command
 }
@@ -120,6 +121,13 @@ func (cfg *Config) run() error {
 	if err != nil {
 		return fmt.Errorf("sleep: %w", err)
 	}
+	// Redact secrets from all staged text before any write (§18.4): the cycle is
+	// harvested arc history and can carry credentials.
+	red, err := cfg.secretRedactor()
+	if err != nil {
+		return err
+	}
+	redactCycle(red, &cycle)
 	records := stamp(cycle.Records)
 	if err := appendEvidence(evidenceFile, records); err != nil {
 		return err
@@ -248,8 +256,7 @@ func writeStaging(livePath string, cycle *consolidate.Cycle) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("sleep: %w", err)
 	}
-	// TODO(redact): §18.4 requires staged text pass through secret redaction
-	// before it is written; that is a tracked library offload (gitleaks-style).
+	// Staged text was scrubbed of secrets in run() before this write (§18.4).
 	name := filepath.Base(livePath)
 	if err := atomicfile.WriteFile(
 		filepath.Join(dir, name),
