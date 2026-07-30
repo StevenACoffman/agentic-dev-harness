@@ -479,6 +479,41 @@ only detectable defects (missing sections, broken intra-artifact links, banned
 phrasing) and assumes the judge dimensions are perfect; the optimizer supplies
 the judge-only bases. Compare candidates on the same metric within a run.
 
+**Outcome eval and replication — a strict `>` is not proof.** The rubric/floor
+gate above is a *structural* screen (does the artifact score better); it is cheap
+and necessary but **not sufficient** to adopt a change, because a single
+comparison cannot separate a real effect from stochastic noise — accepting on it
+is arguing with a random number generator. Adoption additionally requires an
+**outcome** eval and a replication guardrail:
+
+- **Outcome, not structure.** Measure whether the change actually improves the
+  agent's *result* on a task set — a **condition-blind, paired** comparison
+  (control = the run without the change, treatment = with it) over the held-out
+  selection split, with the treatment **token-budget-balanced** against the control
+  so the effect is not merely "more text." Objective outcomes (correctness,
+  abstention, calibration/Brier, localization) are preferred; a **validated**
+  judge scores what only judgment can.
+- **Effect size + a paired test.** Require a minimum effect (e.g. ≥5 percentage
+  points) *and* a passing paired significance test (McNemar for paired binary
+  outcomes; cluster-robust resampling when items are not independent), with a
+  multiple-comparison correction across dimensions.
+- **Replication verdict.** The disposition is a taxonomy, not a boolean:
+  **ELEVATE** only when a primary pass **and an independent fresh replication**
+  both hold; a lone pass is **DIRECTIONAL-NOT-REPLICATED** (do not adopt); a
+  missing replication **refuses** to elevate (REPLICATION-MISSING). The verdict is
+  a pure, unit-testable function (FCIS). **KILL** and not-replicated outcomes are
+  recorded honestly (§18.6), never hidden — publishing a negative result is the
+  point of the gate.
+- **Validate the graders and the splits.** The judge is calibrated before its
+  verdicts are trusted, and the selection/test splits are checked for leakage — a
+  grader you can weaken, or a split that leaks, makes the whole ratchet a proxy.
+
+This composes with an external skill optimizer (§13, e.g. skillsaw): its rubric
+`gate` is the cheap structural floor, and this outcome+replication verdict is the
+adoption bar on top of it. The same discipline governs §16 effectiveness claims —
+a comparative, causal, or longitudinal claim needs repeated conditions, parity,
+condition-blind grading, and evidence it generalizes, not one before/after run.
+
 ### 18.3 Reflect Discipline
 
 The optimizer reflects over arc history to propose edits, following four rules

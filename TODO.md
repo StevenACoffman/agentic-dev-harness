@@ -115,6 +115,37 @@ goal (the schema half; the ADR is the decision half):
       NFR **allocation** (split a top-level `Fail` into per-component budgets by
       routing derived units to component labels/paths).
 
+### From `cc-thinking-skills/evals` (Replication-Gated Outcome Eval — the "Not an RNG" Backbone)
+
+Its `evals/` is a replication-gated, condition-blind eval pipeline (JS/MIT) with a
+pure `verdict()` core, honest negative results (it publishes that *zero* skills yet
+ELEVATE), a validated judge, split-leakage checks, and real statistics (McNemar,
+effect-size threshold, cluster bootstrap, Holm). It is a **reference methodology**,
+not something to vendor (JS; adh implements the `verdict()`/stats in Go or shells
+out). It directly answers the *accretive-not-RNG* goal and shows adh's/skillsaw's
+single strict-`>` gate is insufficient.
+
+- [ ] **Replication-gated outcome-eval verdict for the adoption gate (§18.2, §16,
+      Loop C).** A strict-`>` on a rubric is a *structural* screen, necessary but
+      not sufficient — one comparison can't separate signal from noise. Gate
+      adoption on an **outcome** eval (condition-blind, paired control=no-change vs
+      treatment=change, token-budget-balanced) over the held-out split, with an
+      effect-size threshold + a paired significance test, and a **verdict taxonomy**:
+      `ELEVATE` only on a primary pass **and** an independent fresh replication;
+      `DIRECTIONAL-NOT-REPLICATED`/`REPLICATION-MISSING` otherwise (refuse to
+      elevate); record `KILL`/not-replicated honestly (§18.6). The `verdict()` is a
+      pure, unit-testable core (adh's FCIS). skillsaw's `gate` is the cheap floor
+      **under** this bar, not a substitute. **The trust backbone for every accretion
+      loop above.**
+- [ ] **Validate the graders and the splits (§18.2).** Calibrate the judge before
+      trusting its verdicts (extends the §18 negative-control self-test to the judge
+      itself), and check selection/test splits for leakage (a `validate-splits`
+      equivalent) — a weakenable grader or a leaky split makes the ratchet a proxy.
+- [ ] **Routing eval for the context lever (§10, Loop A/E).** Adopt the pipeline's
+      routing eval: does `context route` fire the *right* units for an arc's
+      labels/paths (and correctly return NONE when nothing applies)? An outcome eval
+      for routing quality, so the context lever is measured, not assumed.
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus
