@@ -112,6 +112,43 @@ produced and validated by an external §13 tool (a domain-model renderer, a
 knowledge-base distiller, a skill optimizer). The harness owns routing, retrieval,
 integrity, and consistency; it does not own how a unit's text is authored.
 
+### 10.5 Nonfunctional Requirements: Taxonomy and Quantified Spec (Planguage)
+
+An **NFR-check** unit (§10.2) is not free prose — "should be fast" cannot be
+tested or gated. An NFR is named by an agreed **taxonomy** (ISO/IEC 25010 or
+FURPS+ — usability, performance, reliability, availability, security,
+maintainability, portability, …) so its category is standard, not invented, and it
+is *quantified* in **Planguage** (Tom Gilb) so it becomes measurable and gateable:
+
+| Keyword    | Role in adh                                                                       |
+| ---------- | --------------------------------------------------------------------------------- |
+| `Tag`      | taxonomy-qualified structured name (e.g. `Performance.Latency`) — the unit id     |
+| `Gist`     | one-line description                                                              |
+| `Ambition` | the rationale — links to the governing decision/ADR (§12) that accepted it        |
+| `Scale`    | unit of measure with context                                                      |
+| `Meter`    | the **measurement method** → the executable check (§13) that produces the SLI     |
+| `Baseline` | the current level (the ratchet's starting point, cf. §16 effectiveness)           |
+| `Fail`     | the threshold that **fails the Evaluation gate** — the acceptance bar (§SPEC 3.1) |
+| `Goal`     | the target that fully satisfies                                                   |
+| `Stretch`  | the point past which further ROI is negligible                                    |
+
+So a single NFR unit binds the four things adh otherwise scatters: its *category*
+(taxonomy), its *check* (`Meter` → §13 tool → SLI), its *gate* (`Fail` → the
+proof-contract acceptance bar and Evaluation threshold), and its *rationale*
+(`Ambition` → a `decision`/ADR, §12). This is the durable, testable representation
+of a nonfunctional requirement the domain model omits and the ADR only decides.
+
+The distinction this makes precise: **validation** asks whether the requirements
+are the *right* ones and mutually consistent — the cross-unit consistency check
+(§10.4) and the cold critic — while **verification** asks whether the system is
+built *right* against them — proof and the `Meter`-driven Evaluation gate. NFRs
+may be *allocated* down onto components (a top-level `Fail` split into per-module
+budgets) by routing the derived unit to the component's labels/paths (§10).
+
+The taxonomy and the Planguage format are the adopted **vocabulary and schema**; a
+guide that teaches them is a curated *source* to distill (via a §13 distiller) into
+routable NFR units, not something the harness embeds.
+
 ______________________________________________________________________
 
 ## 11. Lessons: Promote Corrections into the Environment

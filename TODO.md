@@ -90,6 +90,31 @@ gates that *enforce* with a summary that *teaches*); and an `adh init --bootstra
 that seeds initial context units + §13 tool entries from a repo-profile scan
 (discover→analyze), plus routing a hand-authored ARCHITECTURE map as a context unit.
 
+### From `nfrs-guide` (NFR Taxonomy + Planguage Spec Format)
+
+`nfrs-guide` (MIT) is a **knowledge base**, not a tool — so it is a curated *source
+to distill via exegesis* into routable NFR units, **not** a tool adh integrates. But
+its terminology/taxonomy and one data format are the answer to the *articulate-NFRs*
+goal (the schema half; the ADR is the decision half):
+
+- [ ] **Adopt an NFR taxonomy + Planguage as the NFR-check spec format (§10.5).**
+      An NFR-check unit stops being free prose: name it by an agreed taxonomy
+      (**ISO/IEC 25010** or **FURPS+**) and quantify it in **Planguage** — `Tag`
+      (`Performance.Latency`), `Scale`, `Meter`, `Baseline`, `Fail`, `Goal`,
+      `Stretch`, `Ambition`. This binds the four things adh scatters into one unit:
+      *category* (taxonomy), *check* (`Meter` → §13 tool → an SLI), *gate* (`Fail` →
+      the Evaluation threshold and proof-contract acceptance bar, §SPEC 3.1), and
+      *rationale* (`Ambition` → a `decision`/ADR, §12). Turns "should be fast" into a
+      testable, gateable requirement — **the NFR schema that was missing.** Pairs
+      with the ADR decision format above: Planguage specifies the requirement, the
+      ADR records the trade-off decision about it.
+- [ ] Terminology alignment (§10.5): frame the cross-unit consistency check (Loop E)
+      as **validation** (are the requirements right and conflict-free) and proof/the
+      `Meter`-driven Evaluation gate as **verification** (is it built right) — the
+      standard NFR vocabulary, so adh's stages name what they already do. Optional:
+      NFR **allocation** (split a top-level `Fail` into per-component budgets by
+      routing derived units to component labels/paths).
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus
