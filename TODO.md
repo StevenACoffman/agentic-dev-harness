@@ -146,6 +146,38 @@ single strict-`>` gate is insufficient.
       labels/paths (and correctly return NONE when nothing applies)? An outcome eval
       for routing quality, so the context lever is measured, not assumed.
 
+### From the Knowledge Layer (OKF Format + Compounding-Wiki Process)
+
+The context store *is* the team's curated knowledge base. Two of these give it a
+real, open format and a compounding-maintenance process; the third is a front-end,
+not an adh component.
+
+- [ ] **Adopt OKF as the context-unit format (§10.4).** `knowledge-catalog/okf`
+      (Open Knowledge Format v0.2, MIT) is a markdown + YAML-frontmatter standard for
+      *agent-maintained* knowledge — human-readable, diffable, `git clone`-portable,
+      no SDK. It makes first-class exactly what Loop A + Loop F need and adds a new
+      dimension: **provenance** (`sources` + per-claim footnote citations),
+      **freshness/lifecycle** (staleness, supersession → Loop F), and a **trust tier**
+      (`verified`: unverified / machine-confirmed / human-reviewed) that records
+      adh's "agent proposes → human confirms at a gate" *on the unit* and weights it
+      by how it was earned. Replaces the bespoke `{id,kind,labels,paths,owner}` JSON;
+      a team ships its knowledge base as an ordinary repo. **Strongest data-format add
+      for the curated-knowledge-base goal.**
+- [ ] **Compounding-wiki operations (`llm-wiki.md` pattern) for §10/§11/§18.** The
+      "compile once, keep current" discipline (vs re-deriving via RAG each query):
+      an `index.md` read-first routing catalog (the JIT grounding preview, Loop A); an
+      append-only `log.md`/evidence trail; **file good answers back as durable units**
+      — an `investigation`/synthesis arc's output becomes a routable context unit, so
+      explorations compound instead of vanishing into chat; and a **wiki-lint**
+      (contradictions, stale claims, orphan pages, missing cross-references) extending
+      Loop E + Loop F + freshness. Mostly validates adh's §10/§11/§18; the
+      file-answers-back and orphan/stale lint are the concrete new bits.
+
+Not adopted: **leafwiki** (Go/MIT, single-binary wiki server, SQLite + markdown on
+disk) is a *human front-end* to browse/edit the OKF context store (the Obsidian role
+in the llm-wiki pattern) — complementary and optional, but adh is a CLI that routes
+files, not a hosted wiki, so it is not an adh component.
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus

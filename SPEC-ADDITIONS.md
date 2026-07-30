@@ -106,6 +106,19 @@ compaction.
   persistent self-check — path existence, command/tool resolution, section
   presence, dangling-reference detection — run in CI and at session start so a
   half-edited or drifted harness fails fast rather than silently misguiding a run.
+- **Format, trust, and freshness (OKF).** The unit format is the **Open Knowledge
+  Format** — markdown + YAML frontmatter — so a unit is human-readable, diffable,
+  and `git clone`-portable with no bespoke SDK, and a team's curated knowledge base
+  ships as an ordinary repo. OKF makes three things first-class that a routing
+  index alone cannot: **provenance** (a `sources` list plus per-claim footnote
+  citations), a **trust tier** derived from `verified` — *unverified* (agent-
+  generated), *machine-confirmed* (a check passed), *human-reviewed* (confirmed at a
+  gate) — so a routed unit's weight reflects how it was earned and a §11 promotion /
+  human approval moves it up the tier (the "agent proposes, a human confirms"
+  design rule, recorded on the unit), and **freshness/lifecycle** (last-updated,
+  staleness, supersession) so the anti-drift check above can flag a stale unit. A
+  navigable `index.md` (the routing preview) and an append-only `log.md` (the
+  chronological evidence trail) are the store's two special files.
 
 These capabilities are tool-agnostic: a unit's content may be hand-written, or
 produced and validated by an external §13 tool (a domain-model renderer, a
