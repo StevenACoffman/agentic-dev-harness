@@ -178,6 +178,38 @@ disk) is a *human front-end* to browse/edit the OKF context store (the Obsidian 
 in the llm-wiki pattern) — complementary and optional, but adh is a CLI that routes
 files, not a hosted wiki, so it is not an adh component.
 
+### From `virgil` (Patterns Only — a Peer System, No License, Not Vendored)
+
+`virgil` (Go, **no LICENSE**) is a peer harness (a personal assistant) that
+independently arrives at adh's design — a five-stage `signal→classify→plan→execute→
+output` loop, deterministic-first with AI as a gated fallback, stateless
+invocations with context assembled fresh from memory (not a chat buffer),
+self-improvement into *readable config, not weights*, and append-only JSONL
+evidence. That convergence corroborates adh; it is not a tool adh orchestrates. One
+pattern is a genuinely novel add for the context lever:
+
+- [ ] **Routing learns from its misses (§10.3).** adh already *detects* the miss —
+      a context gap (§10.3) / routing gap (§19.1, exit 12) — but discards it. Adopt
+      virgil's self-heal: append each miss to a **miss log** (a learning signal, kept
+      distinct from evidence), and past a threshold **propose a routing rule** (a
+      label/path→unit mapping, keyword, category) that converts the miss into a
+      deterministic route, landing in readable config, **gated at §11** (or auto only
+      at high autonomy). The context router then improves the more it is used and the
+      critic/relay surface shrinks. **Accretion applied to the #1 lever — completes
+      adh's existing routing-gap detection with the learning half.**
+- [ ] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).**
+      Generalize §18 self-optimization beyond the guiding artifact: every §13 tool and
+      §10 unit declares KPIs (acceptance, error, duration, domain-specific) with
+      degradation thresholds; a crossed threshold proposes a config change (prompt
+      amendment, flag default, threshold) — subject to the §18.2 outcome-and-
+      replication bar before adoption, never auto-adopted on one signal.
+- [ ] Effectiveness north-star (§16): track the **deterministic-handled vs
+      LLM/critic-handled** ratio; accretion (routing rules, checks, lessons) should
+      drive the LLM surface *down* over time — a measurable direction for §16, not a
+      vibe. Optional/larger: a **pipe/pipeline** composition model for §13 tools
+      (atomic tools + recursive pipelines over the existing `--jsonl` envelope
+      contract), so a flow like distill→optimize→gate is a declared pipeline.
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus

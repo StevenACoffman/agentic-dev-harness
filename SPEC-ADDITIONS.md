@@ -79,6 +79,24 @@ routed-and-ignored (a worker gap).
 
 **Exit code 12** — a routed context unit is missing or fails to resolve.
 
+**Routing learns from its misses.** A context gap — the arc needed context the
+deterministic label/path routing did not select — is not just an error to report;
+it is a *learning signal*. Each miss is appended to a **miss log** kept distinct
+from the evidence trail (evidence is observability; the miss log feeds
+self-healing), recording the arc's labels/paths, what routed, and the context the
+critic or worker actually had to reach for. When misses for a pattern accumulate
+past a threshold (or on request), a self-heal step **proposes a routing rule** — a
+new label/path→unit mapping, keyword, or category — that converts the miss into a
+deterministic route. The proposal lands in readable config, inspectable and
+reversible, and is **confirmed at a §11 gate** (or auto-applied only at a
+high-enough autonomy level, §SPEC 6). So the router improves the more it is used
+and the share of decisions needing the critic or relay shrinks over time — a
+measurable §16 effectiveness direction (deterministic-handled vs LLM-handled). The
+same miss-to-config self-heal generalizes beyond routing: any §13 tool or §10 unit
+may declare KPIs (acceptance, error, duration, domain-specific) with degradation
+thresholds that, when crossed, propose a gated config change — subject to the §18.2
+outcome-and-replication bar before adoption, never auto-adopted on a single signal.
+
 ### 10.4 Content, Provenance, and Integrity
 
 Routing selects *which* units apply; the worker must also be able to reach *what*
