@@ -6,6 +6,7 @@ package contextstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,13 +26,18 @@ const (
 
 // Unit is one routable piece of context: a runbook, skill, domain note, or an
 // executable nonfunctional-requirement check. It routes by its labels and the
-// repository paths it governs.
+// repository paths it governs. ContentPath is the store-relative route to the
+// unit's text — routing previews the unit and the worker pulls the text just in
+// time (§10.4); Provenance is the source it derives from. Both are optional: a
+// metadata-only unit routes but carries no text of its own.
 type Unit struct {
-	ID     string   `json:"id"`
-	Kind   string   `json:"kind"`
-	Labels []string `json:"labels,omitempty"`
-	Paths  []string `json:"paths,omitempty"`
-	Owner  string   `json:"owner,omitempty"`
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	Labels      []string `json:"labels,omitempty"`
+	Paths       []string `json:"paths,omitempty"`
+	Owner       string   `json:"owner,omitempty"`
+	ContentPath string   `json:"content_path,omitempty"`
+	Provenance  string   `json:"provenance,omitempty"`
 }
 
 // scored pairs a unit with its routing score for ranking.
@@ -49,9 +55,9 @@ func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 		want[l] = true
 	}
 	ranked := make([]scored, 0, len(units))
-	for _, unit := range units {
-		if s := matchScore(&unit, want, paths); s > 0 {
-			ranked = append(ranked, scored{unit: unit, score: s})
+	for i := range units {
+		if s := matchScore(&units[i], want, paths); s > 0 {
+			ranked = append(ranked, scored{unit: units[i], score: s})
 		}
 	}
 	sort.Slice(ranked, func(i, j int) bool {
@@ -64,8 +70,8 @@ func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 		ranked = ranked[:maxUnits]
 	}
 	out := make([]Unit, len(ranked))
-	for i, r := range ranked {
-		out[i] = r.unit
+	for i := range ranked {
+		out[i] = ranked[i].unit
 	}
 	return out
 }
@@ -116,6 +122,32 @@ func topDir(path string) string {
 		return path[:i]
 	}
 	return ""
+}
+
+// Content reads the unit's text from its ContentPath, resolved under dir (the
+// store directory). It is the I/O shell to routing's pure core: an empty
+// ContentPath yields no content and no error (a metadata-only unit), while a set
+// path that does not resolve is an error — the routing promised text that is not
+// there. The path is cleaned and kept within dir so a unit cannot route to a file
+// outside the store.
+func Content(dir string, unit *Unit) (string, error) {
+	const op = "contextstore.Content"
+	if unit.ContentPath == "" {
+		return "", nil
+	}
+	clean := filepath.Clean(unit.ContentPath)
+	if filepath.IsAbs(clean) || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", &adh.Error{
+			Op:  op,
+			Err: fmt.Errorf("content_path %q escapes the store", unit.ContentPath),
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, clean))
+	if err != nil {
+		return "", &adh.Error{Op: op, Err: err}
+	}
+	return string(data), nil
 }
 
 // Load reads context units from JSON files under dir. An absent directory

@@ -20,14 +20,20 @@ owns domain *semantics*, not NFR *governance*; NFRs remain exegesis skills, §10
 NFR-check units, or policy artifacts. Ordered by value to the stated goals; run
 each as one bounded baseline → intervention → verify → fresh-rerun → retain loop.
 
-- [ ] **Loop A — context units carry content + provenance (§10.4).** The primary
-      lever is half-wired: `contextstore.Unit` is `{id,kind,labels,paths,owner}`,
-      `Load` reads only metadata, and the grounding renders `- <id> (<kind>)` — the
-      rule/skill *text* is never delivered or pointed at. Add a content route
-      (`Path`) + `Provenance` (mirror modelith's origin/ref/commit/**digest** model,
-      not a bare string); `context show <id>` returns text + provenance; the
-      grounding previews and the worker pulls the slice JIT. An exegesis skill pack
-      or a modelith-rendered `*.modelith.md` then drops straight in.
+- [x] **Loop A — context units carry content + provenance (§10.4).** DONE (the
+      foundation everything composes on). `contextstore.Unit` gained `ContentPath`
+      (the store-relative route to the unit's text) + `Provenance`;
+      `contextstore.Content` reads it (I/O shell; `Route` stays the pure core; a
+      path escaping the store is refused). `adh context show <id>` returns the text
+      + provenance (`--jsonl` carries them as one outcome); the `_guidance.tmpl`
+      preview now renders `- <id> (<kind>) — see <path>` and tells the worker to
+      pull it with `context show` (JIT preview+retrieve, not stuffing); `context
+      lint` flags a dangling `content_path`. Verified at the claim boundary — unit
+      tests + a journey (a routed strategy prompt previews the content route). An
+      exegesis skill pack or a modelith-rendered `*.modelith.md` now drops in as a
+      unit's content file. **Follow-up (own loop):** switch the unit *format* to OKF
+      markdown+frontmatter with the trust tier + freshness (the separate "Adopt OKF"
+      item) — deferred so this cut stayed the smallest reversible change.
 - [ ] **Loop B — register exegesis/skillsaw/modelith as §13 tools.** External
       `Run` commands with `--json` where available (`modelith lint --format json`,
       `modelith render --check`, `skillsaw eval --json`, `exegesis verify`), so the

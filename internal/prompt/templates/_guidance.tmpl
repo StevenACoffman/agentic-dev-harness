@@ -1,6 +1,6 @@
 {{define "context"}}{{if .Context}}
-Routed repository guidance for this change (§10):
-{{range .Context}}- {{.ID}} ({{.Kind}}){{if .Owner}} — owner {{.Owner}}{{end}}
+Routed repository guidance for this change (§10) — read a unit's text with `adh context show <id>`:
+{{range .Context}}- {{.ID}} ({{.Kind}}){{if .Owner}} — owner {{.Owner}}{{end}}{{if .ContentPath}} — see {{.ContentPath}}{{end}}
 {{end}}{{end}}{{end}}
 {{define "tools"}}{{if .Tools}}
 Available tools (§13) — select a capability by what it verifies:

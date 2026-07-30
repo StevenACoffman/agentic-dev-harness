@@ -1,6 +1,8 @@
 package contextstore_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
@@ -44,8 +46,8 @@ func TestRouteNoMatch(t *testing.T) {
 
 func ids(units []contextstore.Unit) []string {
 	out := make([]string, len(units))
-	for i, u := range units {
-		out[i] = u.ID
+	for i := range units {
+		out[i] = units[i].ID
 	}
 	return out
 }
@@ -77,5 +79,47 @@ func TestAreaLabels(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestContent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(dir, "note.md"),
+		[]byte("approved crypto library: X"),
+		0o600,
+	); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// A unit with a content path returns the file's text.
+	got, err := contextstore.Content(dir, &contextstore.Unit{ID: "n", ContentPath: "note.md"})
+	if err != nil {
+		t.Fatalf("Content: %v", err)
+	}
+	if got != "approved crypto library: X" {
+		t.Errorf("Content = %q, want the file text", got)
+	}
+
+	// A metadata-only unit (no content path) is not an error.
+	if got, err := contextstore.Content(dir, &contextstore.Unit{ID: "n"}); err != nil || got != "" {
+		t.Errorf("empty ContentPath = (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	// A set-but-missing path is an error — the routing promised text not there.
+	if _, err := contextstore.Content(
+		dir,
+		&contextstore.Unit{ID: "n", ContentPath: "gone.md"},
+	); err == nil {
+		t.Errorf("missing content file should error")
+	}
+
+	// A path escaping the store is refused.
+	if _, err := contextstore.Content(
+		dir,
+		&contextstore.Unit{ID: "n", ContentPath: "../secret"},
+	); err == nil {
+		t.Errorf("content_path escaping the store should error")
 	}
 }

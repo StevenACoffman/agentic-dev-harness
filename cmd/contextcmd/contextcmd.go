@@ -1,6 +1,6 @@
 // Package contextcmd implements the "context" CLI command: inspect the
-// just-in-time context store (SPEC-ADDITIONS §10) — list units, route a working
-// set by labels, or lint the store.
+// just-in-time context store (SPEC-ADDITIONS §10) — list units, show one unit's
+// text and provenance, route a working set by labels, or lint the store.
 package contextcmd
 
 import (
@@ -29,11 +29,13 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("context").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "context",
-		Usage:     "agentic-dev-harness context <list|route|lint> [labels...]",
-		ShortHelp: "list, route, and lint context units",
-		LongHelp:  "Inspect the just-in-time context store (SPEC-ADDITIONS §10).",
-		Flags:     cfg.Flags,
-		Exec:      cfg.exec,
+		Usage:     "agentic-dev-harness context <list|show|route|lint> [id|labels...]",
+		ShortHelp: "list, show, route, and lint context units",
+		LongHelp: "Inspect the just-in-time context store (SPEC-ADDITIONS §10): list " +
+			"units, show one unit's text and provenance, route a working set by labels, " +
+			"or lint the store.",
+		Flags: cfg.Flags,
+		Exec:  cfg.exec,
 	}
 	parent.Command.Subcommands = append(parent.Command.Subcommands, cfg.Command)
 	return &cfg
@@ -41,7 +43,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("context: expected a verb: list, route, or lint")
+		return errors.New("context: expected a verb: list, show, route, or lint")
 	}
 	units, err := contextstore.Load(contextstore.DefaultStoreDir)
 	if err != nil {
@@ -49,34 +51,93 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	switch args[0] {
 	case "list":
-		for _, unit := range units {
-			_, _ = fmt.Fprintf(
-				cfg.Stdout,
-				"%s\t%s\t%s\n",
-				unit.ID,
-				unit.Kind,
-				strings.Join(unit.Labels, ","),
-			)
-		}
-		return nil
+		return cfg.list(units)
+	case "show":
+		return cfg.show(units, args[1:])
 	case "route":
-		for _, unit := range contextstore.Route(units, args[1:], nil, contextstore.DefaultWorkingSet) {
-			_, _ = fmt.Fprintln(cfg.Stdout, unit.ID)
+		routed := contextstore.Route(units, args[1:], nil, contextstore.DefaultWorkingSet)
+		for i := range routed {
+			_, _ = fmt.Fprintln(cfg.Stdout, routed[i].ID)
 		}
 		return nil
 	case "lint":
 		return cfg.lint(units)
 	default:
-		return fmt.Errorf("context: unknown verb %q; want list, route, or lint", args[0])
+		return fmt.Errorf("context: unknown verb %q; want list, show, route, or lint", args[0])
 	}
+}
+
+// list prints each unit's id, kind, and labels.
+func (cfg *Config) list(units []contextstore.Unit) error {
+	for i := range units {
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\n",
+			units[i].ID, units[i].Kind, strings.Join(units[i].Labels, ","))
+	}
+	return nil
+}
+
+// show prints one unit's text and provenance — the content the routing preview
+// points a worker at, pulled just in time (§10.4). Under --jsonl it emits one OK
+// outcome carrying the metadata, provenance, and content.
+func (cfg *Config) show(units []contextstore.Unit, args []string) error {
+	if len(args) == 0 {
+		return errors.New("context: show requires a unit id")
+	}
+	id := args[0]
+	for i := range units {
+		unit := &units[i]
+		if unit.ID != id {
+			continue
+		}
+		content, err := contextstore.Content(contextstore.DefaultStoreDir, unit)
+		if err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+		return cfg.reportUnit(unit, content)
+	}
+	return fmt.Errorf("context: no such unit %q", id)
+}
+
+// reportUnit emits a unit and its content, as one outcome under --jsonl else text.
+func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"id": unit.ID, "kind": unit.Kind, "owner": unit.Owner,
+			"provenance": unit.Provenance, "content": content,
+		}); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+		return nil
+	}
+	if unit.Provenance != "" {
+		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s) — %s\n", unit.ID, unit.Kind, unit.Provenance)
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s)\n", unit.ID, unit.Kind)
+	}
+	if content != "" {
+		_, _ = fmt.Fprintln(cfg.Stdout, content)
+	}
+	return nil
 }
 
 func (cfg *Config) lint(units []contextstore.Unit) error {
 	bad := 0
-	for _, unit := range units {
+	for i := range units {
+		unit := &units[i]
 		if unit.ID == "" || unit.Kind == "" {
 			bad++
 			_, _ = fmt.Fprintf(cfg.Stderr, "unit missing id or kind: %+v\n", unit)
+			continue
+		}
+		// The content the routing preview promises must exist and stay in the store.
+		if _, err := contextstore.Content(contextstore.DefaultStoreDir, unit); err != nil {
+			bad++
+			_, _ = fmt.Fprintf(
+				cfg.Stderr,
+				"unit %s: content_path does not resolve: %v\n",
+				unit.ID,
+				err,
+			)
 		}
 	}
 	if bad > 0 {
