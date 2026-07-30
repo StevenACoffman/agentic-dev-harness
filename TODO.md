@@ -4,6 +4,92 @@ Tracks what remains after Phases 0–9 (see [`PLAN.md`](./PLAN.md)). Everything
 committed passes the phase gate: `golangci-lint run ./...` clean and
 `go test ./...` green.
 
+## Harness-Engineering Improvements — Context/Tools Levers (§10, §11, §13, §18)
+
+Plan and rationale: [`harness_engineering_improvements.md`](./harness_engineering_improvements.md)
+(shaped by `harness-engineering/AGENTS.md`). These close the gaps that would hamper
+a team using the adh skill to operate adh as their harness, whose only levers are
+the **context** they expose and the **tools** they make available, and who need
+every correction to be **accretive**. adh **orchestrates** an external, MIT/Apache
+toolchain via the §13 registry — it does not vendor or re-implement it:
+**exegesis** (distill a knowledge base → skills, with provenance), **skillsaw**
+(SkillOpt/SkillLens skill optimization), **modelith** (author/validate/render the
+domain model). All three are external CLIs by architecture (internal-only or
+cobra-based) — install-and-invoke, never Go dependencies. **Boundary:** modelith
+owns domain *semantics*, not NFR *governance*; NFRs remain exegesis skills, §10
+NFR-check units, or policy artifacts. Ordered by value to the stated goals; run
+each as one bounded baseline → intervention → verify → fresh-rerun → retain loop.
+
+- [ ] **Loop A — context units carry content + provenance (§10.4).** The primary
+      lever is half-wired: `contextstore.Unit` is `{id,kind,labels,paths,owner}`,
+      `Load` reads only metadata, and the grounding renders `- <id> (<kind>)` — the
+      rule/skill *text* is never delivered or pointed at. Add a content route
+      (`Path`) + `Provenance` (mirror modelith's origin/ref/commit/**digest** model,
+      not a bare string); `context show <id>` returns text + provenance; the
+      grounding previews and the worker pulls the slice JIT. An exegesis skill pack
+      or a modelith-rendered `*.modelith.md` then drops straight in.
+- [ ] **Loop B — register exegesis/skillsaw/modelith as §13 tools.** External
+      `Run` commands with `--json` where available (`modelith lint --format json`,
+      `modelith render --check`, `skillsaw eval --json`, `exegesis verify`), so the
+      worker invokes them via `adh tool run <id>` and interprets output in-loop.
+- [ ] **Loop D — lesson promotion materializes the durable owner (§11.2).**
+      `lesson promote` gates + prints "promoted" but creates nothing. Make
+      `--to context|skill|check` write the artifact (a routable §10 unit with
+      provenance; a skill via exegesis; a §13 tool entry) behind the §11.2 approval
+      gate — so a correction becomes accretive, not a printed intent.
+- [ ] **Loop E — cross-unit consistency (§10.4).** `context lint` checks id/kind
+      only. Split: deterministic reference-integrity is owned by `modelith lint`
+      (reciprocal-cardinality, mutual-ownership, duplicate ids, cycles, dangling
+      refs); irreducibly-semantic conflict (skill vs base rule vs domain invariant)
+      is adjudicated by the cold critic via `context lint`/`check`, gated.
+- [ ] **Loop F — context-integrity / anti-drift gate (§10.4, proof).** Nothing
+      today guarantees a routed unit still matches its source. Register
+      `modelith render --check` (and `modelith lint`, `exegesis verify`) as §13
+      NFR-checks an arc runs over its routed context, so a stage fails when the
+      routed Markdown drifted from its canonical YAML/source. A capability adh
+      lacked entirely.
+- [ ] **Loop C — skillsaw + relay improvement loop (§18).** Replace the mock
+      `consolidate.Propose`: drive skillsaw `eval → diagnose → gate` with the relay
+      supplying the `needs_judge` scores and one-dimension edits, so Claude drives
+      real, gated skill improvement through adh. skillsaw's strict-`>` `gate` feeds
+      Evaluation but never replaces human approval or NO-PROOF-NO-CLOSE; the loop
+      stages (auto_adopt = false). Do last — it composes B and the gate.
+
+### From `agentic-harness-bootstrap` (Data Formats / Processes Worth Folding In)
+
+The bootstrap system (MIT, prose+templates: turn a repo into something agents can
+understand/verify) contributes three formats/processes that fill gaps the toolchain
+above does not. Its other pieces (stack-specific lint/hook/CI templates, the
+one-time discover→generate playbooks, the generated CLAUDE/AGENTS files) overlap
+what adh or the driving skill already own — not adopted.
+
+- [ ] **ADR decision format for NFR trade-offs (§10.2, §11, §12).** The bootstrap
+      ADR — *Status / Context / Decision / Consequences split into **Easier** and
+      **Harder*** — is the durable, routable home for a team's local NFR
+      prioritize/trade-off decisions, the one thing modelith deliberately omits. Add
+      a `decision` context-unit kind (routes past ADRs so a later arc inherits, not
+      re-litigates), a `lesson promote --to decision` owner, and make an ADR the
+      proof artifact of a `decision`-resolution arc (§12). **Highest-value add for
+      the NFR-governance goal.**
+- [ ] **Harness-integrity self-verification (§10.4).** Adopt the `verify-harness.sh`
+      pattern as an `adh` self-check (a §13 check + a session-start/CI gate): every
+      routed unit resolves to a real artifact, every named tool exists, agent-facing
+      guidance references only real modules/commands, no dangling references, pieces
+      don't contradict. Broader than Loop F's content-drift check — "is the whole
+      harness intact and consistent?" Cheap, high-trust.
+- [ ] **Standing-order accretion triggers as §15 loops.** Encode the bootstrap
+      "Harness Evolution" maintenance triggers as adh loops/hooks so accretion is
+      automatic, not prompted: agent mistake → `lesson promote` (Loop D);
+      architectural/NFR decision → ADR (the format above); session-start/pre-run →
+      harness-integrity + context-drift check (Loop F). Makes "every correction
+      accretive" a standing behavior, not a manual step.
+
+Optional / deferred (useful but larger or partly owned elsewhere): an `Always/Ask/
+Never` boundaries format routed as legible authority context (complements the §5.2
+gates that *enforce* with a summary that *teaches*); and an `adh init --bootstrap`
+that seeds initial context units + §13 tool entries from a repo-profile scan
+(discover→analyze), plus routing a hand-authored ARCHITECTURE map as a context unit.
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus

@@ -61,9 +61,15 @@ route_by    = ["labels", "paths"]  # arc labels and touched paths select units
 
 A context unit is one of: a **runbook** (a procedure), a **skill** (an approach
 for a class of task), a **domain note** (a canonical owner's decision, e.g. the
-approved crypto library), or an **NFR check** (an executable constraint — a lint,
-type, or test that encodes a nonfunctional requirement). Units declare routing
-labels and an owner; Strategy and Execution load the routed set before acting.
+approved crypto library), an **NFR check** (an executable constraint — a lint,
+type, or test that encodes a nonfunctional requirement), or a **decision** (a
+recorded ADR — see §12 — carrying the context, the decision, and its explicit
+`Easier`/`Harder` trade-offs). The decision kind is the durable, routable home for
+a team's *local choices about how to prioritize, trade off, and satisfy* their
+nonfunctional requirements — the governance a domain model deliberately omits. A
+later arc routes the relevant decisions and does not re-litigate them. Units
+declare routing labels and an owner; Strategy and Execution load the routed set
+before acting.
 
 ### 10.3 State
 
@@ -72,6 +78,39 @@ self-eval can ask whether a missed requirement was un-routed (a context gap) or
 routed-and-ignored (a worker gap).
 
 **Exit code 12** — a routed context unit is missing or fails to resolve.
+
+### 10.4 Content, Provenance, and Integrity
+
+Routing selects *which* units apply; the worker must also be able to reach *what*
+they say. A unit therefore carries a **content route** (the file holding its text)
+and **provenance** (its source identity — for a vendored or distilled unit, an
+origin / ref / commit / content digest, re-verified on read). The stage grounding
+**previews** each routed unit (id, kind, one-line, where to read it) and the worker
+pulls the full slice via `adh context show <id>` when it reaches the decision the
+unit governs — just-in-time retrieval, not prompt-stuffing, so the route survives
+compaction.
+
+- **Integrity (anti-drift).** When a unit's text is rendered or derived from a
+  canonical source, the harness can verify the routed content still matches that
+  source (a drift check), so an arc proves the context it reasoned over is current,
+  not stale. Registered as a check (§13), a failing integrity check blocks the arc.
+- **Cross-unit consistency.** `adh context lint` (or `context check`) surfaces
+  contradictions across the routed set: deterministic reference-integrity is owned
+  by whatever tool renders a structured unit (e.g. a domain-model validator), and
+  irreducibly-semantic conflict — one unit's rule contradicting another's, or a
+  skill contradicting a base rule — is adjudicated by the cold critic and gated.
+- **Harness integrity.** Beyond a single unit, the harness can verify itself: every
+  routed unit resolves to a real artifact, every named tool exists, agent-facing
+  guidance (boundaries, architecture map, decision index) references only modules
+  and commands that exist, and the pieces do not contradict. This is a cheap
+  persistent self-check — path existence, command/tool resolution, section
+  presence, dangling-reference detection — run in CI and at session start so a
+  half-edited or drifted harness fails fast rather than silently misguiding a run.
+
+These capabilities are tool-agnostic: a unit's content may be hand-written, or
+produced and validated by an external §13 tool (a domain-model renderer, a
+knowledge-base distiller, a skill optimizer). The harness owns routing, retrieval,
+integrity, and consistency; it does not own how a unit's text is authored.
 
 ______________________________________________________________________
 
@@ -93,7 +132,9 @@ class of mistake every arc. A lesson moves a recurring correction into its
 
 `--to <owner>` is one of: `context` (a domain note or runbook), `skill`,
 `check` (a new lint or test), `invariant` (a new property-based rule on the
-engine), `type` (a domain-model change), or `doc`.
+engine), `type` (a domain-model change), `doc`, or `decision` (an ADR recording a
+now-settled trade-off, §12) — the last for a correction that is a judgment call
+rather than an executable rule.
 
 ### 11.2 Behavioral Spec — the Promotion Gate
 
@@ -102,6 +143,14 @@ changes the harness's own gates and is therefore consequential. It requires huma
 approval exactly like an irreversible action (§5.2): `adh` proposes the class,
 the owner, and the diff; a human approves. Promotion to `context`, `skill`, or
 `doc` is reversible and proceeds under the current autonomy level.
+
+A promotion **materializes the durable owner** — it writes the artifact, it does
+not merely record the intent: a `context` promotion creates a routable §10 context
+unit (with provenance, §10.4); `skill` produces or scaffolds a skill; `check`
+registers a §13 tool entry; `doc` writes the guidance. Only then has the correction
+become accretive — the next arc inherits it without re-arguing. An external tool
+may perform the authoring (a distiller for a skill, a domain-model renderer for a
+context unit); the harness owns the gate and the resulting registration.
 
 A promotion is complete only when it carries proof that it covers the class:
 the new check fails on the recorded instances and passes on accepted work.
@@ -138,6 +187,15 @@ NO-PROOF-NO-CLOSE still holds; the **proof type** varies with the resolution.
 `adh arc close <id> --as <resolution>` records it, and `adh proof verify` selects
 the matching proof contract. Stages that do not apply to a non-`change`
 resolution (Execution, Ops) are skipped, and the skip is recorded.
+
+A `decision` arc's proof is an **ADR** in the standard format — *Status*, *Context*
+(what forced the decision), *Decision* (what was chosen), and *Consequences* split
+into **Easier** (what improves) and **Harder** (the trade-off accepted), with
+supersession links between ADRs. The Easier/Harder split is deliberate: it records
+not just the choice but its cost, which is exactly what a nonfunctional-requirement
+trade-off is. The recorded ADR is also routable as a `decision` context unit
+(§10.2) — so a decision made once teaches every later arc, the accretive loop
+applied to judgment rather than code.
 
 The `change` contract is **generic by default and configurable per deployment**
 (§SPEC 3.1 `[proof.contract]`): the harness holds a `change` arc to whatever
