@@ -28,6 +28,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
 )
 
 // Split values partition mined tasks. Selection is held out for acceptance;
@@ -152,6 +153,7 @@ type Cycle struct {
 	Diags         []Diagnostic      `json:"diagnostics"`
 	Longitudinal  Longitudinal      `json:"longitudinal"`
 	SlowGuidance  string            `json:"slow_guidance,omitempty"`
+	Verdict       verdict.Verdict   `json:"verdict,omitempty"`
 	Records       []evidence.Record `json:"records"`
 }
 
@@ -398,6 +400,7 @@ func Plan(
 	if err := cycle.setLongitudinal(artifact, candidate, tasks); err != nil {
 		return Cycle{}, err
 	}
+	cycle.Verdict = verdictFor(baseScore, candScore, cycle.Longitudinal)
 	// A scored candidate is identified by its content hash whatever the verdict,
 	// so the shell can remember a rejected one in the negative-feedback buffer
 	// (§18.3); only an accepted candidate is proposed for staging.
@@ -411,6 +414,23 @@ func Plan(
 	cycle.Records = record(cycle.Decision, baseScore, candScore, evidence.StatusKeep,
 		fmt.Sprintf("candidate improved selection %.3f -> %.3f", baseScore, candScore))
 	return cycle, nil
+}
+
+// verdictFor computes the replication-gated verdict (§18.2) for a scored candidate:
+// the primary is the selection-split improvement (candScore − baseScore) the gate
+// ratchets on; the replication is the held-out test split's paired outcomes, so a
+// candidate is ELEVATE only when its selection gain also replicates significantly on
+// the test split. It never changes staging — the strict gate already decided that;
+// the verdict labels how much to trust the change.
+func verdictFor(baseScore, candScore float64, long Longitudinal) verdict.Verdict {
+	_, significant := verdict.McNemar(long.Improved, long.Regressed)
+	hasReplication := long.Improved+long.Regressed+long.StableSuccess+long.PersistentFail > 0
+	return verdict.Decide(
+		verdict.Outcome{Delta: candScore - baseScore},
+		verdict.Outcome{Delta: float64(long.Improved - long.Regressed), Significant: significant},
+		verdict.DefaultMinEffect,
+		hasReplication,
+	)
 }
 
 // setLongitudinal scores both artifacts over the report-only test split and
