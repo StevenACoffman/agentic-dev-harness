@@ -21,15 +21,17 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/skillsaw"
 )
 
 // Config holds the configuration for the harness command and its subcommands.
 type Config struct {
 	*root.Config
 	// eval flags
-	Checks string
-	Output string
-	Min    float64
+	Checks   string
+	Output   string
+	Skillsaw string
+	Min      float64
 	// gate flags
 	Candidate  string
 	Current    string
@@ -74,9 +76,11 @@ func (cfg *Config) addEval() {
 	)
 	fs.Float64Var(&cfg.Min, 'm', "min", 0,
 		"exit non-zero when the deterministic score is below this floor (0 = no floor)")
+	fs.StringVar(&cfg.Skillsaw, 0, "skillsaw", "",
+		"a skillsaw `eval --json` file to decode and report as the floor under adh's bar (§18.2)")
 	cfg.Command.Subcommands = append(cfg.Command.Subcommands, &ff.Command{
 		Name:      "eval",
-		Usage:     "agentic-dev-harness harness eval [--min N] [--checks c.json] [--output o.txt] <artifact>",
+		Usage:     "agentic-dev-harness harness eval [--min N] [--checks c.json] [--skillsaw s.json] <artifact>",
 		ShortHelp: "score a harness guiding artifact",
 		LongHelp:  "Score a harness guiding artifact: a deterministic floor plus judge-only dimensions (SPEC-ADDITIONS §18.2).",
 		Flags:     fs,
@@ -135,6 +139,11 @@ func (cfg *Config) eval(args []string) error {
 	if err := cfg.render(&report); err != nil {
 		return err
 	}
+	if cfg.Skillsaw != "" {
+		if err := cfg.reportSkillsaw(); err != nil {
+			return err
+		}
+	}
 	// Render first so the operator always sees the score, then gate: a score below
 	// the --min floor exits non-zero for CI (SPEC-ADDITIONS §18.2).
 	if !report.MeetsFloor(cfg.Min) {
@@ -143,6 +152,32 @@ func (cfg *Config) eval(args []string) error {
 			report.Rubric.DetScore, cfg.Min)
 		return root.ExitError(1)
 	}
+	return nil
+}
+
+// reportSkillsaw decodes a skillsaw `eval --json` file (produced by `adh tool run
+// skillsaw-eval`, Loop B) and reports its score and needs-judge dimensions beside
+// adh's floor — the cheap floor under adh's Evaluation bar (§18.2). The worker feeds
+// the score to `harness gate` for the ratchet; skillsaw never replaces human approval.
+func (cfg *Config) reportSkillsaw() error {
+	data, err := os.ReadFile(cfg.Skillsaw)
+	if err != nil {
+		return fmt.Errorf("harness: read skillsaw eval: %w", err)
+	}
+	saw, err := skillsaw.Decode(data)
+	if err != nil {
+		return fmt.Errorf("harness: %w", err)
+	}
+	if cfg.JSONL {
+		if emitErr := cfg.EmitOK(map[string]any{
+			"skillsaw_score": saw.Score, "needs_judge": saw.NeedsJudge(),
+		}); emitErr != nil {
+			return fmt.Errorf("harness: %w", emitErr)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "skillsaw: score %.2f; needs judge: %v\n",
+		saw.Score, saw.NeedsJudge())
 	return nil
 }
 
