@@ -3,6 +3,7 @@ package contextstore_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
@@ -218,5 +219,78 @@ func TestEvaluateRouting(t *testing.T) {
 	}
 	if report.Recall < 0.66 || report.Recall > 0.67 {
 		t.Errorf("recall = %.3f, want ~0.667", report.Recall)
+	}
+}
+
+func TestTrustTier(t *testing.T) {
+	if !contextstore.TrustTier("").Valid() || !contextstore.HumanReviewed.Valid() {
+		t.Error("empty and human-reviewed must be valid tiers")
+	}
+	if contextstore.TrustTier("bogus").Valid() {
+		t.Error("an unknown tier must be invalid")
+	}
+	if contextstore.HumanReviewed.Rank() <= contextstore.MachineConfirmed.Rank() ||
+		contextstore.MachineConfirmed.Rank() <= contextstore.Unverified.Rank() {
+		t.Error("rank must order human-reviewed > machine-confirmed > unverified")
+	}
+}
+
+func TestRouteTrustTieBreakAndSupersession(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "a-low", Labels: []string{"sec"}, Verified: contextstore.Unverified},
+		{ID: "b-high", Labels: []string{"sec"}, Verified: contextstore.HumanReviewed},
+		{ID: "old", Labels: []string{"sec"}, SupersededBy: "b-high"},
+	}
+	routed := contextstore.Route(units, []string{"sec"}, nil, 0)
+	// The superseded unit is dropped; the human-reviewed unit outranks the unverified
+	// one on the score tie.
+	if len(routed) != 2 {
+		t.Fatalf("routed %d units, want 2 (superseded dropped): %+v", len(routed), routed)
+	}
+	if routed[0].ID != "b-high" {
+		t.Errorf("routed[0] = %q, want b-high (higher trust wins the tie)", routed[0].ID)
+	}
+	for _, u := range routed {
+		if u.ID == "old" {
+			t.Error("a superseded unit must not route")
+		}
+	}
+}
+
+func TestWikiLintHelpers(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "ok", Labels: []string{"x"}},
+		{ID: "orphan", Kind: "note"},                                // no labels or paths
+		{ID: "stale", Labels: []string{"y"}, SupersededBy: "ghost"}, // dangling
+		{ID: "bad", Labels: []string{"z"}, Verified: "sideways"},    // invalid tier
+	}
+	if got := contextstore.Orphans(units); len(got) != 1 || got[0] != "orphan" {
+		t.Errorf("Orphans = %v, want [orphan]", got)
+	}
+	if got := contextstore.DanglingSupersessions(units); len(got) != 1 || got[0] != "stale" {
+		t.Errorf("DanglingSupersessions = %v, want [stale]", got)
+	}
+	if got := contextstore.InvalidTrust(units); len(got) != 1 || got[0] != "bad" {
+		t.Errorf("InvalidTrust = %v, want [bad]", got)
+	}
+}
+
+func TestIndex(t *testing.T) {
+	units := []contextstore.Unit{
+		{
+			ID:         "rule",
+			Kind:       "base-rule",
+			Labels:     []string{"security"},
+			Verified:   contextstore.HumanReviewed,
+			Provenance: "OWASP",
+		},
+		{ID: "old", Kind: "note", SupersededBy: "rule"}, // superseded → excluded
+	}
+	idx := contextstore.Index(units)
+	if !strings.Contains(idx, "rule (base-rule) [human-reviewed] security — OWASP") {
+		t.Errorf("index missing the rule row:\n%s", idx)
+	}
+	if strings.Contains(idx, "old") {
+		t.Errorf("index must exclude a superseded unit:\n%s", idx)
 	}
 }

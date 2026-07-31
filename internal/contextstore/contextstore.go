@@ -24,23 +24,39 @@ const (
 	DefaultWorkingSet = 8
 )
 
+// Trust tiers (§10.4, the OKF `verified` dimension): how a unit's content was earned,
+// so routing can weight a human-reviewed unit over an unverified one. An empty tier is
+// treated as Unverified.
+const (
+	Unverified       TrustTier = "unverified"        // agent-proposed, not confirmed
+	MachineConfirmed TrustTier = "machine-confirmed" // a check/tool confirmed it
+	HumanReviewed    TrustTier = "human-reviewed"    // a human reviewed and accepted it
+)
+
+// TrustTier records how a unit's content was earned (§10.4).
+type TrustTier string
+
 // Unit is one routable piece of context: a runbook, skill, domain note, or an
 // executable nonfunctional-requirement check. It routes by its labels and the
 // repository paths it governs. ContentPath is the store-relative route to the
 // unit's text — routing previews the unit and the worker pulls the text just in
-// time (§10.4); Provenance is the source it derives from. Integrity is the §13
-// tool id that proves the unit's content has not drifted from its canonical source
-// (`context verify` runs it, §10.4 anti-drift). All three are optional: a
-// metadata-only unit routes but carries no text, source, or integrity check of its own.
+// time (§10.4); Provenance is a one-line summary and Sources are the proven origins
+// it derives from; Integrity is the §13 tool id that proves the unit has not drifted
+// (`context verify`, §10.4 anti-drift). Verified is the trust tier (weights routing);
+// SupersededBy is the unit id that has replaced this one (a superseded unit no longer
+// routes). The optional fields let a metadata-only unit route with no text of its own.
 type Unit struct {
-	ID          string   `json:"id"`
-	Kind        string   `json:"kind"`
-	Labels      []string `json:"labels,omitempty"`
-	Paths       []string `json:"paths,omitempty"`
-	Owner       string   `json:"owner,omitempty"`
-	ContentPath string   `json:"content_path,omitempty"`
-	Provenance  string   `json:"provenance,omitempty"`
-	Integrity   string   `json:"integrity,omitempty"`
+	ID           string    `json:"id"`
+	Kind         string    `json:"kind"`
+	Labels       []string  `json:"labels,omitempty"`
+	Paths        []string  `json:"paths,omitempty"`
+	Owner        string    `json:"owner,omitempty"`
+	ContentPath  string    `json:"content_path,omitempty"`
+	Provenance   string    `json:"provenance,omitempty"`
+	Sources      []string  `json:"sources,omitempty"`
+	Integrity    string    `json:"integrity,omitempty"`
+	Verified     TrustTier `json:"verified,omitempty"`
+	SupersededBy string    `json:"superseded_by,omitempty"`
 }
 
 // scored pairs a unit with its routing score for ranking.
@@ -49,9 +65,34 @@ type scored struct {
 	score int
 }
 
+// Valid reports whether t is a known trust tier; an empty tier is valid (it defaults
+// to Unverified).
+func (t TrustTier) Valid() bool {
+	switch t {
+	case "", Unverified, MachineConfirmed, HumanReviewed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Rank orders trust for routing tie-breaks (§10.4): human-reviewed (2) outranks
+// machine-confirmed (1) outranks unverified/unset (0).
+func (t TrustTier) Rank() int {
+	switch t {
+	case HumanReviewed:
+		return 2
+	case MachineConfirmed:
+		return 1
+	default:
+		return 0
+	}
+}
+
 // Route selects up to maxUnits whose labels or governed paths match the arc's
-// labels or touched paths, most-specific (highest match count) first, ties
-// broken by ID. It never mutates its inputs.
+// labels or touched paths, most-specific (highest match count) first; ties break by
+// trust tier (a human-reviewed unit outranks an unverified one, §10.4), then by ID. A
+// superseded unit never routes — it has been replaced. It never mutates its inputs.
 func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 	want := make(map[string]bool, len(labels))
 	for _, l := range labels {
@@ -59,15 +100,15 @@ func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 	}
 	ranked := make([]scored, 0, len(units))
 	for i := range units {
+		if units[i].SupersededBy != "" {
+			continue
+		}
 		if s := matchScore(&units[i], want, paths); s > 0 {
 			ranked = append(ranked, scored{unit: units[i], score: s})
 		}
 	}
 	sort.Slice(ranked, func(i, j int) bool {
-		if ranked[i].score != ranked[j].score {
-			return ranked[i].score > ranked[j].score
-		}
-		return ranked[i].unit.ID < ranked[j].unit.ID
+		return rankBefore(&ranked[i], &ranked[j])
 	})
 	if maxUnits > 0 && len(ranked) > maxUnits {
 		ranked = ranked[:maxUnits]
@@ -77,6 +118,19 @@ func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 		out[i] = ranked[i].unit
 	}
 	return out
+}
+
+// rankBefore orders two routed units: higher match score first, then higher trust
+// tier (§10.4), then lexical id — the total order Route sorts by.
+func rankBefore(a, b *scored) bool {
+	switch {
+	case a.score != b.score:
+		return a.score > b.score
+	case a.unit.Verified.Rank() != b.unit.Verified.Rank():
+		return a.unit.Verified.Rank() > b.unit.Verified.Rank()
+	default:
+		return a.unit.ID < b.unit.ID
+	}
 }
 
 // matchScore counts label hits plus path hits for one unit.
