@@ -123,3 +123,73 @@ func TestContent(t *testing.T) {
 		t.Errorf("content_path escaping the store should error")
 	}
 }
+
+func TestDuplicateIDs(t *testing.T) {
+	tests := []struct {
+		name  string
+		units []contextstore.Unit
+		want  []string
+	}{
+		{"none", []contextstore.Unit{{ID: "a"}, {ID: "b"}}, []string{}},
+		{"one dup", []contextstore.Unit{{ID: "a"}, {ID: "a"}, {ID: "b"}}, []string{"a"}},
+		{
+			"two dups sorted",
+			[]contextstore.Unit{{ID: "z"}, {ID: "z"}, {ID: "a"}, {ID: "a"}},
+			[]string{"a", "z"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := contextstore.DuplicateIDs(tt.units)
+			if len(got) != len(tt.want) {
+				t.Fatalf("DuplicateIDs = %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("DuplicateIDs[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestProposeRoutes(t *testing.T) {
+	misses := []contextstore.Miss{
+		{Arc: "a1", Labels: []string{"security"}, Paths: []string{"pkg/auth"}},
+		{Arc: "a2", Labels: []string{"security"}},
+		{Arc: "a3", Labels: []string{"perf"}},
+	}
+	// Threshold 2: only "security" (2 hits) is proposed; "perf"/"pkg/auth" (1 each) are not.
+	got := contextstore.ProposeRoutes(misses, 2)
+	if len(got) != 1 {
+		t.Fatalf("ProposeRoutes = %+v, want one proposal", got)
+	}
+	if got[0].Key != "security" || got[0].Kind != "label" || got[0].Count != 2 {
+		t.Errorf("proposal = %+v, want security/label/2", got[0])
+	}
+}
+
+func TestAppendLoadMissesRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub", "misses.jsonl")
+	want := []contextstore.Miss{
+		{Arc: "a1", Labels: []string{"x"}},
+		{Arc: "a2", Paths: []string{"cmd"}},
+	}
+	for _, m := range want {
+		if err := contextstore.AppendMiss(path, m); err != nil {
+			t.Fatalf("AppendMiss: %v", err)
+		}
+	}
+	got, err := contextstore.LoadMisses(path)
+	if err != nil {
+		t.Fatalf("LoadMisses: %v", err)
+	}
+	if len(got) != 2 || got[0].Arc != "a1" || got[1].Arc != "a2" {
+		t.Fatalf("round-trip = %+v, want a1 then a2", got)
+	}
+	// An absent log is no misses, not an error.
+	empty, err := contextstore.LoadMisses(filepath.Join(t.TempDir(), "none.jsonl"))
+	if err != nil || len(empty) != 0 {
+		t.Errorf("LoadMisses(absent) = (%v, %v), want ([], nil)", empty, err)
+	}
+}

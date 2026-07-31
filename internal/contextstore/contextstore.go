@@ -28,8 +28,10 @@ const (
 // executable nonfunctional-requirement check. It routes by its labels and the
 // repository paths it governs. ContentPath is the store-relative route to the
 // unit's text — routing previews the unit and the worker pulls the text just in
-// time (§10.4); Provenance is the source it derives from. Both are optional: a
-// metadata-only unit routes but carries no text of its own.
+// time (§10.4); Provenance is the source it derives from. Integrity is the §13
+// tool id that proves the unit's content has not drifted from its canonical source
+// (`context verify` runs it, §10.4 anti-drift). All three are optional: a
+// metadata-only unit routes but carries no text, source, or integrity check of its own.
 type Unit struct {
 	ID          string   `json:"id"`
 	Kind        string   `json:"kind"`
@@ -38,6 +40,7 @@ type Unit struct {
 	Owner       string   `json:"owner,omitempty"`
 	ContentPath string   `json:"content_path,omitempty"`
 	Provenance  string   `json:"provenance,omitempty"`
+	Integrity   string   `json:"integrity,omitempty"`
 }
 
 // scored pairs a unit with its routing score for ranking.
@@ -92,6 +95,24 @@ func matchScore(unit *Unit, want map[string]bool, paths []string) int {
 		}
 	}
 	return score
+}
+
+// DuplicateIDs returns the unit ids that appear more than once, sorted and each
+// reported once. A duplicate id makes routing ambiguous (two units answer to the
+// same name), so it is a cross-unit consistency defect (§10.4). It is pure.
+func DuplicateIDs(units []Unit) []string {
+	counts := make(map[string]int, len(units))
+	for i := range units {
+		counts[units[i].ID]++
+	}
+	dups := make([]string, 0)
+	for id, n := range counts {
+		if n > 1 {
+			dups = append(dups, id)
+		}
+	}
+	sort.Strings(dups)
+	return dups
 }
 
 // AreaLabels derives coarse area labels from repository paths: the top-level
