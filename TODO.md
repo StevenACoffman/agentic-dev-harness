@@ -240,26 +240,32 @@ The context store *is* the team's curated knowledge base. Two of these give it a
 real, open format and a compounding-maintenance process; the third is a front-end,
 not an adh component.
 
-- [ ] **Adopt OKF as the context-unit format (§10.4).** `knowledge-catalog/okf`
-      (Open Knowledge Format v0.2, MIT) is a markdown + YAML-frontmatter standard for
-      *agent-maintained* knowledge — human-readable, diffable, `git clone`-portable,
-      no SDK. It makes first-class exactly what Loop A + Loop F need and adds a new
-      dimension: **provenance** (`sources` + per-claim footnote citations),
-      **freshness/lifecycle** (staleness, supersession → Loop F), and a **trust tier**
-      (`verified`: unverified / machine-confirmed / human-reviewed) that records
-      adh's "agent proposes → human confirms at a gate" *on the unit* and weights it
-      by how it was earned. Replaces the bespoke `{id,kind,labels,paths,owner}` JSON;
-      a team ships its knowledge base as an ordinary repo. **Strongest data-format add
-      for the curated-knowledge-base goal.**
-- [ ] **Compounding-wiki operations (`llm-wiki.md` pattern) for §10/§11/§18.** The
-      "compile once, keep current" discipline (vs re-deriving via RAG each query):
-      an `index.md` read-first routing catalog (the JIT grounding preview, Loop A); an
-      append-only `log.md`/evidence trail; **file good answers back as durable units**
-      — an `investigation`/synthesis arc's output becomes a routable context unit, so
-      explorations compound instead of vanishing into chat; and a **wiki-lint**
-      (contradictions, stale claims, orphan pages, missing cross-references) extending
-      Loop E + Loop F + freshness. Mostly validates adh's §10/§11/§18; the
-      file-answers-back and orphan/stale lint are the concrete new bits.
+- [x] **Adopt OKF as the context-unit format (§10.4).** DONE for the OKF *dimensions*.
+      `contextstore.Unit` gained the three OKF dimensions (additive, backward-compatible
+      JSON): **provenance** (`sources`), a **trust tier** (`verified`:
+      unverified / machine-confirmed / human-reviewed, a `TrustTier` type with `Valid`
+      + `Rank`) that records adh's "agent proposes → human confirms at a gate" on the
+      unit, and **lifecycle** (`superseded_by`). Routing now **weights by how trust was
+      earned**: a superseded unit never routes, and score ties break by trust rank
+      (human-reviewed ▷ machine-confirmed ▷ unverified); `context show` surfaces trust +
+      sources + supersession. Verified: `TrustTier`/routing/show tests + a journey.
+      **Follow-up (deferred, no new capability):** the single-file markdown +
+      YAML-frontmatter *packaging* (the JSON+content split already delivers content
+      routing), per-claim footnote citations, and **freshness-by-time/staleness** (needs
+      the deferred injected Clock — lifecycle is modeled by deterministic supersession
+      now).
+- [x] **Compounding-wiki operations (`llm-wiki.md` pattern) for §10/§11/§18.** DONE for
+      the concrete new bits. The **read-first routing catalog** ships: `contextstore.
+      Index` (pure) + `adh context index` render one line per routable (non-superseded)
+      unit — id, kind, trust tier, labels, provenance — the JIT grounding preview a
+      worker reads first. The **wiki-lint** ships: pure `Orphans` (no labels/paths → can
+      never route), `DanglingSupersessions`, and `InvalidTrust`, wired into `context
+      lint` (exit 12) and — for the cross-reference/enum defects — into `harnesscheck`/
+      `adh doctor` (exit 16). Verified: helper + `Index` tables + `context index`/`lint`
+      journeys. **Follow-up:** **file-answers-back** — an `investigation`/synthesis arc's
+      output becoming a routable unit — is served today by `lesson --to context promote`;
+      an `arc close --as investigation` → unit writer is a separate proof-path loop. The
+      append-only evidence trail already exists (`sleep` evidence, the miss log).
 
 Not adopted: **leafwiki** (Go/MIT, single-binary wiki server, SQLite + markdown on
 disk) is a *human front-end* to browse/edit the OKF context store (the Obsidian role
