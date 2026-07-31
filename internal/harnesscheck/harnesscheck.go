@@ -25,6 +25,8 @@ const (
 	KindDuplicateUnit     = "duplicate_unit"     // two units answer to the same id
 	KindNFRSpec           = "nfr_spec"           // an NFR spec is not well-formed Planguage
 	KindDanglingIntegrity = "dangling_integrity" // a unit's integrity check names no declared tool
+	KindDanglingSupersede = "dangling_supersede" // a unit's superseded_by names no existing unit
+	KindInvalidTrust      = "invalid_trust"      // a unit's trust tier is outside the taxonomy
 )
 
 // Inputs bundles the loaded harness state Check reasons over.
@@ -53,6 +55,7 @@ func Check(in *Inputs) []Problem {
 	problems = appendUnitProblems(problems, in.Units)
 	problems = appendSpecProblems(problems, in.Specs)
 	problems = appendCrossRefProblems(problems, in.Units, in.Tools)
+	problems = appendLifecycleProblems(problems, in.Units)
 	sort.Slice(problems, func(i, j int) bool {
 		switch {
 		case problems[i].Kind != problems[j].Kind:
@@ -126,6 +129,23 @@ func appendCrossRefProblems(
 				Detail: "integrity check " + integrity + " is not a declared tool (§13)",
 			})
 		}
+	}
+	return problems
+}
+
+// appendLifecycleProblems reports the OKF lifecycle defects (§10.4): a supersession
+// pointing at a unit that does not exist, and a trust tier outside the taxonomy.
+func appendLifecycleProblems(problems []Problem, units []contextstore.Unit) []Problem {
+	for _, id := range contextstore.DanglingSupersessions(units) {
+		problems = append(problems, Problem{
+			Kind: KindDanglingSupersede, Ref: id,
+			Detail: "superseded_by names a unit that does not exist",
+		})
+	}
+	for _, id := range contextstore.InvalidTrust(units) {
+		problems = append(problems, Problem{
+			Kind: KindInvalidTrust, Ref: id, Detail: "trust tier is outside the taxonomy",
+		})
 	}
 	return problems
 }

@@ -75,8 +75,8 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("context").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "context",
-		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses|eval> [id|arc|labels...]",
-		ShortHelp: "list, show, route, lint, verify, check, learn from, and eval context units",
+		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses|eval|index> [id|arc|labels...]",
+		ShortHelp: "list, show, route, lint, verify, check, learn from, eval, and index context units",
 		LongHelp: "Inspect the just-in-time context store (SPEC-ADDITIONS §10): list units, " +
 			"show one unit's text and provenance, route a working set by labels, lint the " +
 			"store, verify that routed units have not drifted from their canonical source, " +
@@ -92,7 +92,7 @@ func New(parent *root.Config) *Config {
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New(
-			"context: expected a verb: list, show, route, lint, verify, check, misses, or eval",
+			"context: expected a verb: list, show, route, lint, verify, check, misses, eval, or index",
 		)
 	}
 	storeDir := cfg.storeDir()
@@ -121,9 +121,12 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return cfg.misses()
 	case "eval":
 		return cfg.eval(units)
+	case "index":
+		_, _ = fmt.Fprint(cfg.Stdout, contextstore.Index(units))
+		return nil
 	default:
 		return fmt.Errorf(
-			"context: unknown verb %q; want list, show, route, lint, verify, check, misses, or eval",
+			"context: unknown verb %q; want list, show, route, lint, verify, check, misses, eval, or index",
 			args[0],
 		)
 	}
@@ -165,7 +168,9 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 	if cfg.JSONL {
 		if err := cfg.EmitOK(map[string]any{
 			"id": unit.ID, "kind": unit.Kind, "owner": unit.Owner,
-			"provenance": unit.Provenance, "content": content,
+			"provenance": unit.Provenance, "sources": unit.Sources,
+			"verified": string(unit.Verified), "superseded_by": unit.SupersededBy,
+			"content": content,
 		}); err != nil {
 			return fmt.Errorf("context: %w", err)
 		}
@@ -175,6 +180,15 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s) — %s\n", unit.ID, unit.Kind, unit.Provenance)
 	} else {
 		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s)\n", unit.ID, unit.Kind)
+	}
+	if unit.Verified != "" {
+		_, _ = fmt.Fprintf(cfg.Stdout, "> trust: %s\n", unit.Verified)
+	}
+	for _, src := range unit.Sources {
+		_, _ = fmt.Fprintf(cfg.Stdout, "> source: %s\n", src)
+	}
+	if unit.SupersededBy != "" {
+		_, _ = fmt.Fprintf(cfg.Stdout, "> superseded by: %s\n", unit.SupersededBy)
 	}
 	if content != "" {
 		_, _ = fmt.Fprintln(cfg.Stdout, content)
@@ -209,11 +223,32 @@ func (cfg *Config) lint(storeDir string, units []contextstore.Unit) error {
 		bad++
 		_, _ = fmt.Fprintf(cfg.Stderr, "duplicate unit id: %s\n", id)
 	}
+	bad += cfg.wikiLint(units)
 	if bad > 0 {
 		return root.ExitError(lintCode)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d context units, all valid\n", len(units))
 	return nil
+}
+
+// wikiLint reports the compounding-wiki defects (§10.4) — orphan units that can
+// never route, dangling supersession references, and unknown trust tiers — and
+// returns how many it found.
+func (cfg *Config) wikiLint(units []contextstore.Unit) int {
+	bad := 0
+	for _, id := range contextstore.Orphans(units) {
+		bad++
+		_, _ = fmt.Fprintf(cfg.Stderr, "orphan unit %s: no labels or paths, never routes\n", id)
+	}
+	for _, id := range contextstore.DanglingSupersessions(units) {
+		bad++
+		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: superseded_by names a nonexistent unit\n", id)
+	}
+	for _, id := range contextstore.InvalidTrust(units) {
+		bad++
+		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: unknown trust tier\n", id)
+	}
+	return bad
 }
 
 // verify runs each unit's declared integrity check (§10.4 anti-drift): the §13 tool
