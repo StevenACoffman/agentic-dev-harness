@@ -37,8 +37,14 @@ const exitStatusBody = "The exit code is the primary machine signal (SPEC §7).\
 	"7   on-device validation failed\n\n" +
 	"8   proof verification failed (NO-PROOF-NO-CLOSE)\n\n" +
 	"9   worker changed; requalify before continuing (§14)\n\n" +
-	"12  critic routing gap: the environment did not ground the review (§19.1)\n\n" +
-	"13  lesson promotion to an executable owner requires approval (§11.2)"
+	"10  tool registry invalid, or a run tool is unknown/uninstalled (§13)\n\n" +
+	"12  critic routing gap, or an invalid context store (§19.1, §10.4)\n\n" +
+	"13  lesson promotion to an executable owner requires approval (§11.2)\n\n" +
+	"14  sleep staged a proposal awaiting adoption (§18.4)\n\n" +
+	"15  sleep gate self-test failed: a planted regression was not rejected (§18.4)\n\n" +
+	"16  harness-integrity self-check failed: doctor found inconsistencies (§10.4)\n\n" +
+	"17  an NFR spec is not well-formed Planguage (§10.5)\n\n" +
+	"18  routed context drifted from its canonical source (§10.4 anti-drift)"
 
 // environmentBody documents the env-var override rule ff applies to every flag.
 const environmentBody = "Every flag can be set by an AGENTIC_DEV_HARNESS_-prefixed " +

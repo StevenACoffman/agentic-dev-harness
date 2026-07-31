@@ -70,8 +70,8 @@ func TestContextVerifyDrift(t *testing.T) {
 	seedIntegrity(t, "exit 1")
 	_, err := run(t, "context", "verify")
 	var exit root.ExitError
-	if !errors.As(err, &exit) || int(exit) != 14 {
-		t.Fatalf("verify with drift = %v, want ExitError(14)", err)
+	if !errors.As(err, &exit) || int(exit) != 18 {
+		t.Fatalf("verify with drift = %v, want ExitError(18)", err)
 	}
 }
 

@@ -24,7 +24,7 @@ import (
 // Exit codes for the context command (SPEC §7), kept distinct from the arc gates.
 const (
 	lintCode  = 12 // an invalid store (missing fields, unresolved content, duplicate ids)
-	driftCode = 14 // a routed unit drifted from its canonical source (§10.4 anti-drift)
+	driftCode = 18 // a routed unit drifted from its canonical source (§10.4 anti-drift)
 )
 
 // checkInstruction leads the human consistency-review packet, naming the judgment
