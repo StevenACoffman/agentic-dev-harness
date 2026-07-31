@@ -398,7 +398,7 @@ func (cfg *Config) adjudicate(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
+	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}

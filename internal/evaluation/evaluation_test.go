@@ -8,15 +8,20 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 // fakeAdjudicator confirms exactly the findings whose kind is failKind.
 type fakeAdjudicator struct{ failKind adh.FindingKind }
 
-// fakeRunner reports a fixed (passed, ran) for any command, so an NFR check's
-// disposition is exercised without spawning a process.
-type fakeRunner struct{ passed, ran bool }
+// fakeRunner reports a fixed (passed, ran) for a check and a fixed (value, measured)
+// for a Meter, so an NFR check's disposition is exercised without spawning a process.
+type fakeRunner struct {
+	passed, ran bool
+	value       float64
+	measured    bool
+}
 
 func (f fakeAdjudicator) Adjudicate(
 	_ context.Context,
@@ -27,6 +32,10 @@ func (f fakeAdjudicator) Adjudicate(
 
 func (f fakeRunner) RunCheck(_ context.Context, _, _ string) (passed, ran bool) {
 	return f.passed, f.ran
+}
+
+func (f fakeRunner) Measure(_ context.Context, _, _ string) (value float64, ran bool) {
+	return f.value, f.measured
 }
 
 func TestAdjudicateSplitsConfirmed(t *testing.T) {
@@ -172,7 +181,7 @@ func TestApplyUnconfirmedSkipsLessonWhenDisabled(t *testing.T) {
 // contract finding naming an absent manifest fails.
 func TestRepoAdjudicatorContractFailsOnMissingProof(t *testing.T) {
 	t.Chdir(t.TempDir())
-	ran, failed, err := evaluation.RepoAdjudicator{}.Adjudicate(
+	ran, failed, err := (&evaluation.RepoAdjudicator{}).Adjudicate(
 		context.Background(),
 		adh.Finding{Kind: adh.FindingContract, Ref: ".adh/proof/missing.json"},
 	)
@@ -221,7 +230,7 @@ func TestRepoAdjudicatorNFR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, tt.runner)
+			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, nil, tt.runner)
 			ran, failed, err := adj.Adjudicate(
 				context.Background(),
 				adh.Finding{Summary: "slow path", Kind: adh.FindingNFR, Ref: tt.ref},
@@ -236,6 +245,53 @@ func TestRepoAdjudicatorNFR(t *testing.T) {
 			// A finding confirms only when its check ran and failed (critic.Dispose).
 			if confirms := ran && failed; confirms != tt.wantConfirms {
 				t.Errorf("confirms = %v, want %v", confirms, tt.wantConfirms)
+			}
+		})
+	}
+}
+
+// TestRepoAdjudicatorNFRSpec: an NFR finding whose Ref names a Planguage spec gates
+// on the spec's Fail threshold — the measured Meter value, not a tool exit code. A
+// value that breaches Fail confirms; one that meets it does not; an unmeasurable or
+// undeclared Meter is unrunnable (unconfirmed), so the gate drops what it cannot
+// measure (§10.5, §19.2).
+func TestRepoAdjudicatorNFRSpec(t *testing.T) {
+	t.Parallel()
+	reg := toolreg.Registry{Tools: []toolreg.Tool{
+		{ID: "bench-latency", Run: "bench", Verifies: "p95 latency ms"},
+	}}
+	spec := nfr.Spec{
+		ID: "latency", Tag: "Performance.Latency", Scale: "ms",
+		Meter: "bench-latency", Direction: nfr.Lower, Fail: 300, Goal: 200,
+	}
+	ghost := spec
+	ghost.Meter = "undeclared-tool"
+	tests := []struct {
+		name       string
+		spec       nfr.Spec
+		runner     fakeRunner
+		wantRan    bool
+		wantFailed bool
+	}{
+		{"measured breaches Fail", spec, fakeRunner{value: 350, measured: true}, true, true},
+		{"measured meets Fail", spec, fakeRunner{value: 250, measured: true}, true, false},
+		{"unmeasurable output", spec, fakeRunner{measured: false}, false, false},
+		{"meter not declared", ghost, fakeRunner{value: 350, measured: true}, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, []nfr.Spec{tt.spec}, tt.runner)
+			ran, failed, err := adj.Adjudicate(
+				context.Background(),
+				adh.Finding{Summary: "too slow", Kind: adh.FindingNFR, Ref: "latency"},
+			)
+			if err != nil {
+				t.Fatalf("Adjudicate: %v", err)
+			}
+			if ran != tt.wantRan || failed != tt.wantFailed {
+				t.Errorf("(ran, failed) = (%v, %v), want (%v, %v)",
+					ran, failed, tt.wantRan, tt.wantFailed)
 			}
 		})
 	}

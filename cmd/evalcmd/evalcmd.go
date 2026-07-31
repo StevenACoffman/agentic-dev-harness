@@ -92,7 +92,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		if adjErr != nil {
 			return fmt.Errorf("eval: %w", adjErr)
 		}
-		cfg.adjudicator = adj
+		cfg.adjudicator = &adj
 	}
 
 	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, arc.Findings)

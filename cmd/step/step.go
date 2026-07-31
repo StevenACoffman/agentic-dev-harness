@@ -153,7 +153,7 @@ func (cfg *Config) disposeEval(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	verdict, err := evaluation.Adjudicate(ctx, adjudicator, arc.Findings)
+	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}

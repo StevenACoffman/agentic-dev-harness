@@ -8,13 +8,18 @@
 package evaluation
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/device"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
@@ -65,6 +70,7 @@ type Adjudicator interface {
 type RepoAdjudicator struct {
 	dir    string
 	checks toolreg.Registry
+	specs  []nfr.Spec
 	runner CheckRunner
 }
 
@@ -76,6 +82,10 @@ type RepoAdjudicator struct {
 // the Evaluation stage. The command is repository-owned config, never model input.
 type CheckRunner interface {
 	RunCheck(ctx context.Context, command, dir string) (passed, ran bool)
+	// Measure runs a Meter tool and returns the numeric value it emits (§10.5), so an
+	// NFR finding can gate on a declarative Fail threshold rather than an exit code.
+	// ran is false when the command could not start or emitted no parseable number.
+	Measure(ctx context.Context, command, dir string) (value float64, ran bool)
 }
 
 // ShellRunner runs a check as `sh -c <command>` in dir through the shared
@@ -86,8 +96,13 @@ type ShellRunner struct{}
 // NewRepoAdjudicator builds an adjudicator rooted at dir, resolving NFR findings
 // against checks and running them with runner. An empty dir means the current
 // directory; an empty registry or nil runner leaves NFR findings unrunnable.
-func NewRepoAdjudicator(dir string, checks toolreg.Registry, runner CheckRunner) RepoAdjudicator {
-	return RepoAdjudicator{dir: dir, checks: checks, runner: runner}
+func NewRepoAdjudicator(
+	dir string,
+	checks toolreg.Registry,
+	specs []nfr.Spec,
+	runner CheckRunner,
+) RepoAdjudicator {
+	return RepoAdjudicator{dir: dir, checks: checks, specs: specs, runner: runner}
 }
 
 // RepoAdjudicatorFor is the real adjudicator for a repository: it loads the tool
@@ -100,7 +115,11 @@ func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
 	if err != nil {
 		return RepoAdjudicator{}, err
 	}
-	return NewRepoAdjudicator(repoDir, checks, ShellRunner{}), nil
+	specs, err := nfr.Load(filepath.Join(repoDir, nfr.DefaultDir))
+	if err != nil {
+		return RepoAdjudicator{}, &adh.Error{Op: "evaluation.RepoAdjudicatorFor", Err: err}
+	}
+	return NewRepoAdjudicator(repoDir, checks, specs, ShellRunner{}), nil
 }
 
 // loadChecks reads the tool registry under repoDir (best-effort: an absent file is
@@ -118,6 +137,37 @@ func loadChecks(repoDir string) (toolreg.Registry, error) {
 func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, ran bool) {
 	code, ran := shell.Runner{}.Run(ctx, command, dir)
 	return code == 0, ran
+}
+
+// Measure runs a Meter tool capturing its stdout and parses the value it emits
+// (§10.5): the last whitespace-separated float token. The tool's exit code is not
+// the signal — a Meter that exits non-zero but prints a number still measures — so
+// only a command that could not start (not found) or emits no parseable number is
+// unmeasurable (ran=false), leaving the NFR finding unconfirmed rather than a false
+// gate (§19.2).
+func (ShellRunner) Measure(ctx context.Context, command, dir string) (value float64, ran bool) {
+	var out bytes.Buffer
+	code, started := shell.Runner{}.RunIO(ctx, command, dir, &out, nil)
+	if shell.NotRun(code, started) {
+		return 0, false
+	}
+	return parseMeasurement(out.String())
+}
+
+// parseMeasurement extracts the measured value from a Meter tool's output — the last
+// whitespace-separated token parsed as a float. ok is false when there is no
+// parseable number, so the Meter contract is "print the measurement as the final
+// token" and anything else is unmeasurable.
+func parseMeasurement(out string) (value float64, ok bool) {
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(fields[len(fields)-1], 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // Decide picks the arc's disposition (SPEC §4.1): a clean verdict advances to the
@@ -206,7 +256,7 @@ func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool, maxReworks
 // artifact cannot be run (an NFR check the repository does not declare, an NFR
 // finding with no runner) is unrunnable (ran=false) and disposes as unconfirmed —
 // the gate drops a prior the repository does not hold (§19.2).
-func (a RepoAdjudicator) Adjudicate(
+func (a *RepoAdjudicator) Adjudicate(
 	ctx context.Context,
 	finding adh.Finding,
 ) (ran, failed bool, err error) {
@@ -245,9 +295,16 @@ func (a RepoAdjudicator) Adjudicate(
 // declare, or has no runner wired is unrunnable — an invented requirement the
 // repository does not hold, which the gate drops as unconfirmed. A declared check
 // that exits non-zero confirms the finding.
-func (a RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, failed bool) {
+func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, failed bool) {
 	if ref == "" || a.runner == nil {
 		return false, false
+	}
+	// A ref that names a Planguage spec gates on the declarative Fail threshold: run
+	// the spec's Meter tool, measure, and confirm when the value breaches Fail (§10.5)
+	// — adh owns the threshold, not the tool. Otherwise ref is a tool id whose own
+	// exit code is the pass/fail signal (backward compatible).
+	if spec, ok := nfr.ByID(a.specs, ref); ok {
+		return a.adjudicateSpec(ctx, &spec)
 	}
 	tool, ok := a.checks.FindByID(ref)
 	if !ok {
@@ -260,11 +317,27 @@ func (a RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, fa
 	return true, !passed
 }
 
+// adjudicateSpec measures a Planguage spec's Meter and confirms the finding when the
+// measured value breaches the spec's Fail bar (§10.5, §19.2). A spec whose Meter is
+// not a declared §13 tool, or whose tool emits no parseable measurement, is
+// unrunnable (unconfirmed) — the gate drops a requirement it cannot measure.
+func (a *RepoAdjudicator) adjudicateSpec(ctx context.Context, spec *nfr.Spec) (ran, failed bool) {
+	tool, ok := a.checks.FindByID(spec.Meter)
+	if !ok {
+		return false, false
+	}
+	value, measured := a.runner.Measure(ctx, tool.Run, a.repoRoot())
+	if !measured {
+		return false, false
+	}
+	return true, !spec.Meets(value)
+}
+
 // adjudicateContract verifies the proof manifest a contract finding names. A
 // finding that names no manifest is unrunnable; a manifest that is missing,
 // unreadable, or fails verification confirms the finding (the named proof does not
 // hold).
-func (a RepoAdjudicator) adjudicateContract(ref string) (ran, failed bool) {
+func (a *RepoAdjudicator) adjudicateContract(ref string) (ran, failed bool) {
 	if ref == "" {
 		return false, false // unrunnable → unconfirmed
 	}
@@ -277,7 +350,7 @@ func (a RepoAdjudicator) adjudicateContract(ref string) (ran, failed bool) {
 
 // repoRoot is the directory the checks run in, defaulting to the current directory
 // so the zero-value adjudicator stays usable.
-func (a RepoAdjudicator) repoRoot() string {
+func (a *RepoAdjudicator) repoRoot() string {
 	if a.dir == "" {
 		return "."
 	}

@@ -109,6 +109,17 @@ func knownCategory(head string) bool {
 	}
 }
 
+// ByID returns the spec with the given id, so a caller that already knows an NFR by
+// name (a critic finding's Ref, §19.2) can resolve it to its Planguage thresholds.
+func ByID(specs []Spec, id string) (Spec, bool) {
+	for i := range specs {
+		if specs[i].ID == id {
+			return specs[i], true
+		}
+	}
+	return Spec{}, false
+}
+
 // Load reads NFR specs from JSON files under dir. An absent directory yields no
 // specs and no error, so a repo that declares no NFRs is not an error.
 func Load(dir string) ([]Spec, error) {
