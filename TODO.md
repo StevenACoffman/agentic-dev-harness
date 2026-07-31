@@ -105,9 +105,16 @@ each as one bounded baseline → intervention → verify → fresh-rerun → ret
       tool run skillsaw-eval` from Loop B for dimension scores) and staging is unchanged
       (auto_adopt = false, exit 14), so a non-improving relay edit is still rejected.
       Verified: `--relay` emits a prompt naming the reflected class; an empty edit is
-      gated out (stages nothing). **Follow-up (deferred):** deep skillsaw `eval/diagnose/
-      gate` JSON parsing as adh's ratchet needs skillsaw's CLI contract + install; the
-      mock `Propose` remains the non-relay default.
+      gated out (stages nothing). The skillsaw ratchet path now ships: `harness gate`
+      already *is* the strict-`>` ratchet, and `internal/skillsaw.Decode` (a pure
+      parse-at-the-boundary decoder of skillsaw's `eval --json`) + `harness eval
+      --skillsaw <file>` surface skillsaw's score and needs-judge dimensions beside
+      adh's floor, so the worker runs `tool run skillsaw-eval > s.json` (Loop B) then
+      feeds the score to `harness gate` — skillsaw as the cheap floor under adh's bar.
+      **Follow-up (deferred):** exact field-alignment with an installed skillsaw (the
+      decoder is adh's documented contract; a real install verifies/tunes the mapping);
+      `diagnose`/`history` stay `tool run`; the mock `Propose` remains the non-relay
+      default.
 
 ### From `agentic-harness-bootstrap` (Data Formats / Processes Worth Folding In)
 
@@ -218,14 +225,21 @@ single strict-`>` gate is insufficient.
       significantly. `sleep` surfaces the verdict in the staged line + manifest;
       staging is unchanged (the verdict labels trust, skillsaw's `gate` is the floor
       **under** this bar). Verified: `Decide`/`McNemar` tables + the cycle reports a
-      verdict. **Follow-up (deferred):** a condition-blind paired-control outcome eval
-      over *live* rollouts (needs a worker; the selection/test split is the
-      deterministic stand-in), and an independent *fresh* replication run.
-- [x] **Validate the graders and the splits (§18.2).** DONE for the splits:
-      `verdict.ValidateSplits` is a pure leakage guard (a task id assigned to two
-      splits makes the replication a proxy → EINVALID). Grader calibration reuses the
-      existing negative-control self-test (`harness.SelfTest`, exit 15 in `sleep`).
-      **Follow-up:** extend judge calibration beyond the negative control.
+      verdict. The **fresh-replication** verdict now ships: `verdict.Replicate(runs,
+      minEffect)` (pure) ELEVATEs only when ≥2 *independent* runs each clear the
+      effect-size + significance bar (a fresh replication, not just a held-out split),
+      KILLs on any regression, and is REPLICATION-MISSING with <2 runs. **Follow-up
+      (deferred):** the live-rollout data source — a worker producing N independent
+      paired control-vs-treatment runs to feed `Replicate`; the selection/test split
+      stays the in-process stand-in for the single-run `Decide`.
+- [x] **Validate the graders and the splits (§18.2).** DONE. Splits:
+      `verdict.ValidateSplits` is a pure leakage guard (a task id in two splits →
+      EINVALID). Grader: `harness.GraderSelfTest` extends the negative control from the
+      *gate* to the *grader* — it proves the rubric scores a known-strong artifact
+      strictly above a known-weak one (a blind grader makes the ratchet measure noise →
+      EINTERNAL), and `sleep run` runs it beside `SelfTest` (exit 15) before trusting
+      the loop. **Follow-up:** calibrate the *model* judge (not just the deterministic
+      rubric) once a live judge is wired.
 - [x] **Routing eval for the context lever (§10, Loop A/E).** DONE. `contextstore.
       EvaluateRouting` (a pure core) scores routing fixtures — each `RoutingCase`
       asserts the units that should route for an arc's labels/paths (an empty `Want`
