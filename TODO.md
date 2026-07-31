@@ -34,26 +34,73 @@ each as one bounded baseline → intervention → verify → fresh-rerun → ret
       unit's content file. **Follow-up (own loop):** switch the unit *format* to OKF
       markdown+frontmatter with the trust tier + freshness (the separate "Adopt OKF"
       item) — deferred so this cut stayed the smallest reversible change.
-- [ ] **Loop B — register exegesis/skillsaw/modelith as §13 tools.** External
-      `Run` commands with `--json` where available (`modelith lint --format json`,
-      `modelith render --check`, `skillsaw eval --json`, `exegesis verify`), so the
-      worker invokes them via `adh tool run <id>` and interprets output in-loop.
-- [ ] **Loop D — lesson promotion materializes the durable owner (§11.2).**
-      `lesson promote` gates + prints "promoted" but creates nothing. Make
-      `--to context|skill|check` write the artifact (a routable §10 unit with
-      provenance; a skill via exegesis; a §13 tool entry) behind the §11.2 approval
-      gate — so a correction becomes accretive, not a printed intent.
-- [ ] **Loop E — cross-unit consistency (§10.4).** `context lint` checks id/kind
-      only. Split: deterministic reference-integrity is owned by `modelith lint`
-      (reciprocal-cardinality, mutual-ownership, duplicate ids, cycles, dangling
-      refs); irreducibly-semantic conflict (skill vs base rule vs domain invariant)
-      is adjudicated by the cold critic via `context lint`/`check`, gated.
-- [ ] **Loop F — context-integrity / anti-drift gate (§10.4, proof).** Nothing
-      today guarantees a routed unit still matches its source. Register
-      `modelith render --check` (and `modelith lint`, `exegesis verify`) as §13
-      NFR-checks an arc runs over its routed context, so a stage fails when the
-      routed Markdown drifted from its canonical YAML/source. A capability adh
-      lacked entirely.
+- [x] **Loop B — register exegesis/skillsaw/modelith as §13 tools.** DONE. A
+      `toolreg.StarterRegistry` declares the four external capabilities as `Run`
+      commands with `--json`/`--format json` where available (`modelith lint
+      --format json`, `modelith render --check`, `skillsaw eval --json`, `exegesis
+      verify`), each with `Verifies` + a `RepairHint` (the install line); `adh init`
+      seeds `.adh/tools.json` from it (idempotent — kept if present) so the tools are
+      legible out of the box. `adh tool run <id>` resolves the entry and invokes it
+      through the shared shell edge (`shell.Runner.RunIO`, added so the child's
+      stdout/stderr reach the worker; `Run` now delegates to it, one gosec edge):
+      non-`--jsonl` streams the tool's output live and propagates its exit code;
+      `--jsonl` captures stdout/stderr/exit into one outcome envelope (`data`) the
+      worker parses. An unknown id or an uninstalled binary (shell exit 126/127) is a
+      registry-level problem (exit 10, reason `unknown_tool`/`tool_unavailable` +
+      repair hint), not a failing check; a tool that ran and exited non-zero
+      propagates its own code (reason `tool_failed`). `list`/`doctor` now honor
+      `--repo` too (an absent registry is a valid empty one). Verified: unit tests
+      (shell/toolreg/toolcmd) + a journey (`init` → `tool doctor`/`list`/`run`,
+      including a real `modelith` invocation captured under `--jsonl`). **Follow-up
+      (own loops):** appending extra args to `tool run <id> -- <args>`; and wiring
+      these entries into F (an arc's context-integrity NFR-check over its routed
+      context) and C (the skillsaw improvement loop).
+- [x] **Loop D — lesson promotion materializes the durable owner (§11.2).** DONE
+      for the reversible content owners. `lesson --to context|doc|decision promote
+      <class>` now writes a routable §10 context unit (a content file + its unit
+      JSON, `content_path`+`provenance`, routes by the class label) under
+      `.adh/context` — so a correction is inherited by the next arc (Loop A routes
+      it), not just printed. `decision` writes an ADR skeleton (Status/Context/
+      Decision/Consequences: Easier|Harder, §12) — folding in the ADR/`decision`
+      item. Pure renderer in `internal/lesson` (`Render`/`Slug`/`Kind`/
+      `Materializes`), thin write shell in `lessoncmd`. The executable owners
+      (`check`/`invariant`/`type`) and `skill` **keep the §11.2 gate** (exit 13) and
+      are *not* auto-written — adh cannot author a correct check/type/skill from a
+      class. Verified: unit tests + a journey (promote → `context show`/`route` see
+      it; an executable owner still gates, writes nothing). **Follow-up (own loops):**
+      materialize an executable owner (scaffold + register a §13 check) and `skill`
+      (via exegesis).
+- [x] **Loop E — cross-unit consistency (§10.4).** DONE for both halves. The
+      *deterministic* layer: `context lint` now catches duplicate unit ids across the
+      store (`contextstore.DuplicateIDs`, a pure core), and `modelith` reference-
+      integrity is available via `adh tool run modelith-lint` (Loop B) and as a unit's
+      `integrity` check (Loop F). The *semantic* layer: `adh context check [arc]`
+      assembles the routed unit set + each unit's content into one consistency-review
+      packet (a pure assembly; adh gathers deterministically, the relayed agent judges
+      contradictions — a skill vs a base rule vs a domain invariant). It surfaces for
+      judgment (the agent then promotes a lesson / opens an arc); it is not itself a
+      gate. Verified: unit tests (duplicate-id lint, packet assembly) + a journey.
+      **Follow-up (own loop):** a *live* relay critic stage over the units (a parked-
+      turn adjudication) — `check` gives the packet today; the relay flow is separate.
+- [x] **Loop F — context-integrity / anti-drift gate (§10.4, proof).** DONE — a
+      capability adh lacked entirely. `contextstore.Unit` gained an `integrity` field
+      (a §13 tool id that proves the unit's content has not drifted from its canonical
+      source, e.g. `modelith-render-check`, registered in Loop B). `adh context verify
+      [arc]` routes the units (all, or an arc's routed set) and runs each declared
+      integrity check via the shared `shell` edge: a check that ran and failed is
+      **drift** (exit 14, reason `context_drift`); an uninstalled check tool is
+      *unverified* (reported, not a gate failure — the `unrunnable = unconfirmed` rule
+      the Evaluation stage uses, centralized as `shell.NotRun`); a unit naming an
+      undeclared tool is a store misconfiguration (EINVALID). Verified: unit tests
+      (clean/drift/unverified/misconfigured) + a journey (editing the check to fail
+      exits 14, fixing it clears). The `context-drift` §15 loop (below) runs it as a
+      sensor.
+- [ ] **Loop C — skillsaw + relay improvement loop (§18).** Replace the mock
+      `consolidate.Propose`: drive skillsaw `eval → diagnose → gate` with the relay
+      supplying the `needs_judge` scores and one-dimension edits, so Claude drives
+      real, gated skill improvement through adh. skillsaw's strict-`>` `gate` feeds
+      Evaluation but never replaces human approval or NO-PROOF-NO-CLOSE; the loop
+      stages (auto_adopt = false). Do last — it composes B and the gate.
 - [ ] **Loop C — skillsaw + relay improvement loop (§18).** Replace the mock
       `consolidate.Propose`: drive skillsaw `eval → diagnose → gate` with the relay
       supplying the `needs_judge` scores and one-dimension edits, so Claude drives
@@ -69,26 +116,32 @@ above does not. Its other pieces (stack-specific lint/hook/CI templates, the
 one-time discover→generate playbooks, the generated CLAUDE/AGENTS files) overlap
 what adh or the driving skill already own — not adopted.
 
-- [ ] **ADR decision format for NFR trade-offs (§10.2, §11, §12).** The bootstrap
-      ADR — *Status / Context / Decision / Consequences split into **Easier** and
-      **Harder*** — is the durable, routable home for a team's local NFR
-      prioritize/trade-off decisions, the one thing modelith deliberately omits. Add
-      a `decision` context-unit kind (routes past ADRs so a later arc inherits, not
-      re-litigates), a `lesson promote --to decision` owner, and make an ADR the
-      proof artifact of a `decision`-resolution arc (§12). **Highest-value add for
-      the NFR-governance goal.**
+- [~] **ADR decision format for NFR trade-offs (§10.2, §11, §12).** The bootstrap
+  ADR — *Status / Context / Decision / Consequences split into **Easier** and
+  **Harder*** — is the durable, routable home for a team's local NFR
+  prioritize/trade-off decisions, the one thing modelith deliberately omits. The
+  `decision` context-unit kind + `lesson --to decision promote` (writes the ADR
+  skeleton) **shipped with Loop D**. **Remaining:** make an ADR the proof
+  artifact a `decision`-resolution arc closes with (§12, `arc close --as
+  decision`) — a separate loop in the proof path.
 - [ ] **Harness-integrity self-verification (§10.4).** Adopt the `verify-harness.sh`
       pattern as an `adh` self-check (a §13 check + a session-start/CI gate): every
       routed unit resolves to a real artifact, every named tool exists, agent-facing
       guidance references only real modules/commands, no dangling references, pieces
       don't contradict. Broader than Loop F's content-drift check — "is the whole
       harness intact and consistent?" Cheap, high-trust.
-- [ ] **Standing-order accretion triggers as §15 loops.** Encode the bootstrap
-      "Harness Evolution" maintenance triggers as adh loops/hooks so accretion is
-      automatic, not prompted: agent mistake → `lesson promote` (Loop D);
-      architectural/NFR decision → ADR (the format above); session-start/pre-run →
-      harness-integrity + context-drift check (Loop F). Makes "every correction
-      accretive" a standing behavior, not a manual step.
+- [x] **Standing-order accretion triggers as §15 loops.** DONE for the standing
+      registry. `loop.StarterRegistry()` declares three standing accretion loops and
+      `adh init` seeds `.adh/loops.json` from it (idempotent, single-owned
+      `loop.DefaultRegistryFile`): `context-drift` (sensor `adh context verify` —
+      Loop F), `harness-integrity` (sensor `adh tool doctor` — Loop B), and
+      `lesson-backlog` (sensor `test ! -s .adh/lesson-candidates.json` — Loop D), each
+      with `on_finding: open arc`, so a sensed departure becomes an arc an agent
+      drives — accretion as a standing behavior, not a manual step. Verified: the
+      starter registry validates, round-trips, and `adh loop list` shows them after
+      `init`. **Follow-up:** the ADR trigger (architectural/NFR decision) pairs with
+      the still-open `arc close --as decision` proof path; a session-start/pre-run
+      *hook* (vs the manual/agent-driven `loop run`) is the deferred crontab/hook item.
 
 Optional / deferred (useful but larger or partly owned elsewhere): an `Always/Ask/
 Never` boundaries format routed as legible authority context (complements the §5.2
@@ -194,15 +247,18 @@ self-improvement into *readable config, not weights*, and append-only JSONL
 evidence. That convergence corroborates adh; it is not a tool adh orchestrates. One
 pattern is a genuinely novel add for the context lever:
 
-- [ ] **Routing learns from its misses (§10.3).** adh already *detects* the miss —
-      a context gap (§10.3) / routing gap (§19.1, exit 12) — but discards it. Adopt
-      virgil's self-heal: append each miss to a **miss log** (a learning signal, kept
-      distinct from evidence), and past a threshold **propose a routing rule** (a
-      label/path→unit mapping, keyword, category) that converts the miss into a
-      deterministic route, landing in readable config, **gated at §11** (or auto only
-      at high autonomy). The context router then improves the more it is used and the
-      critic/relay surface shrinks. **Accretion applied to the #1 lever — completes
-      adh's existing routing-gap detection with the learning half.**
+- [x] **Routing learns from its misses (§10.3).** DONE. Each critic routing gap
+      (§19.1, exit 12) is no longer discarded: `run`/`step` append the arc's
+      labels/paths to an append-only **miss log** (`.adh/context-misses.jsonl`, kept
+      distinct from evidence — a learning signal, not an audit record;
+      `contextstore.AppendMiss`, best-effort so a failed append never masks the gap).
+      `adh context misses` aggregates them and, past `defaultMissThreshold` (2),
+      **proposes a deterministic route** for any label/path the arcs keep missing on
+      (`contextstore.ProposeRoutes`, a pure core ranked by recurrence). It only
+      proposes — authoring the unit stays **gated at §11** (nothing is auto-routed).
+      Verified: pure `ProposeRoutes` table, append/load round-trip, and an E2E test (a
+      relayed gap writes a miss; `context misses` proposes the label). **Accretion
+      applied to the #1 lever — the router improves the more it is used.**
 - [ ] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).**
       Generalize §18 self-optimization beyond the guiding artifact: every §13 tool and
       §10 unit declares KPIs (acceptance, error, duration, domain-specific) with
