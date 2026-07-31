@@ -11,6 +11,10 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
+// DefaultRegistryFile is the conventional repo path the loop registry lives under
+// (SPEC-ADDITIONS §15). It is the single owner of that path across the CLI.
+const DefaultRegistryFile = ".adh/loops.json"
+
 // Loop is one maintenance loop: the invariant it keeps, how it senses a
 // departure, the authorized action on a finding, when it retires, and its owner.
 type Loop struct {
@@ -52,6 +56,52 @@ func (r Registry) Validate() error {
 		seen[loop.ID] = true
 	}
 	return nil
+}
+
+// StarterRegistry is the set of standing maintenance loops that make accretion
+// automatic instead of prompted (SPEC-ADDITIONS §15): each names an invariant the
+// harness keeps true, a deterministic sensor (`adh` itself), and "open arc" as the
+// authorized action, so a sensed departure becomes work an agent drives. `adh init`
+// seeds it and then the operator tailors it. The sensors compose the other levers —
+// context-integrity (Loop F, `context verify`), the tool registry (`tool doctor`),
+// and the lesson backlog — so a correction is inherited by the next arc, not lost.
+func StarterRegistry() Registry {
+	return Registry{Loops: []Loop{
+		{
+			ID:         "context-drift",
+			Goal:       "routed context still matches its canonical source",
+			Sensor:     "adh context verify",
+			OnFinding:  "open arc",
+			RetireWhen: "no context units declare an integrity check",
+			Owner:      "context",
+		},
+		{
+			ID:         "harness-integrity",
+			Goal:       "the tool registry is valid and every declared tool resolves",
+			Sensor:     "adh tool doctor",
+			OnFinding:  "open arc",
+			RetireWhen: "the harness is retired",
+			Owner:      "tools",
+		},
+		{
+			ID:         "lesson-backlog",
+			Goal:       "confirmed lessons are promoted, not left as candidates",
+			Sensor:     "test ! -s .adh/lesson-candidates.json",
+			OnFinding:  "open arc",
+			RetireWhen: "lessons are promoted at the point of confirmation",
+			Owner:      "lesson",
+		},
+	}}
+}
+
+// Marshal encodes the registry as indented JSON with a trailing newline — the
+// on-disk form Load reads back, so the write and read sides agree in one place.
+func Marshal(r Registry) ([]byte, error) {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return nil, &adh.Error{Op: "loop.Marshal", Err: err}
+	}
+	return append(data, '\n'), nil
 }
 
 // Find returns the loop with the given ID.

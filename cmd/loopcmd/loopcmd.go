@@ -18,12 +18,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
-const (
-	registryFile = ".adh/loops.json"
-	// onFindingOpenArc is the authorized action that opens an arc when the sensor
-	// reports a departure (§15 `on_finding`).
-	onFindingOpenArc = "open arc"
-)
+// onFindingOpenArc is the authorized action that opens an arc when the sensor
+// reports a departure (§15 `on_finding`).
+const onFindingOpenArc = "open arc"
 
 // sensorRunner runs a loop's sensor and reports whether it found a departure from
 // the invariant (a non-zero exit). It is the point-of-use seam: shellSensor is the
@@ -74,7 +71,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("loop: expected a verb: list, run, or retire")
 	}
-	reg, err := looplib.Load(registryFile)
+	reg, err := looplib.Load(looplib.DefaultRegistryFile)
 	if err != nil {
 		return fmt.Errorf("loop: %w", err)
 	}
