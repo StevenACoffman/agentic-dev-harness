@@ -1,0 +1,21 @@
+Review the change and its proof for arc {{.ID}} in a cold context.
+{{with .Ground}}
+Acceptance bar: {{if .AcceptanceBar}}{{.AcceptanceBar}}{{else}}(none recorded){{end}}
+{{if .Paths}}
+Touched paths:
+{{range .Paths}}- {{.}}
+{{end}}{{end}}{{if .Diff}}
+Change under review (unified diff):
+{{.Diff}}{{end}}{{if .Proof}}
+Proof artifacts the builder left:
+{{range .Proof}}- {{.Path}}
+{{end}}{{end}}{{template "context" .}}{{template "tools" .}}{{if not .HasGrounding}}
+No repository grounding was routed for this review.
+{{end}}{{else}}
+No repository grounding was routed for this review.
+{{end}}
+You are seeing only the change under review and its proof, never the builder's
+transcript. Judge the change on its own merits: does the proof establish what it
+claims, and does the change match its stated resolution and the routed guidance?
+Ground each finding in a named repository artifact; do not invent a requirement
+the repository does not hold.
