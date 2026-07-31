@@ -1,6 +1,7 @@
 package shell_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -28,6 +29,29 @@ func TestRun(t *testing.T) {
 					tt.command, code, ran, tt.wantCode, tt.wantRan)
 			}
 		})
+	}
+}
+
+// TestRunIOCapturesStreams: RunIO wires the child's stdout and stderr to the
+// given writers, so a caller can surface or capture a declared tool's output.
+func TestRunIOCapturesStreams(t *testing.T) {
+	t.Parallel()
+	var stdout, stderr bytes.Buffer
+	code, ran := shell.Runner{}.RunIO(
+		context.Background(),
+		"echo out; echo err 1>&2; exit 2",
+		"",
+		&stdout,
+		&stderr,
+	)
+	if code != 2 || !ran {
+		t.Errorf("RunIO = (%d, %v), want (2, true)", code, ran)
+	}
+	if got := stdout.String(); got != "out\n" {
+		t.Errorf("stdout = %q, want %q", got, "out\n")
+	}
+	if got := stderr.String(); got != "err\n" {
+		t.Errorf("stderr = %q, want %q", got, "err\n")
 	}
 }
 
