@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adr"
 )
 
 // Owner values, from reversible (context) to executable (check/invariant/type).
@@ -84,17 +86,14 @@ func (o Owner) Kind() string {
 // for a human to complete; any other materializing owner is avoid-this-class
 // guidance carrying the recorded instances as evidence.
 func (l Lesson) Render(o Owner) string {
-	var b strings.Builder
 	if o == OwnerDecision {
-		fmt.Fprintf(&b, "# Decision: %s\n\n**Status:** Accepted\n\n", l.Class)
-		fmt.Fprintf(&b, "## Context\n\nThe %q correction recurred (%d instances):\n\n",
+		var context strings.Builder
+		fmt.Fprintf(&context, "The %q correction recurred (%d instances):\n\n",
 			l.Class, len(l.Instances))
-		writeInstances(&b, l.Instances)
-		b.WriteString("\n## Decision\n\n<state the rule now settled for this class>\n\n")
-		b.WriteString("## Consequences\n\n### Easier\n\n<what this improves>\n\n")
-		b.WriteString("### Harder\n\n<the trade-off accepted>\n")
-		return b.String()
+		writeInstances(&context, l.Instances)
+		return adr.Render(l.Class, context.String())
 	}
+	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\nAvoid this class of mistake (%d recorded):\n\n",
 		l.Class, len(l.Instances))
 	writeInstances(&b, l.Instances)

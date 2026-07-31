@@ -17,6 +17,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	metricslib "github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
 	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
@@ -223,12 +224,32 @@ func (cfg *Config) verifyProof(arc *adh.Arc) (bool, error) {
 	if manifest == "" {
 		return false, nil
 	}
+	// A decision's proof is a well-formed ADR (§12), not a hash manifest: the durable
+	// record of the trade-off is itself the evidence. Every other resolution verifies
+	// a proof packet's artifact digests.
+	if arc.Resolution == adh.ResolutionDecision {
+		return cfg.verifyDecisionProof(manifest)
+	}
 	pkt, err := prooflib.Load(manifest)
 	if err != nil {
 		return false, fmt.Errorf("close: %w", err)
 	}
 	if verifyErr := prooflib.Verify(cfg.repoDir(), &pkt); verifyErr != nil {
 		return false, cfg.proofFail("proof failed: " + verifyErr.Error())
+	}
+	return true, nil
+}
+
+// verifyDecisionProof validates that path is a complete ADR (§12): the structural
+// proof a decision-resolution arc closes with. An unreadable file or an unfilled
+// skeleton is a proof failure (exit 8), so a decision cannot ship undocumented.
+func (cfg *Config) verifyDecisionProof(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, cfg.proofFail("decision proof unreadable: " + err.Error())
+	}
+	if validErr := adr.Valid(string(data)); validErr != nil {
+		return false, cfg.proofFail("decision proof is not a complete ADR: " + validErr.Error())
 	}
 	return true, nil
 }
