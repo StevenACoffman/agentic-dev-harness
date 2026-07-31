@@ -149,8 +149,12 @@ what adh or the driving skill already own — not adopted.
       drives — accretion as a standing behavior, not a manual step. Verified: the
       starter registry validates, round-trips, and `adh loop list` shows them after
       `init`. The ADR trigger (architectural/NFR decision → `arc close --as decision`)
-      now has its proof path. **Follow-up:** a session-start/pre-run *hook* (vs the
-      manual/agent-driven `loop run`) is the deferred crontab/hook item.
+      now has its proof path. The session-start sweep now ships: `adh loop tick`
+      fires *every* standing loop in one call (senses each, opens an arc per
+      departure, exit 0 — a finding is queued work), and the `adh-relay` SKILL.md
+      instructs the driving agent to run it at session start — for a skill-driven
+      harness the agent is the hook. **Follow-up:** a real `.claude/settings.json`
+      `SessionStart` hook is the environment-specific equivalent (deferred).
 
 Optional / deferred (useful but larger or partly owned elsewhere): an `Always/Ask/
 Never` boundaries format routed as legible authority context (complements the §5.2
@@ -183,12 +187,14 @@ goal (the schema half; the ADR is the decision half):
       a `CheckRunner.Measure` seam) — the declarative threshold gates, not a tool exit
       code; an undeclared/unmeasurable Meter is unrunnable (unconfirmed). **Follow-up:**
       NFR allocation across components (`nfr-architecture-allocation`).
-- [ ] Terminology alignment (§10.5): frame the cross-unit consistency check (Loop E)
-      as **validation** (are the requirements right and conflict-free) and proof/the
-      `Meter`-driven Evaluation gate as **verification** (is it built right) — the
-      standard NFR vocabulary, so adh's stages name what they already do. Optional:
-      NFR **allocation** (split a top-level `Fail` into per-component budgets by
-      routing derived units to component labels/paths).
+- [x] Terminology alignment (§10.5): DONE. `adh docs` now carries a **VOCABULARY**
+      man-page section naming the two consistency questions in the standard NFR sense
+      — **validation** (are the requirements right and conflict-free: `context check`/
+      `lint`, Loop E) vs **verification** (is it built right: the `Meter`-driven
+      Evaluation gate + proof, §19.2/§12) — "validation guards the inputs; verification
+      gates the ship." Verified: docscmd renders the section. Optional (deferred): NFR
+      **allocation** (split a top-level `Fail` into per-component budgets by routing
+      derived units to component labels/paths, `nfr-architecture-allocation`).
 
 ### From `cc-thinking-skills/evals` (Replication-Gated Outcome Eval — the "Not an RNG" Backbone)
 
@@ -220,10 +226,13 @@ single strict-`>` gate is insufficient.
       splits makes the replication a proxy → EINVALID). Grader calibration reuses the
       existing negative-control self-test (`harness.SelfTest`, exit 15 in `sleep`).
       **Follow-up:** extend judge calibration beyond the negative control.
-- [ ] **Routing eval for the context lever (§10, Loop A/E).** Adopt the pipeline's
-      routing eval: does `context route` fire the *right* units for an arc's
-      labels/paths (and correctly return NONE when nothing applies)? An outcome eval
-      for routing quality, so the context lever is measured, not assumed.
+- [x] **Routing eval for the context lever (§10, Loop A/E).** DONE. `contextstore.
+      EvaluateRouting` (a pure core) scores routing fixtures — each `RoutingCase`
+      asserts the units that should route for an arc's labels/paths (an empty `Want`
+      asserts NONE) — into per-case exact-match plus aggregate precision/recall. `adh
+      context eval` runs `.adh/routing-cases.json` against the store; a failing case
+      exits 12, so a routing regression on the #1 lever is measured, not assumed.
+      Verified: `EvaluateRouting` table (hit/miss/NONE) + CLI pass→0 / fail→12.
 
 ### From the Knowledge Layer (OKF Format + Compounding-Wiki Process)
 
@@ -285,12 +294,17 @@ pattern is a genuinely novel add for the context lever:
       degradation thresholds; a crossed threshold proposes a config change (prompt
       amendment, flag default, threshold) — subject to the §18.2 outcome-and-
       replication bar before adoption, never auto-adopted on one signal.
-- [ ] Effectiveness north-star (§16): track the **deterministic-handled vs
-      LLM/critic-handled** ratio; accretion (routing rules, checks, lessons) should
-      drive the LLM surface *down* over time — a measurable direction for §16, not a
-      vibe. Optional/larger: a **pipe/pipeline** composition model for §13 tools
-      (atomic tools + recursive pipelines over the existing `--jsonl` envelope
-      contract), so a flow like distill→optimize→gate is a declared pipeline.
+- [x] Effectiveness north-star (§16): DONE as a coarse proxy. `metrics.ClassifyHistory`
+      /`StepClass.Ratio` (pure) classify each arc's history into **deterministic-handled**
+      steps (evaluation, gate, commit, close) vs **LLM/critic-handled** turns (a
+      relayed `strategy:`/`execution:`/`critic:` reply, grounded in the actual history
+      format); `adh selfeval` surfaces the deterministic share, the direction accretion
+      (routing rules, checks, lessons) should drive *up* over time — a measurable §16
+      direction, not a vibe. Verified: `ClassifyHistory`/`Ratio` table. **Follow-up:**
+      per-step instrumentation for an exact (not history-proxy) ratio. Optional/larger:
+      a **pipe/pipeline** composition model for §13 tools (atomic tools + recursive
+      pipelines over the `--jsonl` envelope), so distill→optimize→gate is a declared
+      pipeline.
 
 ## Ported from Skillsaw (Done)
 
