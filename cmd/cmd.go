@@ -23,6 +23,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/contextcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/device"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/docscmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/doctorcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/evalcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/failurescmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/gatecmd"
@@ -32,6 +33,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/lessoncmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/loopcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/metricscmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/nfrcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/reject"
@@ -138,6 +140,8 @@ func register(r *root.Config) {
 	lessoncmd.New(r)
 	failurescmd.New(r)
 	metricscmd.New(r)
+	nfrcmd.New(r)
+	doctorcmd.New(r)
 	selfeval.New(r)
 	sleep.New(r)
 	loopcmd.New(r)
