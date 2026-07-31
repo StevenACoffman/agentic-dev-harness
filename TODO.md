@@ -95,18 +95,19 @@ each as one bounded baseline → intervention → verify → fresh-rerun → ret
       (clean/drift/unverified/misconfigured) + a journey (editing the check to fail
       exits 14, fixing it clears). The `context-drift` §15 loop (below) runs it as a
       sensor.
-- [ ] **Loop C — skillsaw + relay improvement loop (§18).** Replace the mock
-      `consolidate.Propose`: drive skillsaw `eval → diagnose → gate` with the relay
-      supplying the `needs_judge` scores and one-dimension edits, so Claude drives
-      real, gated skill improvement through adh. skillsaw's strict-`>` `gate` feeds
-      Evaluation but never replaces human approval or NO-PROOF-NO-CLOSE; the loop
-      stages (auto_adopt = false). Do last — it composes B and the gate.
-- [ ] **Loop C — skillsaw + relay improvement loop (§18).** Replace the mock
-      `consolidate.Propose`: drive skillsaw `eval → diagnose → gate` with the relay
-      supplying the `needs_judge` scores and one-dimension edits, so Claude drives
-      real, gated skill improvement through adh. skillsaw's strict-`>` `gate` feeds
-      Evaluation but never replaces human approval or NO-PROOF-NO-CLOSE; the loop
-      stages (auto_adopt = false). Do last — it composes B and the gate.
+- [x] **Loop C — skillsaw + relay improvement loop (§18).** DONE for the relay half.
+      `sleep run --relay` sources the optimizer edit from the driving agent instead of
+      the mock `consolidate.Propose`: with no reply it emits a proposal prompt (the
+      ranked reflection modes + the artifact's current LEARNED region, `consolidate.
+      ProposePrompt`, a pure core) and parks statelessly; `--relay --response <file|->`
+      resumes with the agent's edit and feeds it to `Plan`. adh's own held-out ratchet
+      still gates it (skillsaw's `gate` feeds, never replaces — the agent consults `adh
+      tool run skillsaw-eval` from Loop B for dimension scores) and staging is unchanged
+      (auto_adopt = false, exit 14), so a non-improving relay edit is still rejected.
+      Verified: `--relay` emits a prompt naming the reflected class; an empty edit is
+      gated out (stages nothing). **Follow-up (deferred):** deep skillsaw `eval/diagnose/
+      gate` JSON parsing as adh's ratchet needs skillsaw's CLI contract + install; the
+      mock `Propose` remains the non-relay default.
 
 ### From `agentic-harness-bootstrap` (Data Formats / Processes Worth Folding In)
 
@@ -124,12 +125,17 @@ what adh or the driving skill already own — not adopted.
   skeleton) **shipped with Loop D**. **Remaining:** make an ADR the proof
   artifact a `decision`-resolution arc closes with (§12, `arc close --as
   decision`) — a separate loop in the proof path.
-- [ ] **Harness-integrity self-verification (§10.4).** Adopt the `verify-harness.sh`
-      pattern as an `adh` self-check (a §13 check + a session-start/CI gate): every
-      routed unit resolves to a real artifact, every named tool exists, agent-facing
-      guidance references only real modules/commands, no dangling references, pieces
-      don't contradict. Broader than Loop F's content-drift check — "is the whole
-      harness intact and consistent?" Cheap, high-trust.
+- [x] **Harness-integrity self-verification (§10.4).** DONE. `adh doctor` runs a
+      deterministic harness-wide self-check (`internal/harnesscheck.Check`, a pure core
+      over the loaded store/registries/specs): each registry is structurally valid,
+      unit ids are unique, NFR specs are well-formed, and the cross-references resolve
+      (every unit's `integrity` names a declared §13 tool). Any problem exits 16 (reason
+      `harness_integrity`); `--jsonl` carries the problems. Broader than Loop F's
+      content-drift check — "is the whole harness intact and consistent?" — and cheap,
+      so the `harness-integrity` §15 loop's sensor is now `adh doctor` (was `tool
+      doctor`). Verified: pure `Check` table + a journey (init → doctor clean; a dangling
+      integrity ref → exit 16). **Follow-up:** a session-start hook to run it
+      automatically; checking agent-facing guidance references real commands.
 - [x] **Standing-order accretion triggers as §15 loops.** DONE for the standing
       registry. `loop.StarterRegistry()` declares three standing accretion loops and
       `adh init` seeds `.adh/loops.json` from it (idempotent, single-owned
@@ -156,17 +162,20 @@ to distill via exegesis* into routable NFR units, **not** a tool adh integrates.
 its terminology/taxonomy and one data format are the answer to the *articulate-NFRs*
 goal (the schema half; the ADR is the decision half):
 
-- [ ] **Adopt an NFR taxonomy + Planguage as the NFR-check spec format (§10.5).**
-      An NFR-check unit stops being free prose: name it by an agreed taxonomy
-      (**ISO/IEC 25010** or **FURPS+**) and quantify it in **Planguage** — `Tag`
-      (`Performance.Latency`), `Scale`, `Meter`, `Baseline`, `Fail`, `Goal`,
-      `Stretch`, `Ambition`. This binds the four things adh scatters into one unit:
-      *category* (taxonomy), *check* (`Meter` → §13 tool → an SLI), *gate* (`Fail` →
-      the Evaluation threshold and proof-contract acceptance bar, §SPEC 3.1), and
-      *rationale* (`Ambition` → a `decision`/ADR, §12). Turns "should be fast" into a
-      testable, gateable requirement — **the NFR schema that was missing.** Pairs
-      with the ADR decision format above: Planguage specifies the requirement, the
-      ADR records the trade-off decision about it.
+- [x] **Adopt an NFR taxonomy + Planguage as the NFR-check spec format (§10.5).**
+      DONE. `internal/nfr` (a pure core) defines the Planguage `Spec` — `Tag` (its head
+      a FURPS+/ISO-25010 category), `Gist`, `Ambition`, `Scale`, `Meter`, `Direction`
+      (higher/lower-is-better), `Baseline`, `Fail`, `Goal`, `Stretch` — with `Valid()`
+      (taxonomy + a meter and scale + `Fail`/`Goal`/`Stretch` ordered by direction) and
+      `Meets(value)` (the `Fail` acceptance bar). `adh nfr <list|show|lint>` inspects and
+      validates `.adh/nfr/*.json` (invalid → exit 17). This binds the four things adh
+      scattered into one unit: *category* (Tag), *check* (`Meter` → a §13 tool),
+      *gate* (`Fail` → the Evaluation/proof acceptance bar), *rationale* (`Ambition` →
+      a `decision`/ADR). Turns "should be fast" into a testable, gateable requirement.
+      Verified: `Valid`/`Meets`/ordering table + a journey (a spec whose Meter is the
+      `skillsaw-eval` §13 tool lints clean; a mis-tagged spec exits 17). **Follow-up:**
+      wire a spec's `Meter`/`Fail` into the Evaluation NFR-check adjudication, and NFR
+      allocation across components (`nfr-architecture-allocation`).
 - [ ] Terminology alignment (§10.5): frame the cross-unit consistency check (Loop E)
       as **validation** (are the requirements right and conflict-free) and proof/the
       `Meter`-driven Evaluation gate as **verification** (is it built right) — the
