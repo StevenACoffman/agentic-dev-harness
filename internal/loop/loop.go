@@ -77,11 +77,11 @@ func StarterRegistry() Registry {
 		},
 		{
 			ID:         "harness-integrity",
-			Goal:       "the tool registry is valid and every declared tool resolves",
-			Sensor:     "adh tool doctor",
+			Goal:       "the harness is intact: registries valid, ids unique, refs resolve",
+			Sensor:     "adh doctor",
 			OnFinding:  "open arc",
 			RetireWhen: "the harness is retired",
-			Owner:      "tools",
+			Owner:      "harness",
 		},
 		{
 			ID:         "lesson-backlog",
