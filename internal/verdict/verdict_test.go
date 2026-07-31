@@ -80,3 +80,40 @@ func TestValidateSplits(t *testing.T) {
 		t.Errorf("a leaked id should be EINVALID, got %v", err)
 	}
 }
+
+func TestReplicate(t *testing.T) {
+	t.Parallel()
+	pass := verdict.Outcome{Delta: 0.2, Significant: true}
+	tests := []struct {
+		name string
+		runs []verdict.Outcome
+		want verdict.Verdict
+	}{
+		{"two independent passes elevate", []verdict.Outcome{pass, pass}, verdict.Elevate},
+		{"one run cannot replicate", []verdict.Outcome{pass}, verdict.ReplicationMissing},
+		{"none is replication-missing", nil, verdict.ReplicationMissing},
+		{
+			"a regression kills",
+			[]verdict.Outcome{pass, {Delta: -0.1, Significant: true}},
+			verdict.Kill,
+		},
+		{
+			"one directional run does not elevate",
+			[]verdict.Outcome{pass, {Delta: 0.2, Significant: false}},
+			verdict.Directional,
+		},
+		{
+			"a sub-threshold run does not elevate",
+			[]verdict.Outcome{pass, {Delta: 0.01, Significant: true}},
+			verdict.Directional,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := verdict.Replicate(tt.runs, verdict.DefaultMinEffect); got != tt.want {
+				t.Errorf("Replicate = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

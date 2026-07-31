@@ -65,6 +65,45 @@ func Decide(primary, replication Outcome, minEffect float64, hasReplication bool
 	}
 }
 
+// Replicate is the fresh-replication verdict (§18.2): a single held-out comparison
+// (Decide) can still be a fluke, so ELEVATE here requires at least two *independent*
+// runs — a primary and a fresh replication — that each clear minEffect and are
+// significant. Any run that regressed is KILL; fewer than two runs is
+// REPLICATION-MISSING (there is no fresh replication to trust); otherwise
+// DIRECTIONAL. It is pure — the caller supplies each independent run's outcome.
+func Replicate(runs []Outcome, minEffect float64) Verdict {
+	if anyRegressed(runs) {
+		return Kill
+	}
+	if len(runs) < 2 {
+		return ReplicationMissing
+	}
+	if allElevate(runs, minEffect) {
+		return Elevate
+	}
+	return Directional
+}
+
+// anyRegressed reports whether any run's delta went negative.
+func anyRegressed(runs []Outcome) bool {
+	for i := range runs {
+		if runs[i].Delta < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// allElevate reports whether every run clears minEffect and is significant.
+func allElevate(runs []Outcome, minEffect float64) bool {
+	for i := range runs {
+		if runs[i].Delta < minEffect || !runs[i].Significant {
+			return false
+		}
+	}
+	return true
+}
+
 // McNemar runs McNemar's test over paired before/after binary outcomes (§18.2):
 // improved is the count that flipped fail→pass, regressed the count that flipped
 // pass→fail. It returns the continuity-corrected χ² statistic and whether it clears
