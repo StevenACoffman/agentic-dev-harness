@@ -1,6 +1,8 @@
 package toolreg_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -50,6 +52,49 @@ func TestValidate(t *testing.T) {
 				t.Errorf("Validate code = %q, want %q", got, tt.wantCode)
 			}
 		})
+	}
+}
+
+// TestStarterRegistryValid: the seeded starter registry is a valid registry, so
+// `adh init` writes a file `tool doctor` accepts and every entry is discoverable.
+func TestStarterRegistryValid(t *testing.T) {
+	reg := toolreg.StarterRegistry()
+	if err := reg.Validate(); err != nil {
+		t.Fatalf("StarterRegistry().Validate() = %v, want nil", err)
+	}
+	if len(reg.Tools) == 0 {
+		t.Fatal("StarterRegistry() is empty")
+	}
+	for _, id := range []string{"modelith-lint", "modelith-render-check", "skillsaw-eval", "exegesis-verify"} {
+		if _, ok := reg.FindByID(id); !ok {
+			t.Errorf("StarterRegistry() missing tool %q", id)
+		}
+	}
+}
+
+// TestMarshalRoundTrips: Marshal's output decodes back to the same registry, so the
+// write side (init) and read side (Load) of the registry file agree.
+func TestMarshalRoundTrips(t *testing.T) {
+	want := toolreg.StarterRegistry()
+	data, err := toolreg.Marshal(want)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "tools.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := toolreg.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(got.Tools) != len(want.Tools) {
+		t.Fatalf("round-trip tool count = %d, want %d", len(got.Tools), len(want.Tools))
+	}
+	for i := range want.Tools {
+		if got.Tools[i] != want.Tools[i] {
+			t.Errorf("round-trip tool %d = %+v, want %+v", i, got.Tools[i], want.Tools[i])
+		}
 	}
 }
 

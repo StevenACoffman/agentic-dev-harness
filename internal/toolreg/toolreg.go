@@ -57,6 +57,46 @@ func (r Registry) Validate() error {
 	return nil
 }
 
+// StarterRegistry is the set of external toolchain capabilities the harness knows
+// how to orchestrate (SPEC-ADDITIONS §13): distillation (exegesis), skill
+// optimization (skillsaw), and domain modeling (modelith). They are declared, not
+// vendored — each Run invokes an installed binary with `--json`/`--format json`
+// where available, so the worker runs it via `adh tool run <id>` and interprets the
+// output in-loop. A repository seeds this via `adh init` and then tailors it; a
+// RepairHint names the install command for a capability the operator has not yet
+// provided. adh does not require any of them to be installed — an absent binary is
+// reported at run time, not a registry defect.
+func StarterRegistry() Registry {
+	return Registry{Tools: []Tool{
+		{
+			ID:         "modelith-lint",
+			Run:        "modelith lint --format json",
+			Result:     "json",
+			Verifies:   "domain-model reference integrity (cardinality, ownership, cycles, dangling refs)",
+			RepairHint: "install modelith: go install github.com/stacklok/modelith@latest",
+		},
+		{
+			ID:         "modelith-render-check",
+			Run:        "modelith render --check",
+			Verifies:   "routed domain-model Markdown matches its canonical YAML (anti-drift)",
+			RepairHint: "re-run `modelith render` to refresh the drifted Markdown, or install modelith",
+		},
+		{
+			ID:         "skillsaw-eval",
+			Run:        "skillsaw eval --json",
+			Result:     "json",
+			Verifies:   "a skill scores against the 9-dimension rubric floor",
+			RepairHint: "install skillsaw: go install github.com/StevenACoffman/skillsaw@latest",
+		},
+		{
+			ID:         "exegesis-verify",
+			Run:        "exegesis verify",
+			Verifies:   "distilled skills pass the triple-validation gates and carry provenance",
+			RepairHint: "install exegesis: go install github.com/StevenACoffman/exegesis@latest",
+		},
+	}}
+}
+
 // FindByVerifies returns the first tool whose Verifies matches, so a stage
 // selects a capability by what it proves rather than by a hard-coded command.
 func (r Registry) FindByVerifies(verifies string) (Tool, bool) {
@@ -77,6 +117,17 @@ func (r Registry) FindByID(id string) (Tool, bool) {
 		}
 	}
 	return Tool{}, false
+}
+
+// Marshal encodes the registry as indented JSON with a trailing newline — the
+// on-disk form Load reads back, so the write and read sides of the registry file
+// agree in one place.
+func Marshal(r Registry) ([]byte, error) {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return nil, &adh.Error{Op: "toolreg.Marshal", Err: err}
+	}
+	return append(data, '\n'), nil
 }
 
 // Load reads a registry from a JSON file.
