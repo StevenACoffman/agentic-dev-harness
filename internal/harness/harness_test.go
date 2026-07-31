@@ -84,6 +84,12 @@ func TestSelfTest(t *testing.T) {
 	}
 }
 
+func TestGraderSelfTest(t *testing.T) {
+	if err := harness.GraderSelfTest(); err != nil {
+		t.Errorf("GraderSelfTest should pass (the rubric discriminates strong from weak): %v", err)
+	}
+}
+
 func TestAccept(t *testing.T) {
 	tests := []struct {
 		name                string

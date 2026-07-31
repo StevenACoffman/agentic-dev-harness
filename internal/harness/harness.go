@@ -92,3 +92,26 @@ func SelfTest() error {
 	}
 	return nil
 }
+
+// GraderSelfTest calibrates the grader (§18.2): a toothless gate is caught by
+// SelfTest, but a *blind grader* — one that cannot tell a strong artifact from a
+// weak one — makes the ratchet measure noise. It scores a known-strong artifact
+// (a Failures branch and a Boundary section) and a known-weak one (plain prose)
+// through the rubric and returns EINTERNAL unless the strong scores strictly
+// higher — proof the deterministic grader discriminates before the loop trusts it.
+func GraderSelfTest() error {
+	const strong = "# Guide\n\n## Failures\n\nIf the check fails, roll back.\n\n" +
+		"## Boundary\n\nDo not use this outside the arc loop.\n"
+	const weak = "# Guide\n\nThis document explains the general approach in prose.\n"
+	strongScore := rubric.Evaluate(strong).DetScore
+	weakScore := rubric.Evaluate(weak).DetScore
+	if strongScore <= weakScore {
+		return &adh.Error{
+			Code: adh.EINTERNAL,
+			Message: fmt.Sprintf(
+				"grader self-test: the rubric did not discriminate (strong %.1f <= weak %.1f)",
+				strongScore, weakScore),
+		}
+	}
+	return nil
+}

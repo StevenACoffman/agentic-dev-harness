@@ -118,6 +118,12 @@ func (cfg *Config) run() error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "gate self-test failed: %s\n", err)
 		return root.ExitError(15)
 	}
+	// A blind grader is as dangerous as a toothless gate: prove the rubric
+	// discriminates a strong artifact from a weak one before trusting the loop (§18.2).
+	if err := harness.GraderSelfTest(); err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "grader self-test failed: %s\n", err)
+		return root.ExitError(15)
+	}
 	artifact, arcs, rejected, err := cfg.inputs()
 	if err != nil {
 		return err
