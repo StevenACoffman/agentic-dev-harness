@@ -117,14 +117,17 @@ above does not. Its other pieces (stack-specific lint/hook/CI templates, the
 one-time discover→generate playbooks, the generated CLAUDE/AGENTS files) overlap
 what adh or the driving skill already own — not adopted.
 
-- [~] **ADR decision format for NFR trade-offs (§10.2, §11, §12).** The bootstrap
+- [x] **ADR decision format for NFR trade-offs (§10.2, §11, §12).** DONE. The bootstrap
   ADR — *Status / Context / Decision / Consequences split into **Easier** and
   **Harder*** — is the durable, routable home for a team's local NFR
-  prioritize/trade-off decisions, the one thing modelith deliberately omits. The
-  `decision` context-unit kind + `lesson --to decision promote` (writes the ADR
-  skeleton) **shipped with Loop D**. **Remaining:** make an ADR the proof
-  artifact a `decision`-resolution arc closes with (§12, `arc close --as
-  decision`) — a separate loop in the proof path.
+  prioritize/trade-off decisions. The `decision` context-unit kind + `lesson --to
+  decision promote` shipped with Loop D; now the ADR structure is a pure owner
+  (`internal/adr.Render`/`Valid`, which `lesson` delegates to), and `arc close --as
+  decision --proof <adr>` closes on a **well-formed ADR** — `close`'s proof path
+  branches so a decision's proof is the ADR itself (structural: the sections present
+  and no unfilled `<placeholder>`), not a hash manifest. A skeleton fails
+  NO-PROOF-NO-CLOSE (exit 8), so an undocumented decision cannot ship. Verified:
+  `adr.Valid` table + a journey (a filled ADR closes; a skeleton exits 8).
 - [x] **Harness-integrity self-verification (§10.4).** DONE. `adh doctor` runs a
       deterministic harness-wide self-check (`internal/harnesscheck.Check`, a pure core
       over the loaded store/registries/specs): each registry is structurally valid,
@@ -140,14 +143,14 @@ what adh or the driving skill already own — not adopted.
       registry. `loop.StarterRegistry()` declares three standing accretion loops and
       `adh init` seeds `.adh/loops.json` from it (idempotent, single-owned
       `loop.DefaultRegistryFile`): `context-drift` (sensor `adh context verify` —
-      Loop F), `harness-integrity` (sensor `adh tool doctor` — Loop B), and
+      Loop F), `harness-integrity` (sensor `adh doctor` — §10.4), and
       `lesson-backlog` (sensor `test ! -s .adh/lesson-candidates.json` — Loop D), each
       with `on_finding: open arc`, so a sensed departure becomes an arc an agent
       drives — accretion as a standing behavior, not a manual step. Verified: the
       starter registry validates, round-trips, and `adh loop list` shows them after
-      `init`. **Follow-up:** the ADR trigger (architectural/NFR decision) pairs with
-      the still-open `arc close --as decision` proof path; a session-start/pre-run
-      *hook* (vs the manual/agent-driven `loop run`) is the deferred crontab/hook item.
+      `init`. The ADR trigger (architectural/NFR decision → `arc close --as decision`)
+      now has its proof path. **Follow-up:** a session-start/pre-run *hook* (vs the
+      manual/agent-driven `loop run`) is the deferred crontab/hook item.
 
 Optional / deferred (useful but larger or partly owned elsewhere): an `Always/Ask/
 Never` boundaries format routed as legible authority context (complements the §5.2
@@ -173,9 +176,13 @@ goal (the schema half; the ADR is the decision half):
       *gate* (`Fail` → the Evaluation/proof acceptance bar), *rationale* (`Ambition` →
       a `decision`/ADR). Turns "should be fast" into a testable, gateable requirement.
       Verified: `Valid`/`Meets`/ordering table + a journey (a spec whose Meter is the
-      `skillsaw-eval` §13 tool lints clean; a mis-tagged spec exits 17). **Follow-up:**
-      wire a spec's `Meter`/`Fail` into the Evaluation NFR-check adjudication, and NFR
-      allocation across components (`nfr-architecture-allocation`).
+      `skillsaw-eval` §13 tool lints clean; a mis-tagged spec exits 17). The
+      `Meter`/`Fail` wiring into Evaluation **now shipped**: an `nfr` finding whose
+      `Ref` names a spec runs the spec's `Meter` §13 tool, parses the measured value,
+      and confirms the finding when it breaches `Fail` (`evaluation.adjudicateSpec` +
+      a `CheckRunner.Measure` seam) — the declarative threshold gates, not a tool exit
+      code; an undeclared/unmeasurable Meter is unrunnable (unconfirmed). **Follow-up:**
+      NFR allocation across components (`nfr-architecture-allocation`).
 - [ ] Terminology alignment (§10.5): frame the cross-unit consistency check (Loop E)
       as **validation** (are the requirements right and conflict-free) and proof/the
       `Meter`-driven Evaluation gate as **verification** (is it built right) — the
@@ -193,22 +200,26 @@ not something to vendor (JS; adh implements the `verdict()`/stats in Go or shell
 out). It directly answers the *accretive-not-RNG* goal and shows adh's/skillsaw's
 single strict-`>` gate is insufficient.
 
-- [ ] **Replication-gated outcome-eval verdict for the adoption gate (§18.2, §16,
-      Loop C).** A strict-`>` on a rubric is a *structural* screen, necessary but
-      not sufficient — one comparison can't separate signal from noise. Gate
-      adoption on an **outcome** eval (condition-blind, paired control=no-change vs
-      treatment=change, token-budget-balanced) over the held-out split, with an
-      effect-size threshold + a paired significance test, and a **verdict taxonomy**:
-      `ELEVATE` only on a primary pass **and** an independent fresh replication;
-      `DIRECTIONAL-NOT-REPLICATED`/`REPLICATION-MISSING` otherwise (refuse to
-      elevate); record `KILL`/not-replicated honestly (§18.6). The `verdict()` is a
-      pure, unit-testable core (adh's FCIS). skillsaw's `gate` is the cheap floor
-      **under** this bar, not a substitute. **The trust backbone for every accretion
-      loop above.**
-- [ ] **Validate the graders and the splits (§18.2).** Calibrate the judge before
-      trusting its verdicts (extends the §18 negative-control self-test to the judge
-      itself), and check selection/test splits for leakage (a `validate-splits`
-      equivalent) — a weakenable grader or a leaky split makes the ratchet a proxy.
+- [x] **Replication-gated outcome-eval verdict for the adoption gate (§18.2, §16,
+      Loop C).** DONE as the pure verdict core, layered over the strict-`>` gate.
+      `internal/verdict` (pure, unit-testable — adh's FCIS) defines the taxonomy
+      `ELEVATE / DIRECTIONAL-NOT-REPLICATED / REPLICATION-MISSING / KILL` via `Decide`
+      (an effect-size threshold `DefaultMinEffect` + a paired significance test), plus
+      `McNemar` (continuity-corrected, χ²(1,.05)=3.841). `consolidate.Plan` computes it
+      from adh's existing two-split structure — **primary = the selection gain the gate
+      ratchets on, replication = the held-out test split's paired outcomes** (McNemar) —
+      so a staged candidate is ELEVATE only when its selection gain also replicates
+      significantly. `sleep` surfaces the verdict in the staged line + manifest;
+      staging is unchanged (the verdict labels trust, skillsaw's `gate` is the floor
+      **under** this bar). Verified: `Decide`/`McNemar` tables + the cycle reports a
+      verdict. **Follow-up (deferred):** a condition-blind paired-control outcome eval
+      over *live* rollouts (needs a worker; the selection/test split is the
+      deterministic stand-in), and an independent *fresh* replication run.
+- [x] **Validate the graders and the splits (§18.2).** DONE for the splits:
+      `verdict.ValidateSplits` is a pure leakage guard (a task id assigned to two
+      splits makes the replication a proxy → EINVALID). Grader calibration reuses the
+      existing negative-control self-test (`harness.SelfTest`, exit 15 in `sleep`).
+      **Follow-up:** extend judge calibration beyond the negative control.
 - [ ] **Routing eval for the context lever (§10, Loop A/E).** Adopt the pipeline's
       routing eval: does `context route` fire the *right* units for an arc's
       labels/paths (and correctly return NONE when nothing applies)? An outcome eval
