@@ -348,8 +348,9 @@ Remaining wiring for these:
 
 ## Disposition
 
-- [ ] Branch `implement/adh-spec` is unpushed; upstream PRs are owner-only.
-  Decide whether to push to a fork or hand off.
+- [x] Branch `implement/adh-spec` merged to `main` via PR #1 (`6180963`); the whole
+  implementation is now on `main`. Remaining tidy-up: delete the merged branch
+  (`git branch -d implement/adh-spec`, and the remote copy if still present).
 
 ## Fidelity to the Source Implementations
 
