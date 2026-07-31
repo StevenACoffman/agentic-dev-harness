@@ -4,6 +4,7 @@
 package lesson
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -13,6 +14,7 @@ const (
 	OwnerContext   Owner = "context"
 	OwnerSkill     Owner = "skill"
 	OwnerDoc       Owner = "doc"
+	OwnerDecision  Owner = "decision"
 	OwnerCheck     Owner = "check"
 	OwnerInvariant Owner = "invariant"
 	OwnerType      Owner = "type"
@@ -33,11 +35,95 @@ func (o Owner) RequiresApproval() bool {
 	switch o {
 	case OwnerCheck, OwnerInvariant, OwnerType:
 		return true
-	case OwnerContext, OwnerSkill, OwnerDoc:
+	case OwnerContext, OwnerSkill, OwnerDoc, OwnerDecision:
 		return false
 	default:
 		return false
 	}
+}
+
+// Valid reports whether o is a known durable owner.
+func (o Owner) Valid() bool {
+	switch o {
+	case OwnerContext, OwnerSkill, OwnerDoc, OwnerDecision,
+		OwnerCheck, OwnerInvariant, OwnerType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Materializes reports whether promoting to o produces a routable §10 context unit
+// the harness writes directly — the reversible content owners. A skill and the
+// executable owners (check/invariant/type) need separate authoring, so they gate
+// but are not auto-written.
+func (o Owner) Materializes() bool {
+	switch o {
+	case OwnerContext, OwnerDoc, OwnerDecision:
+		return true
+	default:
+		return false
+	}
+}
+
+// Kind is the §10 context-unit kind a materialized owner writes.
+func (o Owner) Kind() string {
+	switch o {
+	case OwnerDecision:
+		return "decision"
+	case OwnerDoc:
+		return "doc"
+	default:
+		return "domain-note"
+	}
+}
+
+// Render produces the durable content for promoting the lesson to owner o (pure;
+// the caller writes it). A decision is an ADR skeleton (§12) — the recurring class
+// is the forcing context, the decision and its Easier/Harder trade-offs are left
+// for a human to complete; any other materializing owner is avoid-this-class
+// guidance carrying the recorded instances as evidence.
+func (l Lesson) Render(o Owner) string {
+	var b strings.Builder
+	if o == OwnerDecision {
+		fmt.Fprintf(&b, "# Decision: %s\n\n**Status:** Accepted\n\n", l.Class)
+		fmt.Fprintf(&b, "## Context\n\nThe %q correction recurred (%d instances):\n\n",
+			l.Class, len(l.Instances))
+		writeInstances(&b, l.Instances)
+		b.WriteString("\n## Decision\n\n<state the rule now settled for this class>\n\n")
+		b.WriteString("## Consequences\n\n### Easier\n\n<what this improves>\n\n")
+		b.WriteString("### Harder\n\n<the trade-off accepted>\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "# %s\n\nAvoid this class of mistake (%d recorded):\n\n",
+		l.Class, len(l.Instances))
+	writeInstances(&b, l.Instances)
+	return b.String()
+}
+
+// writeInstances lists a lesson's instances as evidence bullets.
+func writeInstances(b *strings.Builder, instances []string) {
+	for _, inst := range instances {
+		fmt.Fprintf(b, "- %s\n", inst)
+	}
+}
+
+// Slug turns a class into a filename-safe kebab id (lowercase alphanumerics joined
+// by single dashes).
+func Slug(class string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(class) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 // Distill groups failure notes by their governing class — the text before the
