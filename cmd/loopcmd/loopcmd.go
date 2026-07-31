@@ -1,7 +1,7 @@
-// Package loopcmd implements the "loop" CLI command: list, run, and retire
-// maintenance loops (SPEC-ADDITIONS §15). `run` senses the loop's invariant and,
-// on a departure, opens an arc under the loop's authority — the connection from a
-// maintenance loop to the arc loop an agent then drives.
+// Package loopcmd implements the "loop" CLI command: list, run, tick, and retire
+// maintenance loops (SPEC-ADDITIONS §15). `run` senses one loop's invariant and
+// `tick` sweeps every loop; on a departure each opens an arc under the loop's
+// authority — the connection from a maintenance loop to the arc loop an agent drives.
 package loopcmd
 
 import (
@@ -42,6 +42,14 @@ type Config struct {
 	Command *ff.Command
 }
 
+// tickResult is one loop's outcome in a tick sweep: the loop id, the arc opened (if
+// any), and a human message.
+type tickResult struct {
+	Loop    string `json:"loop"`
+	Arc     string `json:"arc,omitempty"`
+	Message string `json:"message"`
+}
+
 // Sense runs command via the shell in dir; a non-zero exit (or an unstartable
 // command) means the invariant departed (a finding).
 func (shellSensor) Sense(ctx context.Context, command, dir string) bool {
@@ -57,11 +65,12 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("loop").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "loop",
-		Usage:     "agentic-dev-harness loop <list|run|retire> [id]",
-		ShortHelp: "list, run, and retire maintenance loops",
-		LongHelp:  "Manage maintenance loops (SPEC-ADDITIONS §15): list, run one iteration, or retire one.",
-		Flags:     cfg.Flags,
-		Exec:      cfg.exec,
+		Usage:     "agentic-dev-harness loop <list|run|tick|retire> [id]",
+		ShortHelp: "list, run, tick, and retire maintenance loops",
+		LongHelp: "Manage maintenance loops (SPEC-ADDITIONS §15): list them, run one, tick all " +
+			"(the session-start sweep that fires every standing loop), or retire one.",
+		Flags: cfg.Flags,
+		Exec:  cfg.exec,
 	}
 	parent.Command.Subcommands = append(parent.Command.Subcommands, cfg.Command)
 	return &cfg
@@ -69,7 +78,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("loop: expected a verb: list, run, or retire")
+		return errors.New("loop: expected a verb: list, run, tick, or retire")
 	}
 	reg, err := looplib.Load(looplib.DefaultRegistryFile)
 	if err != nil {
@@ -80,10 +89,12 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return cfg.list(reg)
 	case "run":
 		return cfg.run(ctx, reg, args[1:])
+	case "tick":
+		return cfg.tick(ctx, reg)
 	case "retire":
 		return cfg.retire(reg, args[1:])
 	default:
-		return fmt.Errorf("loop: unknown verb %q; want list, run, or retire", args[0])
+		return fmt.Errorf("loop: unknown verb %q; want list, run, tick, or retire", args[0])
 	}
 }
 
@@ -98,24 +109,61 @@ func (cfg *Config) list(reg looplib.Registry) error {
 	return nil
 }
 
-// run senses the loop's invariant and, on a departure whose action is "open arc",
+// run senses one loop's invariant and, on a departure whose action is "open arc",
 // opens an arc under the loop's authority for an agent to drive.
 func (cfg *Config) run(ctx context.Context, reg looplib.Registry, args []string) error {
 	loop, err := requireLoop(reg, args)
 	if err != nil {
 		return err
 	}
-	if !cfg.sensor.Sense(ctx, loop.Sensor, cfg.repoDir()) {
-		return cfg.reportRun(loop.ID, "", "invariant holds")
-	}
-	if loop.OnFinding != onFindingOpenArc {
-		return cfg.reportRun(loop.ID, "", "finding; no arc opened (on_finding: "+loop.OnFinding+")")
-	}
-	arc, err := cfg.openArc(&loop)
+	arcID, message, err := cfg.tickOne(ctx, &loop)
 	if err != nil {
 		return err
 	}
-	return cfg.reportRun(loop.ID, arc.ID, "opened arc "+arc.ID)
+	return cfg.reportRun(loop.ID, arcID, message)
+}
+
+// tick sweeps every registered loop once — the maintenance heartbeat a session
+// start runs so accretion fires without being asked (§15). It senses each loop and
+// opens an arc for every departure, reporting the sweep. A finding is queued work,
+// not an error, so tick never fails on one.
+func (cfg *Config) tick(ctx context.Context, reg looplib.Registry) error {
+	if err := reg.Validate(); err != nil {
+		return fmt.Errorf("loop: %w", err)
+	}
+	results := make([]tickResult, 0, len(reg.Loops))
+	opened := 0
+	for i := range reg.Loops {
+		arcID, message, err := cfg.tickOne(ctx, &reg.Loops[i])
+		if err != nil {
+			return err
+		}
+		if arcID != "" {
+			opened++
+		}
+		results = append(results, tickResult{Loop: reg.Loops[i].ID, Arc: arcID, Message: message})
+	}
+	return cfg.reportTick(results, opened)
+}
+
+// tickOne senses one loop and, on a departure whose action is "open arc", opens an
+// arc under the loop's authority. It returns the opened arc id (empty when none) and
+// a human message. It is the unit run (one loop) and tick (all loops) share.
+func (cfg *Config) tickOne(
+	ctx context.Context,
+	loop *looplib.Loop,
+) (arcID, message string, err error) {
+	if !cfg.sensor.Sense(ctx, loop.Sensor, cfg.repoDir()) {
+		return "", "invariant holds", nil
+	}
+	if loop.OnFinding != onFindingOpenArc {
+		return "", "finding; no arc opened (on_finding: " + loop.OnFinding + ")", nil
+	}
+	arc, err := cfg.openArc(loop)
+	if err != nil {
+		return "", "", err
+	}
+	return arc.ID, "opened arc " + arc.ID, nil
 }
 
 // openArc creates an open arc for the loop's goal under its owner's routing label,
@@ -142,6 +190,24 @@ func (cfg *Config) retire(reg looplib.Registry, args []string) error {
 		return err
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "retired %s (retire when: %s)\n", loop.ID, loop.RetireWhen)
+	return nil
+}
+
+// reportTick emits the sweep outcome: under --jsonl one success outcome carrying
+// the per-loop results and the count opened, else a line per loop and a summary.
+func (cfg *Config) reportTick(results []tickResult, opened int) error {
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"loops": len(results), "arcs_opened": opened, "results": results,
+		}); err != nil {
+			return fmt.Errorf("loop: %w", err)
+		}
+		return nil
+	}
+	for i := range results {
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\n", results[i].Loop, results[i].Message)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "swept %d loop(s), opened %d arc(s)\n", len(results), opened)
 	return nil
 }
 
