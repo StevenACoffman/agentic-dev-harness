@@ -7,6 +7,8 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	looplib "github.com/StevenACoffman/agentic-dev-harness/internal/loop"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 func TestInitScaffoldsConfigAndContext(t *testing.T) {
@@ -45,6 +47,42 @@ func TestInitScaffoldsConfigAndContext(t *testing.T) {
 	}
 	if u, ok := byID["internal"]; !ok || len(u.Labels) == 0 || u.Labels[0] != "internal" {
 		t.Errorf("internal unit missing or mislabeled: %+v", byID["internal"])
+	}
+}
+
+// TestInitSeedsToolAndLoopRegistries: init writes a valid §13 tool registry and a
+// valid §15 loop registry, so the tools are legible and accretion is standing out
+// of the box.
+func TestInitSeedsToolAndLoopRegistries(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out := mustRun(t, "init")
+
+	if !strings.Contains(out, "tools written") {
+		t.Errorf("first init should report the tool registry written:\n%s", out)
+	}
+	reg, err := toolreg.LoadRepo(".")
+	if err != nil {
+		t.Fatalf("load tools: %v", err)
+	}
+	if verr := reg.Validate(); verr != nil {
+		t.Errorf("scaffolded tool registry invalid: %v", verr)
+	}
+	if _, ok := reg.FindByID("modelith-lint"); !ok {
+		t.Errorf("scaffolded registry missing modelith-lint: %+v", reg.Tools)
+	}
+
+	if !strings.Contains(out, "loops written") {
+		t.Errorf("first init should report the loop registry written:\n%s", out)
+	}
+	loops, err := looplib.Load(looplib.DefaultRegistryFile)
+	if err != nil {
+		t.Fatalf("load loops: %v", err)
+	}
+	if verr := loops.Validate(); verr != nil {
+		t.Errorf("scaffolded loop registry invalid: %v", verr)
+	}
+	if _, ok := loops.Find("context-drift"); !ok {
+		t.Errorf("scaffolded loops missing context-drift: %+v", loops.Loops)
 	}
 }
 

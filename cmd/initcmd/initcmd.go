@@ -16,7 +16,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	looplib "github.com/StevenACoffman/agentic-dev-harness/internal/loop"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 )
 
 // artifactsDir is the proof-artifact registry root (SPEC §3.1 [proof].archive_dir).
@@ -61,9 +63,50 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("init: %w", err)
 	}
-	_, _ = fmt.Fprintf(cfg.Stdout, "initialized .adh: config %s, %d context unit(s)\n",
-		wroteWord(wrote), units)
+	wroteTools, err := cfg.scaffoldTools()
+	if err != nil {
+		return fmt.Errorf("init: %w", err)
+	}
+	wroteLoops, err := cfg.scaffoldLoops()
+	if err != nil {
+		return fmt.Errorf("init: %w", err)
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"initialized .adh: config %s, %d context unit(s), tools %s, loops %s\n",
+		wroteWord(wrote), units, wroteWord(wroteTools), wroteWord(wroteLoops))
 	return nil
+}
+
+// scaffoldTools seeds the tool registry (SPEC-ADDITIONS §13) with the external
+// toolchain adh knows how to orchestrate (exegesis/skillsaw/modelith), so
+// `adh tool list`/`run` discover them out of the box. It is kept if present, so a
+// tailored registry is never clobbered; it reports whether it wrote.
+func (cfg *Config) scaffoldTools() (bool, error) {
+	data, err := toolreg.Marshal(toolreg.StarterRegistry())
+	if err != nil {
+		return false, fmt.Errorf("marshal tools: %w", err)
+	}
+	wrote, err := writeIfAbsent(toolreg.DefaultRegistryFile, data)
+	if err != nil {
+		return false, fmt.Errorf("write tools: %w", err)
+	}
+	return wrote, nil
+}
+
+// scaffoldLoops seeds the maintenance-loop registry (SPEC-ADDITIONS §15) with the
+// standing accretion triggers (context-drift, harness-integrity, lesson-backlog),
+// so `adh loop run` senses a departure and opens an arc without being prompted —
+// accretion as a standing behavior. Kept if present; reports whether it wrote.
+func (cfg *Config) scaffoldLoops() (bool, error) {
+	data, err := looplib.Marshal(looplib.StarterRegistry())
+	if err != nil {
+		return false, fmt.Errorf("marshal loops: %w", err)
+	}
+	wrote, err := writeIfAbsent(looplib.DefaultRegistryFile, data)
+	if err != nil {
+		return false, fmt.Errorf("write loops: %w", err)
+	}
+	return wrote, nil
 }
 
 // scaffoldContext writes a starter context unit for each top-level directory,
