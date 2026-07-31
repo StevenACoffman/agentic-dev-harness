@@ -193,3 +193,30 @@ func TestAppendLoadMissesRoundTrip(t *testing.T) {
 		t.Errorf("LoadMisses(absent) = (%v, %v), want ([], nil)", empty, err)
 	}
 }
+
+func TestEvaluateRouting(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "sec", Labels: []string{"security"}},
+		{ID: "auth", Paths: []string{"pkg/auth"}},
+	}
+	cases := []contextstore.RoutingCase{
+		{Name: "label hit", Labels: []string{"security"}, Want: []string{"sec"}},
+		{Name: "path hit", Paths: []string{"pkg/auth"}, Want: []string{"auth"}},
+		{Name: "none applies", Labels: []string{"nope"}, Want: nil},
+		{Name: "wrong expectation", Labels: []string{"security"}, Want: []string{"auth"}},
+	}
+	report := contextstore.EvaluateRouting(units, cases, contextstore.DefaultWorkingSet)
+	if report.Cases != 4 || report.Passed != 3 {
+		t.Fatalf("report = %+v, want 3/4 passed", report)
+	}
+	if len(report.Failures) != 1 || report.Failures[0] != "wrong expectation" {
+		t.Errorf("failures = %v, want [wrong expectation]", report.Failures)
+	}
+	// TP=2 (sec, auth), FP=1 (sec routed but auth wanted), FN=1 (auth wanted, not routed).
+	if report.Precision < 0.66 || report.Precision > 0.67 {
+		t.Errorf("precision = %.3f, want ~0.667", report.Precision)
+	}
+	if report.Recall < 0.66 || report.Recall > 0.67 {
+		t.Errorf("recall = %.3f, want ~0.667", report.Recall)
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
 // Config holds the configuration for the selfeval command.
@@ -50,6 +51,17 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		"health:\n  arcs %d, accepted %d, attention/accept %.1f min, compute %d tokens\n",
 		summary.Arcs, summary.Accepted, summary.AttentionPerAccept, summary.ComputeTokens)
 
+	// The effectiveness north-star (§16): the deterministic share of arc steps —
+	// accretion (routing rules, checks, lessons) should trend it upward as fewer
+	// steps need a relayed model turn. A coarse proxy classified from arc history.
+	steps, err := cfg.stepClass()
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"  steps: %d deterministic / %d model (%.0f%% deterministic — coarse proxy)\n",
+		steps.Deterministic, steps.Model, steps.Ratio()*100)
+
 	notes, err := failures.Load(failures.RegistryFile)
 	if err != nil {
 		return fmt.Errorf("selfeval: %w", err)
@@ -68,4 +80,18 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		)
 	}
 	return nil
+}
+
+// stepClass aggregates the deterministic-vs-model step classification across every
+// arc in the store (§16) — the coarse effectiveness north-star.
+func (cfg *Config) stepClass() (metrics.StepClass, error) {
+	arcs, err := state.Default().List()
+	if err != nil {
+		return metrics.StepClass{}, fmt.Errorf("selfeval: %w", err)
+	}
+	var total metrics.StepClass
+	for i := range arcs {
+		total = total.Add(metrics.ClassifyHistory(arcs[i].History))
+	}
+	return total, nil
 }

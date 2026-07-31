@@ -6,8 +6,10 @@ package contextcmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -36,6 +38,10 @@ const checkInstruction = "review these routed context units for contradictions "
 // before the router proposes a deterministic route for it (§10.3). A sensible
 // default beats a knob no one tunes; the miss log makes the signal auditable.
 const defaultMissThreshold = 2
+
+// routingCasesFile is the repo-relative path the routing-eval fixtures live under
+// (§10): labeled cases asserting which units should route for an arc's footprint.
+const routingCasesFile = ".adh/routing-cases.json"
 
 // Config holds the configuration for the context command.
 type Config struct {
@@ -69,13 +75,13 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("context").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "context",
-		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses> [id|arc|labels...]",
-		ShortHelp: "list, show, route, lint, verify, check, and learn from context units",
+		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses|eval> [id|arc|labels...]",
+		ShortHelp: "list, show, route, lint, verify, check, learn from, and eval context units",
 		LongHelp: "Inspect the just-in-time context store (SPEC-ADDITIONS §10): list units, " +
 			"show one unit's text and provenance, route a working set by labels, lint the " +
 			"store, verify that routed units have not drifted from their canonical source, " +
-			"check a routed set for cross-unit contradictions, or list routing misses and the " +
-			"route proposals they have earned.",
+			"check a routed set for cross-unit contradictions, list routing misses and the " +
+			"route proposals they have earned, or eval routing quality against fixtures.",
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -86,7 +92,7 @@ func New(parent *root.Config) *Config {
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New(
-			"context: expected a verb: list, show, route, lint, verify, check, or misses",
+			"context: expected a verb: list, show, route, lint, verify, check, misses, or eval",
 		)
 	}
 	storeDir := cfg.storeDir()
@@ -113,9 +119,11 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return cfg.check(storeDir, units, args[1:])
 	case "misses":
 		return cfg.misses()
+	case "eval":
+		return cfg.eval(units)
 	default:
 		return fmt.Errorf(
-			"context: unknown verb %q; want list, show, route, lint, verify, check, or misses",
+			"context: unknown verb %q; want list, show, route, lint, verify, check, misses, or eval",
 			args[0],
 		)
 	}
@@ -405,6 +413,51 @@ func (cfg *Config) misses() error {
 		)
 	}
 	return nil
+}
+
+// eval measures routing quality (§10): it runs the fixtures in the cases file
+// through Route and reports how many routed exactly their expected set, plus
+// precision/recall, so a routing regression is a measured drop rather than assumed.
+// An absent cases file is no cases (nothing to check); a failing case exits lintCode.
+func (cfg *Config) eval(units []contextstore.Unit) error {
+	cases, err := cfg.loadCases()
+	if err != nil {
+		return err
+	}
+	report := contextstore.EvaluateRouting(units, cases, contextstore.DefaultWorkingSet)
+	if cfg.JSONL {
+		if emitErr := cfg.EmitOK(report); emitErr != nil {
+			return fmt.Errorf("context: %w", emitErr)
+		}
+	} else {
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"routing eval: %d/%d cases pass (precision %.2f, recall %.2f)\n",
+			report.Passed, report.Cases, report.Precision, report.Recall)
+		for _, name := range report.Failures {
+			_, _ = fmt.Fprintf(cfg.Stderr, "failed case: %s\n", name)
+		}
+	}
+	if report.Passed < report.Cases {
+		return root.ExitError(lintCode)
+	}
+	return nil
+}
+
+// loadCases reads the routing-eval fixtures under the repo root — a JSON array of
+// cases. An absent file is no cases, not an error.
+func (cfg *Config) loadCases() ([]contextstore.RoutingCase, error) {
+	data, err := os.ReadFile(filepath.Join(cfg.repoDir(), routingCasesFile))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("context: read cases: %w", err)
+	}
+	var cases []contextstore.RoutingCase
+	if err := json.Unmarshal(data, &cases); err != nil {
+		return nil, fmt.Errorf("context: parse cases: %w", err)
+	}
+	return cases, nil
 }
 
 // repoDir is the repository root — the --repo global, or the current directory.
