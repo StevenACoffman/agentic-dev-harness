@@ -251,6 +251,61 @@ func Propose(signals []Signal, cfg Config) string {
 	return b.String()
 }
 
+// ProposePrompt renders the relay prompt for an agent-driven proposal (§18): the
+// ranked reflection modes (what recurred), the artifact's current protected region,
+// and the instruction to reply with the one bounded edit to that region. It is the
+// relay counterpart to the mock Propose — the agent supplies the edit and may
+// consult `adh tool run skillsaw-eval` for dimension scores, while adh's held-out
+// gate still decides whether the reply is kept. It is pure.
+func ProposePrompt(signals []Signal, artifact string, cfg Config) string {
+	reflection := Reflect(signals)
+	var b strings.Builder
+	b.WriteString("Propose the single bounded edit to the LEARNED region below (§18).\n")
+	b.WriteString(
+		"Reply with only the new region body; adh's held-out gate decides if it is kept.\n",
+	)
+	b.WriteString("You may consult `adh tool run skillsaw-eval` for dimension scores first.\n\n")
+	b.WriteString("Recurring failure modes to guard against (ranked by recurrence):\n")
+	writeModes(&b, reflection.Failure)
+	b.WriteString("\nSuccess modes to reinforce:\n")
+	writeModes(&b, reflection.Success)
+	b.WriteString("\nCurrent LEARNED region:\n")
+	if current := currentLearned(artifact, cfg.Marker); current != "" {
+		b.WriteString(current)
+		b.WriteString("\n")
+	} else {
+		b.WriteString("(empty)\n")
+	}
+	return b.String()
+}
+
+// writeModes lists reflected modes as ranked bullets, or "(none)" when empty.
+func writeModes(b *strings.Builder, modes []Mode) {
+	if len(modes) == 0 {
+		b.WriteString("- (none)\n")
+		return
+	}
+	for i := range modes {
+		_, _ = fmt.Fprintf(b, "- %s (x%d)\n", modes[i].Class, modes[i].Count)
+	}
+}
+
+// currentLearned returns the trimmed body of the artifact's protected region, or ""
+// when the region is absent — the editable text the relay shows the worker.
+func currentLearned(artifact, marker string) string {
+	start := "<!-- " + marker + " START -->"
+	end := "<!-- " + marker + " END -->"
+	_, after, found := strings.Cut(artifact, start)
+	if !found {
+		return ""
+	}
+	body, _, found := strings.Cut(after, end)
+	if !found {
+		return ""
+	}
+	return strings.TrimSpace(body)
+}
+
 // modesFrom distills items into classes and ranks them by recurrence descending,
 // ties broken by class name for determinism.
 func modesFrom(items []string, kind ModeKind) []Mode {

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -44,6 +45,8 @@ const (
 type Config struct {
 	*root.Config
 	Artifact string
+	Response string
+	Relay    bool
 	runner   schedule.Runner
 	redactor redactor
 	Flags    *ff.FlagSet
@@ -68,13 +71,18 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("sleep").SetParent(parent.Flags)
 	cfg.Flags.StringVar(&cfg.Artifact, 'a', "artifact", artifactDefault,
 		"the managed guiding artifact the cycle may edit")
+	cfg.Flags.BoolVar(&cfg.Relay, 0, "relay",
+		"source the optimizer edit from the relay (agent-supplied), not the mock")
+	cfg.Flags.StringVar(&cfg.Response, 0, "response", "",
+		"file with the relay's proposed edit (- for stdin); resumes a --relay proposal")
 	cfg.Command = &ff.Command{
 		Name:      "sleep",
-		Usage:     "agentic-dev-harness sleep [--artifact path] <run|adopt|status|schedule>",
+		Usage:     "agentic-dev-harness sleep [--artifact path] [--relay [--response f]] <run|adopt|status|schedule>",
 		ShortHelp: "run the offline consolidation cycle",
 		LongHelp: "Run the offline self-optimization cycle behind a held-out gate with a " +
-			"negative-control self-test (SPEC-ADDITIONS §18.4). `schedule` manages cron " +
-			"jobs that fire an adh command on a cadence (§15, §18).",
+			"negative-control self-test (SPEC-ADDITIONS §18.4). `run --relay` sources the " +
+			"optimizer edit from the driving agent instead of the mock (still gated); " +
+			"`schedule` manages cron jobs that fire an adh command on a cadence (§15, §18).",
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -116,7 +124,16 @@ func (cfg *Config) run() error {
 	// as a round, so later cycles make smaller, more attributable edits.
 	ccfg := consolidate.DefaultConfig()
 	ccfg.Round = priorCycles()
-	learned := consolidate.Propose(consolidate.Harvest(arcs), ccfg)
+	// The relay half (§18): `--relay` with no reply emits the proposal prompt and
+	// parks (stateless — the prompt is pure); `--relay --response` resumes with the
+	// agent's edit. Either way adh's held-out gate below decides if it is kept.
+	if cfg.Relay && cfg.Response == "" {
+		return cfg.emitProposal(artifact, arcs, ccfg)
+	}
+	learned, err := cfg.learned(arcs, ccfg)
+	if err != nil {
+		return err
+	}
 	cycle, err := consolidate.Plan(artifact, learned, arcs, rejected, ccfg)
 	if err != nil {
 		return fmt.Errorf("sleep: %w", err)
@@ -133,6 +150,49 @@ func (cfg *Config) run() error {
 		return err
 	}
 	return cfg.settle(&cycle, rejected)
+}
+
+// learned is the optimizer's proposed edit: the relay's reply (agent-supplied) when
+// --relay is set, else the deterministic mock optimizer. Either source is gated the
+// same way — Plan accepts only a strict held-out improvement.
+func (cfg *Config) learned(arcs []adh.Arc, ccfg consolidate.Config) (string, error) {
+	if cfg.Relay {
+		return cfg.readResponse()
+	}
+	return consolidate.Propose(consolidate.Harvest(arcs), ccfg), nil
+}
+
+// emitProposal renders the agent-driven proposal prompt and parks the cycle for a
+// reply (§18, the relay half). It is stateless: the prompt is a pure function of the
+// same inputs, so `sleep run --relay --response` regenerates them and feeds the
+// reply to Plan. No staging happens until the reply is gated.
+func (cfg *Config) emitProposal(artifact string, arcs []adh.Arc, ccfg consolidate.Config) error {
+	prompt := consolidate.ProposePrompt(consolidate.Harvest(arcs), artifact, ccfg)
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"status": "awaiting", "prompt": prompt}); err != nil {
+			return fmt.Errorf("sleep: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprint(cfg.Stdout, prompt)
+	return nil
+}
+
+// readResponse reads the relay's proposed edit from the --response file, or from
+// stdin when it is "-".
+func (cfg *Config) readResponse() (string, error) {
+	if cfg.Response == "-" {
+		data, err := io.ReadAll(cfg.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("sleep: read response: %w", err)
+		}
+		return string(data), nil
+	}
+	data, err := os.ReadFile(cfg.Response)
+	if err != nil {
+		return "", fmt.Errorf("sleep: read response: %w", err)
+	}
+	return string(data), nil
 }
 
 // inputs gathers the cycle's read-only inputs: the current artifact (empty when
