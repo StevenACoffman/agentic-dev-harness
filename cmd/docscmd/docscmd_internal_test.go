@@ -31,7 +31,6 @@ func TestRenderPageCoversTreeAndSections(t *testing.T) {
 	t.Parallel()
 	rootCmd, _ := tree()
 	page, err := renderPage(
-		manSection,
 		rootCmd,
 		[]docSection{{Title: "EXIT STATUS", Body: "0 success"}},
 	)
@@ -67,5 +66,24 @@ func TestReasonTokensBodyTracksConstants(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("reason section missing token %q:\n%s", want, body)
 		}
+	}
+}
+
+// TestVocabularySection: the root page carries the validation/verification
+// vocabulary (§10.5), so the stages name the two consistency questions they answer.
+func TestVocabularySection(t *testing.T) {
+	if !strings.Contains(vocabularyBody, "validation") ||
+		!strings.Contains(vocabularyBody, "verification") {
+		t.Fatal("vocabulary section must define validation and verification")
+	}
+	root, _ := tree()
+	page, err := renderPage(root, []docSection{
+		{Title: "VOCABULARY", Body: vocabularyBody},
+	})
+	if err != nil {
+		t.Fatalf("renderPage: %v", err)
+	}
+	if !strings.Contains(page, "VOCABULARY") || !strings.Contains(page, "validation") {
+		t.Errorf("rendered page missing the VOCABULARY section:\n%s", page)
 	}
 }

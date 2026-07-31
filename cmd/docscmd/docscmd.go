@@ -52,6 +52,20 @@ const environmentBody = "Every flag can be set by an AGENTIC_DEV_HARNESS_-prefix
 	"(--jsonl becomes AGENTIC_DEV_HARNESS_JSONL). A flag given on the command line " +
 	"always overrides its environment variable."
 
+// vocabularyBody names the two consistency questions adh answers in the standard
+// NFR sense (§10.5), so the stages say what they do: validation guards the inputs,
+// verification gates the ship.
+const vocabularyBody = "adh separates the two consistency questions in the standard " +
+	"NFR sense:\n\n" +
+	"validation — are the requirements right and conflict-free (the context lever). " +
+	"`context check` (semantic cross-unit review) and `context lint` (duplicate ids, " +
+	"resolvable content) validate the routed units before one silently governs an arc " +
+	"(Loop E).\n\n" +
+	"verification — is it built right (the proof lever). The Evaluation stage runs an " +
+	"NFR's Meter against its Fail bar (§19.2, §10.5) and `close` verifies the " +
+	"resolution's proof — code-level tests/CI, or a decision's ADR (§12). Validation " +
+	"guards the inputs; verification gates the ship."
+
 // docSection is one extra man-page section (e.g. EXIT STATUS) the shell injects
 // into the root page. The pure renderer stays free of adh domain vocabulary; the
 // command supplies the text.
@@ -95,7 +109,7 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if cfg.Dir != "" {
 		return cfg.writeTree(rootCmd)
 	}
-	page, err := renderPage(manSection, rootCmd, cfg.rootSections())
+	page, err := renderPage(rootCmd, cfg.rootSections())
 	if err != nil {
 		return fmt.Errorf("docs: %w", err)
 	}
@@ -112,6 +126,7 @@ func (cfg *Config) rootSections() []docSection {
 	return []docSection{
 		{Title: "EXIT STATUS", Body: exitStatusBody},
 		{Title: "REASON TOKENS", Body: reasonTokensBody()},
+		{Title: "VOCABULARY", Body: vocabularyBody},
 		{Title: "ENVIRONMENT", Body: environmentBody},
 	}
 }
@@ -162,7 +177,7 @@ func (cfg *Config) writeTree(rootCmd *ff.Command) error {
 
 // writePage renders cmd's man page and writes it to its file under cfg.Dir.
 func (cfg *Config) writePage(rootCmd, cmd *ff.Command, extra []docSection) error {
-	page, err := renderPage(manSection, cmd, extra)
+	page, err := renderPage(cmd, extra)
 	if err != nil {
 		return fmt.Errorf("docs: %w", err)
 	}
@@ -177,8 +192,8 @@ func (cfg *Config) writePage(rootCmd, cmd *ff.Command, extra []docSection) error
 // renderPage builds cmd's man page from its ff definition and appends the extra
 // sections, returning the roff text. It is pure: no I/O, deterministic given the
 // command tree, so a test renders and inspects it without touching the filesystem.
-func renderPage(section uint, cmd *ff.Command, extra []docSection) (string, error) {
-	man, err := mff.NewManPage(section, cmd)
+func renderPage(cmd *ff.Command, extra []docSection) (string, error) {
+	man, err := mff.NewManPage(manSection, cmd)
 	if err != nil {
 		return "", fmt.Errorf("build man page for %s: %w", cmd.Name, err)
 	}
