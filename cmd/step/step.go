@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -136,7 +137,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case cfg.Response != "":
 		return cfg.resume(ctx, store, renderer, &arc, judgment)
 	default:
-		return cfg.emit(store, &conf, renderer, &arc, judgment)
+		return cfg.emit(ctx, store, &conf, renderer, &arc, judgment)
 	}
 }
 
@@ -207,6 +208,7 @@ func (cfg *Config) advance(
 // prints it for the operator. Re-emitting an already-open turn for the same
 // stage is idempotent: it reprints the parked prompt without opening a new one.
 func (cfg *Config) emit(
+	ctx context.Context,
 	store *state.Store,
 	conf *config.Config,
 	renderer stage.Prompter,
@@ -231,7 +233,7 @@ func (cfg *Config) emit(
 		return fmt.Errorf("step: %w", err)
 	}
 	if outcome.Kind == relay.Gap {
-		return cfg.reportGap(arc)
+		return cfg.reportGap(ctx, arc)
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
@@ -256,7 +258,8 @@ func (cfg *Config) reportOpsGate(arc *adh.Arc) error {
 // reportGap reports a critic routing gap (§19.1): the environment did not teach
 // the critic, so no prompt was emitted. It is a blocked outcome under --jsonl,
 // else a stderr line, and exits 12.
-func (cfg *Config) reportGap(arc *adh.Arc) error {
+func (cfg *Config) reportGap(ctx context.Context, arc *adh.Arc) error {
+	cfg.recordMiss(ctx, arc)
 	msg := fmt.Sprintf(
 		"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof, do not guess",
 		arc.ID,
@@ -307,6 +310,18 @@ func (cfg *Config) resume(
 		return fmt.Errorf("step: %w", err)
 	}
 	return cfg.report(arc, statusAdvanced, "")
+}
+
+// recordMiss logs the routing gap to the miss log so the router can learn from it
+// (§10.3): accumulated misses earn a route proposal (`adh context misses`). It is
+// best-effort — a failed append must not mask the gap the arc actually hit.
+func (cfg *Config) recordMiss(ctx context.Context, arc *adh.Arc) {
+	miss := contextstore.Miss{Arc: arc.ID, Labels: arc.Labels, Paths: arc.Paths}
+	if err := contextstore.AppendMiss(
+		filepath.Join(cfg.repoDir(), contextstore.MissFile), miss,
+	); err != nil {
+		cfg.Log.WarnContext(ctx, "record routing miss", "arc", arc.ID, "err", err)
+	}
 }
 
 // repoDir is the repository root — the --repo global, or the current directory.

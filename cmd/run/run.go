@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -144,7 +145,7 @@ func (cfg *Config) driveRelay(
 				return fmt.Errorf("run: %w", err)
 			}
 		default:
-			return cfg.emitRelay(store, conf, renderer, arc, judgment)
+			return cfg.emitRelay(ctx, store, conf, renderer, arc, judgment)
 		}
 	}
 	return cfg.reportDone(arc)
@@ -182,6 +183,7 @@ func (cfg *Config) resumeRelay(
 // emitRelay grounds and emits the current model stage's prompt, parks it, and
 // reports the awaiting outcome — or a routing gap (§19.1).
 func (cfg *Config) emitRelay(
+	ctx context.Context,
 	store *state.Store,
 	conf *config.Config,
 	renderer stage.Prompter,
@@ -203,7 +205,7 @@ func (cfg *Config) emitRelay(
 		return fmt.Errorf("run: %w", err)
 	}
 	if out.Kind == relay.Gap {
-		return cfg.reportGap(arc)
+		return cfg.reportGap(ctx, arc)
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -238,7 +240,8 @@ func (cfg *Config) reportAwaiting(arc *adh.Arc, promptText string) error {
 
 // reportGap reports a critic routing gap (§19.1, exit 12): the environment did not
 // teach the critic, so no prompt was emitted.
-func (cfg *Config) reportGap(arc *adh.Arc) error {
+func (cfg *Config) reportGap(ctx context.Context, arc *adh.Arc) error {
+	cfg.recordMiss(ctx, arc)
 	msg := fmt.Sprintf(
 		"critic ungrounded for arc %s: no context or proof routed for its labels/paths (§19.1); teach the repo (adh context) or record proof",
 		arc.ID,
@@ -403,6 +406,18 @@ func (cfg *Config) adjudicate(
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
+}
+
+// recordMiss logs the routing gap to the miss log so the router can learn from it
+// (§10.3): accumulated misses earn a route proposal (`adh context misses`). It is
+// best-effort — a failed append must not mask the gap the arc actually hit.
+func (cfg *Config) recordMiss(ctx context.Context, arc *adh.Arc) {
+	miss := contextstore.Miss{Arc: arc.ID, Labels: arc.Labels, Paths: arc.Paths}
+	if err := contextstore.AppendMiss(
+		filepath.Join(cfg.repoDir(), contextstore.MissFile), miss,
+	); err != nil {
+		cfg.Log.WarnContext(ctx, "record routing miss", "arc", arc.ID, "err", err)
+	}
 }
 
 // repoDir is the repository root — the --repo global, or the current directory.
