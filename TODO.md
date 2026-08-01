@@ -585,11 +585,14 @@ around them is partial.
   (go-git merge is experimental → a `git` shell-out via
   `github.com/ldez/go-git-cmd-wrapper/v2`); returning to the base branch after ship.
 - [ ] No injected `Clock` (deterministic timestamps). **Deferred deliberately**:
-  the precondition is unmet — no `time.Time` on `adh.Arc`/state, and the only
-  `time.Now()` sites are commit-authorship (go-git, never pinned by a test) and
-  `sleep.stamp`, which already isolates time to a one-line shell so the consolidate
-  core stays pure. A `Clock` seam today would be a speculative abstraction with no
-  consumer. Revisit when a state time field or a test needs deterministic time.
+  the precondition is still unmet — no `time.Time` on `adh.Arc`/state. The `time.Now()`
+  sites all isolate time to a one-line shell so the pure cores never see it:
+  commit-authorship (go-git, never pinned by a test), `sleep.stamp`, and the
+  stratum stamping (`contextstore.Stratum(time.Now())` in `run`/`step`/`eval`) whose
+  year-month string the miss log and the failure-record gate consume as an opaque
+  token. A `Clock` seam today would be a speculative abstraction; the strata gates
+  assert on records seeded with a fixed stratum, not on wall-clock. Revisit when a
+  state time field or a test needs deterministic time.
 - [ ] The oracle's two "implementations" are in-package functions, not a real
   reference build vs native port. Domain-specific (a mobile-port profile) — see
   the proof-contract note below.
