@@ -111,10 +111,14 @@ each as one bounded baseline → intervention → verify → fresh-rerun → ret
       --skillsaw <file>` surface skillsaw's score and needs-judge dimensions beside
       adh's floor, so the worker runs `tool run skillsaw-eval > s.json` (Loop B) then
       feeds the score to `harness gate` — skillsaw as the cheap floor under adh's bar.
-      **Follow-up (deferred):** exact field-alignment with an installed skillsaw (the
-      decoder is adh's documented contract; a real install verifies/tunes the mapping);
-      `diagnose`/`history` stay `tool run`; the mock `Propose` remains the non-relay
-      default.
+      The decoder is now **aligned to skillsaw's real schema** (verified against the
+      upstream `internal/rubric` source, since skillsaw is not installed here): the
+      first cut assumed `{score, dimensions[{name,score}]}` but the real `eval --json`
+      emits `Evaluation{deterministic_score, full_score, has_full_score, dims[{num,
+      name, final (int 1–10), needs_judge}]}` — fixed, with `Eval.Score()` preferring
+      `full_score` once the judge dimensions are scored. **Follow-up (deferred):**
+      re-verify against an *installed* skillsaw when available; `diagnose`/`history`
+      stay `tool run`; the mock `Propose` remains the non-relay default.
 
 ### From `agentic-harness-bootstrap` (Data Formats / Processes Worth Folding In)
 
@@ -228,18 +232,27 @@ single strict-`>` gate is insufficient.
       verdict. The **fresh-replication** verdict now ships: `verdict.Replicate(runs,
       minEffect)` (pure) ELEVATEs only when ≥2 *independent* runs each clear the
       effect-size + significance bar (a fresh replication, not just a held-out split),
-      KILLs on any regression, and is REPLICATION-MISSING with <2 runs. **Follow-up
-      (deferred):** the live-rollout data source — a worker producing N independent
-      paired control-vs-treatment runs to feed `Replicate`; the selection/test split
-      stays the in-process stand-in for the single-run `Decide`.
+      KILLs on any regression, and is REPLICATION-MISSING with <2 runs. It is now
+      **fed by a real multi-run rollout**: `consolidate.SplitForSeed` re-partitions the
+      mined tasks N independent ways and `replicationVerdict` scores the candidate over
+      `DefaultReplicationRuns` (3) independent seeded partitions (each an Outcome with
+      McNemar significance), so `Cycle.Replication` is a genuine fresh-replication
+      verdict, not the single held-out split — no live model worker needed, because
+      adh's deterministic task-check *is* the rollout. `sleep` surfaces it. **Follow-up
+      (deferred):** *model-generated* rollouts (a live worker running K model attempts)
+      remain a separate capability; the deterministic evaluator is the rollout today.
 - [x] **Validate the graders and the splits (§18.2).** DONE. Splits:
       `verdict.ValidateSplits` is a pure leakage guard (a task id in two splits →
       EINVALID). Grader: `harness.GraderSelfTest` extends the negative control from the
       *gate* to the *grader* — it proves the rubric scores a known-strong artifact
       strictly above a known-weak one (a blind grader makes the ratchet measure noise →
       EINTERNAL), and `sleep run` runs it beside `SelfTest` (exit 15) before trusting
-      the loop. **Follow-up:** calibrate the *model* judge (not just the deterministic
-      rubric) once a live judge is wired.
+      the loop. Judge calibration against labeled fixtures now ships too:
+      `harness.CalibrateJudge` (pure) runs the deterministic judge over labeled
+      `JudgeCase` fixtures and reports agreement, and `harness calibrate --cases <file>`
+      exits non-zero on any disagreement — so the operator's check-sets are validated to
+      discriminate. **Follow-up:** calibrate a *model* judge's free-text verdicts once a
+      live judge is wired (this calibrates the deterministic rule-judge adh owns).
 - [x] **Routing eval for the context lever (§10, Loop A/E).** DONE. `contextstore.
       EvaluateRouting` (a pure core) scores routing fixtures — each `RoutingCase`
       asserts the units that should route for an arc's labels/paths (an empty `Want`
