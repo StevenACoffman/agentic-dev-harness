@@ -2,6 +2,7 @@ package critic
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -112,6 +113,26 @@ func (v *Verdict) BlockingKind() adh.FindingKind {
 		return ""
 	}
 	return v.Confirmed[0].Kind
+}
+
+// Classes returns the distinct finding kinds across the confirmed and unconfirmed
+// findings, sorted — the classes a disposed arc contributes to the failure-record
+// log, so a recurring one can be gated for promotion (§11, §19.2). Candidates count:
+// an unconfirmed finding kept to detect recurrence is exactly what promotion gates on.
+func (v *Verdict) Classes() []string {
+	seen := make(map[string]bool)
+	for i := range v.Confirmed {
+		seen[string(v.Confirmed[i].Kind)] = true
+	}
+	for i := range v.Unconfirmed {
+		seen[string(v.Unconfirmed[i].Kind)] = true
+	}
+	classes := make([]string, 0, len(seen))
+	for c := range seen {
+		classes = append(classes, c)
+	}
+	sort.Strings(classes)
+	return classes
 }
 
 // FailureNotes renders the confirmed findings as failure-registry entries (§4.1),

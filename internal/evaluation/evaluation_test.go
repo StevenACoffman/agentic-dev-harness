@@ -70,7 +70,13 @@ func TestApplyConfirmedReturnsToExecution(t *testing.T) {
 	v := critic.Verdict{
 		Confirmed: []adh.Finding{{Summary: "screen wrong", Kind: adh.FindingDevice}},
 	}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Stage != adh.StageExecution || arc.Status != adh.StatusOpen {
@@ -103,7 +109,13 @@ func TestApplyFailsTerminallyPastBudget(t *testing.T) {
 	v := critic.Verdict{
 		Confirmed: []adh.Finding{{Summary: "still wrong", Kind: adh.FindingDevice}},
 	}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Status != adh.StatusFailed {
@@ -117,6 +129,46 @@ func TestApplyFailsTerminallyPastBudget(t *testing.T) {
 	}
 	if notes, _ := failures.Load(failures.RegistryFile); len(notes) != 1 {
 		t.Errorf("failure registry = %v, want the terminal failure recorded", notes)
+	}
+}
+
+// TestApplyStampsFailureRecord: Apply writes one failure record per disposed class,
+// carrying the stratum, the arc's scope, and the root cause from its grounding — the
+// evidence the §11 accretion gate reads. An ungrounded attempt (no routed context)
+// triages as such.
+func TestApplyStampsFailureRecord(t *testing.T) {
+	t.Chdir(t.TempDir())
+	arc := adh.Arc{
+		ID: "arc-0001", Stage: adh.StageEvaluation, Status: adh.StatusOpen,
+		Labels:   []string{"ui"},
+		Paths:    []string{"board.go"},
+		Findings: []adh.Finding{{Kind: adh.FindingDevice}},
+	}
+	v := critic.Verdict{
+		Confirmed: []adh.Finding{{Summary: "screen wrong", Kind: adh.FindingDevice}},
+	}
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-07",
+	); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	recs, err := failures.LoadRecords(failures.RecordsFile)
+	if err != nil {
+		t.Fatalf("LoadRecords: %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("records = %v, want one for the disposed device class", recs)
+	}
+	r := recs[0]
+	if r.Class != "device" || r.Stratum != "2026-07" || r.RootCause != failures.RootUngrounded {
+		t.Errorf("record = %+v, want device/2026-07/ungrounded", r)
+	}
+	if len(r.Labels) != 1 || r.Labels[0] != "ui" || len(r.Paths) != 1 || r.Paths[0] != "board.go" {
+		t.Errorf("record scope = (%v, %v), want ([ui], [board.go])", r.Labels, r.Paths)
 	}
 }
 
@@ -157,7 +209,13 @@ func TestApplyUnconfirmedAdvancesAndRecordsLesson(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Stage != adh.StageOps {
@@ -173,7 +231,13 @@ func TestApplyUnconfirmedSkipsLessonWhenDisabled(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, false, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		false,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if candidates, _ := failures.Load(failures.CandidatesFile); len(candidates) != 0 {

@@ -210,11 +210,22 @@ func Adjudicate(
 // disposition follows Decide — advance to the ops gate, return to Execution to
 // rework (within maxReworks, incrementing Reworks), or fail terminally once the
 // budget is spent. A confirmed finding is appended to the failure registry on both
-// the rework and the terminal path. It clears the arc's findings. It mutates arc
-// and writes the registries; it neither saves the arc nor sets an exit code — those
-// stay with the caller.
-func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool, maxReworks int) error {
+// the rework and the terminal path, and every disposed class is stamped into the
+// failure-record log (stratum + scope + root cause) for the §11 accretion gate. It
+// clears the arc's findings. It mutates arc and writes the registries; it neither
+// saves the arc nor sets an exit code — those stay with the caller. stratum is the
+// year-month the shell computes, kept out of the core.
+func Apply(
+	arc *adh.Arc,
+	verdict *critic.Verdict,
+	recordLessons bool,
+	maxReworks int,
+	stratum string,
+) error {
 	const op = "evaluation.Apply"
+	if err := recordStrata(arc, verdict, stratum); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
 	if recordLessons {
 		if err := failures.Append(failures.CandidatesFile, verdict.LessonNotes()...); err != nil {
 			return &adh.Error{Op: op, Err: err}
@@ -248,6 +259,34 @@ func Apply(arc *adh.Arc, verdict *critic.Verdict, recordLessons bool, maxReworks
 		))
 	}
 	arc.Findings = nil
+	return nil
+}
+
+// recordStrata stamps every class the verdict disposed into the failure-record log
+// (§19.2): each carries the stratum, the arc's routing scope, and the root cause
+// derived from whether the attempt was grounded — the evidence the §11 accretion gate
+// reads. Recording nothing when there are no classes keeps the log from growing on a
+// clean review.
+func recordStrata(arc *adh.Arc, verdict *critic.Verdict, stratum string) error {
+	const op = "evaluation.recordStrata"
+	classes := verdict.Classes()
+	if len(classes) == 0 {
+		return nil
+	}
+	rootCause := failures.ClassifyRootCause(len(arc.Context) > 0)
+	recs := make([]failures.Record, len(classes))
+	for i, class := range classes {
+		recs[i] = failures.Record{
+			Class:     class,
+			Stratum:   stratum,
+			Labels:    arc.Labels,
+			Paths:     arc.Paths,
+			RootCause: rootCause,
+		}
+	}
+	if err := failures.AppendRecords(failures.RecordsFile, recs...); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
 	return nil
 }
 

@@ -159,7 +159,14 @@ func (cfg *Config) disposeEval(
 		return fmt.Errorf("step: %w", err)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
-	if err := evaluation.Apply(arc, &verdict, recordLessons, conf.MaxReworks()); err != nil {
+	stratum := contextstore.Stratum(time.Now())
+	if err := evaluation.Apply(
+		arc,
+		&verdict,
+		recordLessons,
+		conf.MaxReworks(),
+		stratum,
+	); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
 	if err := store.Save(arc); err != nil {

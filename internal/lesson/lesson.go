@@ -22,6 +22,12 @@ const (
 	OwnerType      Owner = "type"
 )
 
+// MinStrata is how many distinct time strata (year-month) a failure class must recur
+// across before it may be promoted (§11 temporal gate): promotion accretes a durable
+// control, so it requires a pattern sustained across time, not a single-stratum burst
+// — the same independence axis the routing-miss gate applies (§10.3).
+const MinStrata = 2
+
 // Owner is the durable place a lesson lands.
 type Owner string
 

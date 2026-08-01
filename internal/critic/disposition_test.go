@@ -27,6 +27,27 @@ func TestParseFindingsValid(t *testing.T) {
 	}
 }
 
+func TestVerdictClasses(t *testing.T) {
+	v := critic.Verdict{
+		Confirmed: []adh.Finding{
+			{Kind: adh.FindingOracle}, {Kind: adh.FindingContract},
+		},
+		Unconfirmed: []adh.Finding{
+			{Kind: adh.FindingOracle}, {Kind: adh.FindingNFR},
+		},
+	}
+	got := v.Classes()
+	want := []string{"contract", "nfr", "oracle"}
+	if len(got) != len(want) {
+		t.Fatalf("Classes() = %v, want %v (distinct, sorted)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Classes()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestVerdictHasStructural(t *testing.T) {
 	fixable := critic.Verdict{Confirmed: []adh.Finding{{Kind: adh.FindingOracle}}}
 	if fixable.HasStructural() {

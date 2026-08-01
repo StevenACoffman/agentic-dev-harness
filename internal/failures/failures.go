@@ -21,6 +21,10 @@ const (
 	// CandidatesFile is the §11 lesson-candidate list (§19.2): a critic finding no
 	// artifact confirmed, recorded so a class can be promoted once it recurs.
 	CandidatesFile = ".adh/lesson-candidates.json"
+	// RecordsFile is the stamped failure-record log (§19.2): one record per disposed
+	// finding carrying its stratum, the arc's routing scope, and its root cause — the
+	// evidence the §11 temporal gate, scope-tagging, and root-cause triage read.
+	RecordsFile = ".adh/failure-records.json"
 )
 
 // Load reads the note list at path. A missing file is empty, not an error; a

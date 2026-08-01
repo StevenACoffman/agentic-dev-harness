@@ -435,7 +435,8 @@ func (cfg *Config) adjudicate(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	if err := evaluation.Apply(arc, &verdict, recordLessons, maxReworks); err != nil {
+	stratum := contextstore.Stratum(time.Now())
+	if err := evaluation.Apply(arc, &verdict, recordLessons, maxReworks, stratum); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
