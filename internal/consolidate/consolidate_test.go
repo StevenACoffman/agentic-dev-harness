@@ -8,6 +8,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
 )
 
 // realisticArtifact is a few hundred bytes — the size a real guiding doc runs —
@@ -332,5 +333,48 @@ func TestPlanSkipsRejectedCandidate(t *testing.T) {
 	}
 	if !strings.Contains(second.Records[0].Note, "rejected") {
 		t.Errorf("note = %q, want a rejected-buffer explanation", second.Records[0].Note)
+	}
+}
+
+func TestSplitForSeed(t *testing.T) {
+	// Seed 0 is the canonical partition SplitFor uses.
+	if consolidate.SplitForSeed("task-x", 0) != consolidate.SplitFor("task-x") {
+		t.Error("seed 0 must equal SplitFor")
+	}
+	// Different seeds re-partition independently: over many ids, some land differently.
+	moved := 0
+	for i := range 60 {
+		id := fmt.Sprintf("task-%d", i)
+		if consolidate.SplitForSeed(id, 1) != consolidate.SplitForSeed(id, 2) {
+			moved++
+		}
+	}
+	if moved == 0 {
+		t.Error("seeds 1 and 2 produced identical partitions for every id")
+	}
+}
+
+// TestPlanComputesReplication: an accepted cycle carries a fresh-replication verdict
+// (a known taxonomy value) computed over the independent seeded partitions (§18.2).
+func TestPlanComputesReplication(t *testing.T) {
+	class := selectionClass(t)
+	arcs := []adh.Arc{closedArc("arc-0001", class), closedArc("arc-0002", class)}
+	learned := consolidate.Propose(consolidate.Harvest(arcs), consolidate.DefaultConfig())
+	cycle, err := consolidate.Plan(
+		realisticArtifact,
+		learned,
+		arcs,
+		nil,
+		consolidate.DefaultConfig(),
+	)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	known := map[verdict.Verdict]bool{
+		verdict.Elevate: true, verdict.Directional: true,
+		verdict.ReplicationMissing: true, verdict.Kill: true,
+	}
+	if !known[cycle.Replication] {
+		t.Errorf("cycle.Replication = %q, want a known verdict", cycle.Replication)
 	}
 }
