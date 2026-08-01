@@ -1,8 +1,9 @@
 // Package harnesscmd implements the "harness" CLI command, the self-optimization
 // surface (SPEC-ADDITIONS §18.2, §11) with real nested subcommands: `eval` scores
-// a guiding artifact (rubric floor + judge-only dimensions), `gate` runs the
-// comparative validation ratchet on candidate/current/best scores, and `hash`
-// reports an artifact's content identity (sha256[:16]).
+// a guiding artifact (rubric floor + judge-only dimensions, optionally beside a
+// decoded skillsaw score), `gate` runs the comparative validation ratchet on
+// candidate/current/best scores, `hash` reports an artifact's content identity
+// (sha256[:16]), and `calibrate` checks the judge against labeled fixtures.
 package harnesscmd
 
 import (
@@ -32,6 +33,8 @@ type Config struct {
 	Output   string
 	Skillsaw string
 	Min      float64
+	// calibrate flags
+	Cases string
 	// gate flags
 	Candidate  string
 	Current    string
@@ -50,16 +53,18 @@ func New(parent *root.Config) *Config {
 	cfg.Flags = ff.NewFlagSet("harness").SetParent(parent.Flags)
 	cfg.Command = &ff.Command{
 		Name:      "harness",
-		Usage:     "agentic-dev-harness harness <eval|gate|hash> [flags] [artifact]",
-		ShortHelp: "score, gate, and hash the harness artifact",
+		Usage:     "agentic-dev-harness harness <eval|gate|hash|calibrate> [flags] [artifact]",
+		ShortHelp: "score, gate, hash, and calibrate the harness artifact",
 		LongHelp: "Self-optimization surface (SPEC-ADDITIONS §18.2): `eval` scores an " +
 			"artifact (floor + judge dimensions), `gate` runs the comparative ratchet, " +
-			"`hash` reports content identity.",
+			"`hash` reports content identity, `calibrate` checks the judge against labeled " +
+			"fixtures.",
 		Flags: cfg.Flags,
 	}
 	cfg.addEval()
 	cfg.addGate()
 	cfg.addHash()
+	cfg.addCalibrate()
 	parent.Command.Subcommands = append(parent.Command.Subcommands, cfg.Command)
 	return &cfg
 }
@@ -105,6 +110,21 @@ only if it beats the current score, and becomes the new best only if it also bea
 the best. Ties reject. Exit code is 0 on any accept, 1 on reject.`,
 		Flags: fs,
 		Exec:  func(_ context.Context, _ []string) error { return cfg.gate() },
+	})
+}
+
+func (cfg *Config) addCalibrate() {
+	fs := ff.NewFlagSet("calibrate").SetParent(cfg.Flags)
+	fs.StringVar(&cfg.Cases, 0, "cases", "", "JSON file of labeled judge fixtures")
+	cfg.Command.Subcommands = append(cfg.Command.Subcommands, &ff.Command{
+		Name:      "calibrate",
+		Usage:     "agentic-dev-harness harness calibrate --cases <file>",
+		ShortHelp: "calibrate the judge against labeled fixtures",
+		LongHelp: "Run the deterministic judge over labeled fixtures and report agreement " +
+			"(SPEC-ADDITIONS §18.2): a judge that mislabels a known-good or known-bad " +
+			"fixture is miscalibrated and exits non-zero.",
+		Flags: fs,
+		Exec:  func(_ context.Context, _ []string) error { return cfg.calibrate() },
 	})
 }
 
@@ -170,14 +190,54 @@ func (cfg *Config) reportSkillsaw() error {
 	}
 	if cfg.JSONL {
 		if emitErr := cfg.EmitOK(map[string]any{
-			"skillsaw_score": saw.Score, "needs_judge": saw.NeedsJudge(),
+			"skillsaw_score": saw.Score(), "needs_judge": saw.NeedsJudge(),
 		}); emitErr != nil {
 			return fmt.Errorf("harness: %w", emitErr)
 		}
 		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "skillsaw: score %.2f; needs judge: %v\n",
-		saw.Score, saw.NeedsJudge())
+		saw.Score(), saw.NeedsJudge())
+	return nil
+}
+
+// calibrate runs the deterministic judge over the labeled fixtures in --cases and
+// reports agreement (§18.2): a miscalibrated judge (any disagreement) exits non-zero,
+// so the operator's check-sets are validated to discriminate as intended.
+func (cfg *Config) calibrate() error {
+	if cfg.Cases == "" {
+		return errors.New("harness: calibrate requires --cases <file>")
+	}
+	data, err := os.ReadFile(cfg.Cases)
+	if err != nil {
+		return fmt.Errorf("harness: read cases: %w", err)
+	}
+	var cases []harness.JudgeCase
+	if err := json.Unmarshal(data, &cases); err != nil {
+		return fmt.Errorf("harness: parse cases: %w", err)
+	}
+	cal, err := harness.CalibrateJudge(cases)
+	if err != nil {
+		return fmt.Errorf("harness: %w", err)
+	}
+	if cfg.JSONL {
+		if emitErr := cfg.EmitOK(cal); emitErr != nil {
+			return fmt.Errorf("harness: %w", emitErr)
+		}
+	} else {
+		_, _ = fmt.Fprintf(
+			cfg.Stdout,
+			"judge calibration: %d/%d cases agree\n",
+			cal.Agree,
+			cal.Cases,
+		)
+		for _, name := range cal.Disagree {
+			_, _ = fmt.Fprintf(cfg.Stderr, "disagree: %s\n", name)
+		}
+	}
+	if cal.Agree < cal.Cases {
+		return root.ExitError(1)
+	}
 	return nil
 }
 
