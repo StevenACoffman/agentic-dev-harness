@@ -170,15 +170,17 @@ func parseMeasurement(out string) (value float64, ok bool) {
 	return v, true
 }
 
-// Decide picks the arc's disposition (SPEC §4.1): a clean verdict advances to the
-// ops gate; a confirmed finding returns the arc to Execution to rework until the
-// budget is spent, after which the arc fails terminally rather than looping. It is
-// pure — the caller (Apply) mutates the arc.
+// Decide picks the arc's disposition (SPEC §4.1, §19.2): a clean verdict advances to
+// the ops gate; a confirmed structural finding fails terminally at once (a design
+// change the rework loop cannot close — escalate to a human); an ordinary confirmed
+// finding returns the arc to Execution to rework until the budget is spent, after
+// which it fails terminally rather than looping. It is pure — the caller (Apply)
+// mutates the arc.
 func Decide(verdict *critic.Verdict, reworks, maxReworks int) Disposition {
 	if !verdict.ReturnsToExecution() {
 		return AdvanceToOps
 	}
-	if reworks >= maxReworks {
+	if verdict.HasStructural() || reworks >= maxReworks {
 		return Fail
 	}
 	return ReturnToExecution

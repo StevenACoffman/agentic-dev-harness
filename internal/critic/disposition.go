@@ -61,6 +61,12 @@ func ParseFindings(reply string) ([]adh.Finding, error) {
 				Message: "finding names an unknown kind: " + string(f.Kind),
 			}
 		}
+		if !f.Class.Valid() {
+			return nil, &adh.Error{
+				Code:    adh.EINVALID,
+				Message: "finding names an unknown class: " + string(f.Class),
+			}
+		}
 	}
 	return parsed.Findings, nil
 }
@@ -86,6 +92,18 @@ func Dispose(results []Adjudicated) Verdict {
 // finding is a deterministic Evaluation failure that returns the arc to Execution
 // (§19.2).
 func (v *Verdict) ReturnsToExecution() bool { return len(v.Confirmed) > 0 }
+
+// HasStructural reports whether any confirmed finding is structural (§19.2) — one
+// that needs a design change, so the arc escalates to a human rather than spending
+// rework cycles on an edit that cannot close it.
+func (v *Verdict) HasStructural() bool {
+	for i := range v.Confirmed {
+		if v.Confirmed[i].IsStructural() {
+			return true
+		}
+	}
+	return false
+}
 
 // BlockingKind is the kind of the first confirmed finding, which the Evaluation
 // gate maps to an exit code. It is empty when nothing is confirmed.

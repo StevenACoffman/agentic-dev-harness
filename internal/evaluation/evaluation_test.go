@@ -125,6 +125,9 @@ func TestDecide(t *testing.T) {
 	t.Parallel()
 	confirmed := &critic.Verdict{Confirmed: []adh.Finding{{Kind: adh.FindingDevice}}}
 	clean := &critic.Verdict{Unconfirmed: []adh.Finding{{Kind: adh.FindingOracle}}}
+	structural := &critic.Verdict{Confirmed: []adh.Finding{
+		{Kind: adh.FindingContract, Class: adh.StructuralFinding},
+	}}
 	tests := []struct {
 		name    string
 		verdict *critic.Verdict
@@ -137,6 +140,7 @@ func TestDecide(t *testing.T) {
 		{"confirmed one below budget reworks", confirmed, 1, 2, evaluation.ReturnToExecution},
 		{"confirmed at budget fails", confirmed, 2, 2, evaluation.Fail},
 		{"zero budget fails on first confirm", confirmed, 0, 0, evaluation.Fail},
+		{"structural escalates under budget", structural, 0, 2, evaluation.Fail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

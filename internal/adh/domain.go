@@ -36,6 +36,15 @@ const (
 	FindingContract  FindingKind = "contract"  // a named local contract (e.g. a proof packet)
 )
 
+// FindingClass values triage a confirmed finding by how it is resolved (SPEC-ADDITIONS
+// §19.2): a fixable finding is a bounded edit the rework loop can close; a structural
+// finding needs a design change, so it escalates to a human instead of burning rework
+// cycles. An empty class defaults to fixable — the common case.
+const (
+	FixableFinding    FindingClass = "fixable"    // a bounded edit resolves it (rework)
+	StructuralFinding FindingClass = "structural" // needs a design change (escalate)
+)
+
 // Stage is one station of the five-stage arc loop.
 type Stage string
 
@@ -48,13 +57,18 @@ type Resolution string
 // FindingKind is the kind of repository artifact a critic finding names (§19.2).
 type FindingKind string
 
+// FindingClass triages how a confirmed finding is resolved (§19.2): fixable by a
+// bounded edit or structural (a design change that escalates).
+type FindingClass string
+
 // Finding is a critic's hypothesis about the change under review (§19.2): a
 // summary and the repository artifact (Kind + Ref) whose run would confirm it.
 // The Evaluation stage adjudicates it; the harness never blocks on its text.
 type Finding struct {
-	Summary string      `json:"summary"`
-	Kind    FindingKind `json:"kind"`
-	Ref     string      `json:"ref,omitempty"`
+	Summary string       `json:"summary"`
+	Kind    FindingKind  `json:"kind"`
+	Ref     string       `json:"ref,omitempty"`
+	Class   FindingClass `json:"class,omitempty"`
 }
 
 // Arc is a unit of work driven through the loop.
@@ -107,6 +121,23 @@ func (k FindingKind) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Valid reports whether c is a known finding class (§19.2). An empty class is valid:
+// it defaults to fixable, the common case, so a critic need not set it.
+func (c FindingClass) Valid() bool {
+	switch c {
+	case "", FixableFinding, StructuralFinding:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsStructural reports whether the finding needs a design change rather than a
+// bounded edit (§19.2), so a confirmed one escalates instead of reworking.
+func (f *Finding) IsStructural() bool {
+	return f.Class == StructuralFinding
 }
 
 // FindingKinds returns every known finding kind (§19.2), the single owner of the
