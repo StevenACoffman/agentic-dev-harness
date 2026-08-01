@@ -360,8 +360,9 @@ PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
       *and* the count threshold, so a same-day burst is recorded but not proposed — only
       a pattern sustained across time earns a route. An independence axis orthogonal to
       the seeded-partition replication verdict. Verified: `ProposeRoutes` strata table +
-      an E2E test (two same-stratum gaps record but do not propose). **Follow-up:** the
-      same gate for lesson candidates once the failures registry carries timestamps.
+      an E2E test (two same-stratum gaps record but do not propose). **Follow-up DONE:**
+      the same gate now covers lesson promotion via the stamped failure-record log —
+      see "Multi-signal accretion + root-cause triage" below.
 - [x] **Critic coverage / blind-spot history (Tier 1, §19/§10.3).** DONE. A pure
       `internal/critic` coverage log (`AppendCoverage`/`LoadCoverage`/`UnderCovered` +
       `adh.FindingKinds`, `.adh/critic-coverage.jsonl`): `run`/`step` record an arc's
@@ -370,15 +371,15 @@ PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
       these check kinds — probe them"), steering the next critic to the gaps. The
       routing-learns-from-misses pattern applied to the critic/eval lever. Verified:
       `UnderCovered`/`FindingKinds`/round-trip tables + the template render.
-- [x] **Provenance / receipt verification gate (Tier 1, §10.4).** DONE for the
-      deterministic half (source-path existence; per-claim quote-tracing is the
-      follow-up — needs a claim/citation structure in unit content). `contextstore.
-      LooksLikePath` + `DanglingSources` (pure, filesystem injected) flag a unit `source`
-      that looks like a repo path but does not resolve (URLs and prose skipped); wired
-      into `context lint` (exit 12) and `doctor`/`harnesscheck` (exit 16,
-      `dangling_source`). Serves the "provenance weighted by how it was earned" goal.
-      Verified: `LooksLikePath`/`DanglingSources` tables + `context lint`/`doctor`
-      journeys.
+- [x] **Provenance / receipt verification gate (Tier 1, §10.4).** DONE — both halves.
+      Path existence: `contextstore.LooksLikePath` + `DanglingSources` (pure, filesystem
+      injected) flag a unit `source` that looks like a repo path but does not resolve
+      (URLs and prose skipped). Quote-tracing (the receipt half): `Unit.Claims`
+      (quote + source) + `UnverifiedClaims` (pure, file read injected) flag a claim whose
+      quote is not found in its cited source. Both wired into `context lint` (exit 12) and
+      `doctor`/`harnesscheck` (exit 16: `dangling_source`, `unverified_claim`). Serves the
+      "provenance weighted by how it was earned" goal. Verified: `LooksLikePath`/
+      `DanglingSources`/`UnverifiedClaims` tables + `context lint`/`doctor` journeys.
 - [x] **Reflective trace into the optimizer (Tier 2, §18).** DONE. `consolidate.
       ProposePrompt` now mines the tasks and scores the selection-split assertions
       against the current artifact (both pure), rendering a **"currently-failing
@@ -386,20 +387,31 @@ PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
       ranked reflection modes, so the relayed agent proposes a targeted edit. Self-
       contained: no signature or shell change. Verified: a prompt-trace test (an artifact
       missing the class surfaces it; a satisfied artifact shows none).
-- [ ] **Scope-tagged lessons (Tier 2, §10/§11).** From `emulo`
-      (`contracts.py:78-96`): a promoted unit/lesson carries a `scope:[context-tags]` so
-      it routes/gates **only in its context**, not universally — a context-specific
-      correction cannot over-govern every arc. Composes with the OKF labels + trust tier.
-- [ ] **Multi-signal accretion triggers + root-cause triage (Tier 2, §11/§10.3).** From
-      `hermes-dojo` (`monitor.py:53-141`) and `emulo`'s usage report: record
-      repeated-reject / rephrased-ask / retry-loop as lesson-candidates (in a
-      relay-driven harness, "user correction" = the human's reject/rework text; a
-      repeated-reject is the analogue), and **triage root cause** (infra/auth/rate-limit
-      vs a real skill/context gap) before acting, so effort is not spent fixing infra.
-- [ ] **Fixable-vs-structural finding taxonomy (Tier 2, §12/§19.2).** From `super-hermes`
-      conservation-law classification: add a `structural` critic finding kind that routes
-      to an **ADR/decision** (a trade-off to design around) instead of a rework loop —
-      composes directly with the ADR decision-proof and NFR trade-off machinery.
+- [x] **Scope-tagged lessons (Tier 2, §10/§11).** DONE. Every disposed finding is
+      stamped into `.adh/failure-records.json` (`failures.Record`) with the arc's routing
+      scope; on promotion, `failures.ScopeFor` tags the materialized unit with the
+      distinct labels/paths the class recurred under, so the lesson routes to where it was
+      learned rather than only by its generic class label — a context-specific correction
+      cannot over-govern every arc. Composes with the OKF labels + trust tier. Verified:
+      `ScopeFor` table + a promote journey asserting the unit routes by its scope label.
+- [x] **Multi-signal accretion triggers + root-cause triage (Tier 2, §11/§10.3).** DONE
+      for the deterministic core. Accretion trigger: lesson promotion requires a class to
+      recur across **≥2 distinct time strata** (`failures.StrataCount` + `lesson.MinStrata`,
+      exit 19) — corroboration across independent temporal signals, not a single-stratum
+      burst. Root-cause triage: each record is classed **ungrounded** (failed with no
+      routed context — fix routing) vs **grounded-miss** (failed despite it — fix content),
+      derived deterministically from `arc.Context`; `failures.RootCauseCounts` surfaces the
+      breakdown at promotion so a human sees whether the class is a routing or a content
+      problem. Verified: `StrataCount`/`RootCauseCounts`/`ClassifyRootCause` tables +
+      `Apply`-stamps-record + a strata-gate promote journey. **Follow-up:** richer causes
+      (infra/auth/rate-limit) need a live model worker's diagnostics, still deferred.
+- [x] **Fixable-vs-structural finding taxonomy (Tier 2, §12/§19.2).** DONE. `Finding`
+      gained an optional `Class` (fixable | structural; empty defaults to fixable,
+      validated by `ParseFindings`); a confirmed **structural** finding now fails the arc
+      terminally at `evaluation.Decide` — escalating to a human — instead of spending
+      rework cycles on an edit that cannot close a design change, while fixable findings
+      keep the return-to-Execution path. The critic prompt asks for the class. Verified:
+      `Decide` structural→Fail case + `HasStructural`/`ParseFindings` class tables.
 - [ ] Optional / against-grain / larger (Tier 3): adaptive percentile + novelty
       selection (`darwinian_evolver`'s sigmoid sharpness/midpoint + `1/(1+novelty·
       children)`) — an *alternative* to adh's deliberate strict-`>` gate, not a
