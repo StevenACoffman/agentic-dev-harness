@@ -277,6 +277,8 @@ func ProposePrompt(signals []Signal, artifact string, cfg Config) string {
 	writeModes(&b, reflection.Failure)
 	b.WriteString("\nSuccess modes to reinforce:\n")
 	writeModes(&b, reflection.Success)
+	b.WriteString("\nCurrently-failing held-out assertions — target these (§18.6):\n")
+	writeFailingTasks(&b, signals, artifact, cfg)
 	b.WriteString("\nCurrent LEARNED region:\n")
 	if current := currentLearned(artifact, cfg.Marker); current != "" {
 		b.WriteString(current)
@@ -285,6 +287,29 @@ func ProposePrompt(signals []Signal, artifact string, cfg Config) string {
 		b.WriteString("(empty)\n")
 	}
 	return b.String()
+}
+
+// writeFailingTasks renders the held-out assertions the current artifact fails —
+// the reflective trace (§18.6, GEPA): scoring the mined selection-split tasks against
+// the artifact so the worker targets a bounded edit at what actually fails, not just
+// the recurring modes. It is pure (judge.Score reads no I/O); a task whose score
+// cannot be computed is skipped rather than surfaced.
+func writeFailingTasks(b *strings.Builder, signals []Signal, artifact string, cfg Config) {
+	failing := 0
+	for _, task := range Mine(signals, cfg) {
+		if task.Split != SplitSelection {
+			continue
+		}
+		result, err := judge.Score(artifact, task.Checks)
+		if err != nil || result.Hard >= 1.0 {
+			continue
+		}
+		_, _ = fmt.Fprintf(b, "- %s (%s)\n", task.ID, reasonFor(result.Hard))
+		failing++
+	}
+	if failing == 0 {
+		b.WriteString("- (none — the current artifact passes every held-out assertion)\n")
+	}
 }
 
 // writeModes lists reflected modes as ranked bullets, or "(none)" when empty.

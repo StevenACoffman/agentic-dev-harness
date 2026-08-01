@@ -378,3 +378,24 @@ func TestPlanComputesReplication(t *testing.T) {
 		t.Errorf("cycle.Replication = %q, want a known verdict", cycle.Replication)
 	}
 }
+
+// TestProposePromptTrace: the relay prompt surfaces the held-out assertions the
+// current artifact fails (the reflective trace), so the worker targets them (§18.6).
+func TestProposePromptTrace(t *testing.T) {
+	class := selectionClass(t)
+	signals := consolidate.Harvest([]adh.Arc{closedArc("arc-0001", class)})
+	cfg := consolidate.DefaultConfig()
+
+	// An artifact missing the class: the held-out assertion fails and is surfaced.
+	missing := consolidate.ProposePrompt(signals, "# Empty\n", cfg)
+	if !strings.Contains(missing, "Currently-failing held-out assertions") ||
+		!strings.Contains(missing, class) {
+		t.Errorf("prompt should surface the failing assertion %q:\n%s", class, missing)
+	}
+
+	// An artifact that already mentions the class: nothing fails.
+	passing := consolidate.ProposePrompt(signals, "# Guide\n\nGuard against "+class+".\n", cfg)
+	if !strings.Contains(passing, "passes every held-out assertion") {
+		t.Errorf("a satisfied artifact should show no failing assertions:\n%s", passing)
+	}
+}
