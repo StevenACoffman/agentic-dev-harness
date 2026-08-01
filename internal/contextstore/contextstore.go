@@ -36,6 +36,15 @@ const (
 // TrustTier records how a unit's content was earned (§10.4).
 type TrustTier string
 
+// Claim is one verifiable citation inside a unit (§10.4 receipt verification): a
+// Quote the unit asserts and the Source it should be found in. When Source is a repo
+// path, `context verify` traces the quote back to the file — the receipt half of
+// provenance, beyond the path merely resolving.
+type Claim struct {
+	Quote  string `json:"quote"`
+	Source string `json:"source"`
+}
+
 // Unit is one routable piece of context: a runbook, skill, domain note, or an
 // executable nonfunctional-requirement check. It routes by its labels and the
 // repository paths it governs. ContentPath is the store-relative route to the
@@ -44,7 +53,9 @@ type TrustTier string
 // it derives from; Integrity is the §13 tool id that proves the unit has not drifted
 // (`context verify`, §10.4 anti-drift). Verified is the trust tier (weights routing);
 // SupersededBy is the unit id that has replaced this one (a superseded unit no longer
-// routes). The optional fields let a metadata-only unit route with no text of its own.
+// routes). Claims are verifiable quote/source citations traced back to their source
+// (§10.4 receipt verification). The optional fields let a metadata-only unit route
+// with no text of its own.
 type Unit struct {
 	ID           string    `json:"id"`
 	Kind         string    `json:"kind"`
@@ -54,6 +65,7 @@ type Unit struct {
 	ContentPath  string    `json:"content_path,omitempty"`
 	Provenance   string    `json:"provenance,omitempty"`
 	Sources      []string  `json:"sources,omitempty"`
+	Claims       []Claim   `json:"claims,omitempty"`
 	Integrity    string    `json:"integrity,omitempty"`
 	Verified     TrustTier `json:"verified,omitempty"`
 	SupersededBy string    `json:"superseded_by,omitempty"`

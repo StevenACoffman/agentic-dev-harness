@@ -66,3 +66,41 @@ func TestDoctorCatchesDanglingSource(t *testing.T) {
 		t.Fatalf("doctor with a dangling source = %v, want ExitError(16)", err)
 	}
 }
+
+// writeClaimUnit writes a unit whose claim quotes text from an existing source file.
+func writeClaimUnit(t *testing.T, id, quote, source string) {
+	t.Helper()
+	if err := os.MkdirAll(contextstore.DefaultStoreDir, 0o750); err != nil {
+		t.Fatalf("mkdir store: %v", err)
+	}
+	unit := contextstore.Unit{
+		ID: id, Kind: "base-rule", Labels: []string{"x"},
+		Claims: []contextstore.Claim{{Quote: quote, Source: source}},
+	}
+	data, _ := json.MarshalIndent(unit, "", "  ")
+	if err := os.WriteFile(
+		filepath.Join(contextstore.DefaultStoreDir, id+".json"), data, 0o600,
+	); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+}
+
+// TestContextLintUnverifiedClaim: a claim whose quote is absent from its cited source
+// fails lint (exit 12); tracing the quote to the source lints clean.
+func TestContextLintUnverifiedClaim(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("docs", 0o750); err != nil {
+		t.Fatalf("mkdir docs: %v", err)
+	}
+	if err := os.WriteFile("docs/src.md", []byte("the real quoted line"), 0o600); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	writeClaimUnit(t, "rule", "a line never written", "docs/src.md")
+	_, err := run(t, "context", "lint")
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 12 {
+		t.Fatalf("lint with an unverified claim = %v, want ExitError(12)", err)
+	}
+	writeClaimUnit(t, "rule", "real quoted", "docs/src.md")
+	mustRun(t, "context", "lint")
+}

@@ -28,6 +28,7 @@ const (
 	KindDanglingSupersede = "dangling_supersede" // a unit's superseded_by names no existing unit
 	KindInvalidTrust      = "invalid_trust"      // a unit's trust tier is outside the taxonomy
 	KindDanglingSource    = "dangling_source"    // a unit's provenance source path does not resolve
+	KindUnverifiedClaim   = "unverified_claim"   // a unit's claim quote is not found in its cited source
 )
 
 // Inputs bundles the loaded harness state Check reasons over.

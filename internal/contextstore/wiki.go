@@ -65,6 +65,29 @@ func DanglingSources(units []Unit, exists func(string) bool) []string {
 	return dangling
 }
 
+// UnverifiedClaims returns "id: quote" for each unit claim whose source looks like a
+// repo path but whose file cannot be read or does not contain the quoted text, per
+// the injected read function (§10.4 receipt verification): the receipt half of
+// provenance, beyond DanglingSources' check that the path resolves. A claim citing a
+// URL or prose source is skipped — its quote cannot be traced deterministically. It
+// is pure — the caller injects the file read so the core stays testable. Sorted.
+func UnverifiedClaims(units []Unit, read func(string) (string, error)) []string {
+	unverified := make([]string, 0)
+	for i := range units {
+		for _, claim := range units[i].Claims {
+			if !LooksLikePath(claim.Source) {
+				continue
+			}
+			text, err := read(claim.Source)
+			if err != nil || !strings.Contains(text, claim.Quote) {
+				unverified = append(unverified, units[i].ID+": "+claim.Quote)
+			}
+		}
+	}
+	sort.Strings(unverified)
+	return unverified
+}
+
 // InvalidTrust returns the ids of units whose trust tier is outside the taxonomy
 // (§10.4). Sorted. Pure.
 func InvalidTrust(units []Unit) []string {

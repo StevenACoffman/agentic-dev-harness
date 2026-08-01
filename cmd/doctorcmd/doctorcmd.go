@@ -65,13 +65,18 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	return cfg.report(problems)
 }
 
-// sourceProblems reports each unit provenance source path that does not resolve
-// under the repo root — receipt verification the pure check cannot do (§10.4).
+// sourceProblems reports the provenance defects the pure check cannot do without the
+// filesystem (§10.4): a unit source path that does not resolve, and a claim whose
+// quote is not found in its cited source (receipt verification).
 func (cfg *Config) sourceProblems(units []contextstore.Unit) []harnesscheck.Problem {
 	repo := cfg.repoDir()
 	exists := func(source string) bool {
 		_, err := os.Stat(filepath.Join(repo, source))
 		return err == nil
+	}
+	read := func(source string) (string, error) {
+		data, err := os.ReadFile(filepath.Join(repo, source))
+		return string(data), err
 	}
 	problems := make([]harnesscheck.Problem, 0)
 	for _, dangling := range contextstore.DanglingSources(units, exists) {
@@ -79,6 +84,13 @@ func (cfg *Config) sourceProblems(units []contextstore.Unit) []harnesscheck.Prob
 		problems = append(problems, harnesscheck.Problem{
 			Kind: harnesscheck.KindDanglingSource, Ref: id,
 			Detail: "provenance source not found: " + source,
+		})
+	}
+	for _, unverified := range contextstore.UnverifiedClaims(units, read) {
+		id, quote, _ := strings.Cut(unverified, ": ")
+		problems = append(problems, harnesscheck.Problem{
+			Kind: harnesscheck.KindUnverifiedClaim, Ref: id,
+			Detail: "claim quote not found in cited source: " + quote,
 		})
 	}
 	return problems

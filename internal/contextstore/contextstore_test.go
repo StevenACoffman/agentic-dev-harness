@@ -329,3 +329,23 @@ func TestDanglingSources(t *testing.T) {
 		t.Errorf("DanglingSources = %v, want [note: docs/missing.md]", got)
 	}
 }
+
+func TestUnverifiedClaims(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "traced", Claims: []contextstore.Claim{{Quote: "found me", Source: "a.go"}}},
+		{ID: "absent", Claims: []contextstore.Claim{{Quote: "not here", Source: "a.go"}}},
+		{ID: "unreadable", Claims: []contextstore.Claim{{Quote: "x", Source: "gone.go"}}},
+		{ID: "urlclaim", Claims: []contextstore.Claim{{Quote: "x", Source: "https://ok.example"}}},
+	}
+	read := func(p string) (string, error) {
+		if p == "a.go" {
+			return "prefix found me suffix", nil
+		}
+		return "", os.ErrNotExist
+	}
+	got := contextstore.UnverifiedClaims(units, read)
+	want := []string{"absent: not here", "unreadable: x"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("UnverifiedClaims = %v, want %v", got, want)
+	}
+}

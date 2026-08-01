@@ -252,6 +252,14 @@ func (cfg *Config) wikiLint(units []contextstore.Unit) int {
 		bad++
 		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s (provenance source not found)\n", dangling)
 	}
+	for _, unverified := range contextstore.UnverifiedClaims(units, cfg.sourceRead) {
+		bad++
+		_, _ = fmt.Fprintf(
+			cfg.Stderr,
+			"unit %s (claim quote not found in cited source)\n",
+			unverified,
+		)
+	}
 	return bad
 }
 
@@ -260,6 +268,13 @@ func (cfg *Config) wikiLint(units []contextstore.Unit) int {
 func (cfg *Config) sourceExists(source string) bool {
 	_, err := os.Stat(filepath.Join(cfg.repoDir(), source))
 	return err == nil
+}
+
+// sourceRead reads a repo-relative provenance source — the injected file read that
+// lets claim quote-tracing stay a pure core (§10.4 receipt verification).
+func (cfg *Config) sourceRead(source string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(cfg.repoDir(), source))
+	return string(data), err
 }
 
 // verify runs each unit's declared integrity check (§10.4 anti-drift): the §13 tool
