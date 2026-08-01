@@ -339,6 +339,72 @@ pattern is a genuinely novel add for the context lever:
       pipelines over the `--jsonl` envelope), so distill→optimize→gate is a declared
       pipeline.
 
+### From a Peer-System Survey (`emulo`, `PolyBrain`, the Hermes family, `darwinian_evolver`)
+
+Seven `~/Documents/git` systems examined for additive techniques (2026-08-01). Most
+overlap adh's existing machinery — and adh is **ahead** of both evolution repos
+(`darwinian_evolver`, `hermes-agent-self-evolution`) on gating rigor: neither has
+McNemar, effect-size thresholds, multi-run seeded replication, or judge calibration,
+which adh does. **Overlap to skip** (confirmed across all seven): the five-stage gated
+loop, tool registry + `run`, the relay, the full sleep cycle (rubric floor + strict-`>`
+ratchet + judge + held-out splits + replication verdict), lesson promotion, standing
+loops + `tick`, `doctor`, routing eval, effectiveness north-star, staged-never-auto-
+adopt, provenance/trust/lifecycle units, content-hash no-op guards, secret redaction,
+PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
+
+- [ ] **Temporal-stratum gating for promotions (Tier 1, §11/§18.2).** From `emulo`
+      (`emulo_autopilot/policy.py:37-41`): require a lesson / miss-route / promoted unit
+      to be evidenced across **≥2 distinct time strata** (year-month), not just ≥2
+      instances, before it promotes. An independence axis *orthogonal* to the
+      seeded-partition replication verdict (which is orthogonal in split-space, not
+      time) — it rejects short-burst anomalies "horizontally across time." Pure and
+      deterministic; plugs into the `failures`/`miss` records + a policy gate before
+      `lesson promote` / `context misses` proposes. Finally gives the deferred `Clock` a
+      real consumer, and directly serves the "accretive, not a transient RNG blip" goal.
+- [ ] **Critic coverage / blind-spot history (Tier 1, §19/§10.3).** From `super-hermes`
+      (`.prism-history.md`), echoed by `darwinian_evolver`'s learning-log and GEPA's
+      feedback field — **three of the seven converge on it.** After each critic/eval,
+      append `{emphasized, under-covered angles, recommend-next}` to an append-only
+      history; the next critic prompt reads it and steers to under-covered dimensions.
+      This is the **routing-learns-from-misses pattern applied to the critic/eval
+      lever** — accretion on the #1 quality lever. Deterministic record + a prompt seed.
+- [ ] **Provenance / receipt verification gate (Tier 1, §10.4).** From `emulo`'s
+      `verify` (traces every quoted claim back to a source log; unfound quotes exit
+      non-zero; single-session quotes are flagged) and `PolyBrain`'s per-claim PASS/FAIL
+      citation pipeline. Extend `doctor`/`context verify` so every claim/citation in a
+      promoted unit traces to a **real source** — the cited path/URL exists and
+      (deterministically) contains the quoted token. The deterministic half is a real
+      gate; serves the "provenance weighted by how it was earned" goal.
+- [ ] **Reflective trace into the optimizer (Tier 2, §18).** From `hermes-agent-self-
+      evolution` (DSPy + GEPA, `evolution/core/fitness.py:34-104`): feed the actual
+      failure **trace/diagnostics** (which held-out tasks failed and *why*) into the
+      relay proposal, not just the ranked reflection modes. Cheap — enrich
+      `consolidate.ProposePrompt`; the relayed agent proposes better edits when it sees
+      causation. (GEPA beats RL +6% at 35× fewer rollouts by reading traces.)
+- [ ] **Scope-tagged lessons (Tier 2, §10/§11).** From `emulo`
+      (`contracts.py:78-96`): a promoted unit/lesson carries a `scope:[context-tags]` so
+      it routes/gates **only in its context**, not universally — a context-specific
+      correction cannot over-govern every arc. Composes with the OKF labels + trust tier.
+- [ ] **Multi-signal accretion triggers + root-cause triage (Tier 2, §11/§10.3).** From
+      `hermes-dojo` (`monitor.py:53-141`) and `emulo`'s usage report: record
+      repeated-reject / rephrased-ask / retry-loop as lesson-candidates (in a
+      relay-driven harness, "user correction" = the human's reject/rework text; a
+      repeated-reject is the analogue), and **triage root cause** (infra/auth/rate-limit
+      vs a real skill/context gap) before acting, so effort is not spent fixing infra.
+- [ ] **Fixable-vs-structural finding taxonomy (Tier 2, §12/§19.2).** From `super-hermes`
+      conservation-law classification: add a `structural` critic finding kind that routes
+      to an **ADR/decision** (a trade-off to design around) instead of a rework loop —
+      composes directly with the ADR decision-proof and NFR trade-off machinery.
+- [ ] Optional / against-grain / larger (Tier 3): adaptive percentile + novelty
+      selection (`darwinian_evolver`'s sigmoid sharpness/midpoint + `1/(1+novelty·
+      children)`) — an *alternative* to adh's deliberate strict-`>` gate, not a
+      replacement; richer generated-artifact templates (checklist/anti-patterns/
+      integration) from `hermes-skill-factory`; schema-enforced plan-audit before
+      execution from `PolyBrain` (`schema.json`); and external session-log mining
+      (Claude/Codex/Copilot `*.jsonl` → context units / eval examples, secret-redacted —
+      adh's `redact` already covers the safety half) from `emulo` + `hermes-agent-self-
+      evolution`.
+
 ## Ported from Skillsaw (Done)
 
 - [x] `internal/judge` — deterministic rule-judge (6 operators; hard/soft), plus
