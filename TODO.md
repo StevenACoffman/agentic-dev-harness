@@ -352,35 +352,40 @@ loops + `tick`, `doctor`, routing eval, effectiveness north-star, staged-never-a
 adopt, provenance/trust/lifecycle units, content-hash no-op guards, secret redaction,
 PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
 
-- [ ] **Temporal-stratum gating for promotions (Tier 1, §11/§18.2).** From `emulo`
-      (`emulo_autopilot/policy.py:37-41`): require a lesson / miss-route / promoted unit
-      to be evidenced across **≥2 distinct time strata** (year-month), not just ≥2
-      instances, before it promotes. An independence axis *orthogonal* to the
-      seeded-partition replication verdict (which is orthogonal in split-space, not
-      time) — it rejects short-burst anomalies "horizontally across time." Pure and
-      deterministic; plugs into the `failures`/`miss` records + a policy gate before
-      `lesson promote` / `context misses` proposes. Finally gives the deferred `Clock` a
-      real consumer, and directly serves the "accretive, not a transient RNG blip" goal.
-- [ ] **Critic coverage / blind-spot history (Tier 1, §19/§10.3).** From `super-hermes`
-      (`.prism-history.md`), echoed by `darwinian_evolver`'s learning-log and GEPA's
-      feedback field — **three of the seven converge on it.** After each critic/eval,
-      append `{emphasized, under-covered angles, recommend-next}` to an append-only
-      history; the next critic prompt reads it and steers to under-covered dimensions.
-      This is the **routing-learns-from-misses pattern applied to the critic/eval
-      lever** — accretion on the #1 quality lever. Deterministic record + a prompt seed.
-- [ ] **Provenance / receipt verification gate (Tier 1, §10.4).** From `emulo`'s
-      `verify` (traces every quoted claim back to a source log; unfound quotes exit
-      non-zero; single-session quotes are flagged) and `PolyBrain`'s per-claim PASS/FAIL
-      citation pipeline. Extend `doctor`/`context verify` so every claim/citation in a
-      promoted unit traces to a **real source** — the cited path/URL exists and
-      (deterministically) contains the quoted token. The deterministic half is a real
-      gate; serves the "provenance weighted by how it was earned" goal.
-- [ ] **Reflective trace into the optimizer (Tier 2, §18).** From `hermes-agent-self-
-      evolution` (DSPy + GEPA, `evolution/core/fitness.py:34-104`): feed the actual
-      failure **trace/diagnostics** (which held-out tasks failed and *why*) into the
-      relay proposal, not just the ranked reflection modes. Cheap — enrich
-      `consolidate.ProposePrompt`; the relayed agent proposes better edits when it sees
-      causation. (GEPA beats RL +6% at 35× fewer rollouts by reading traces.)
+- [x] **Temporal-stratum gating for promotions (Tier 1, §11/§18.2).** DONE for the
+      structured miss log (the `[]string` failures registry is a documented follow-up).
+      `contextstore.Miss` gained a `Stratum` (year-month); `run`/`step` `recordMiss`
+      stamp `contextstore.Stratum(time.Now())` (the Clock stays in the shell — its first
+      real consumer). `ProposeRoutes` now requires **≥2 distinct strata** (`minStrata`)
+      *and* the count threshold, so a same-day burst is recorded but not proposed — only
+      a pattern sustained across time earns a route. An independence axis orthogonal to
+      the seeded-partition replication verdict. Verified: `ProposeRoutes` strata table +
+      an E2E test (two same-stratum gaps record but do not propose). **Follow-up:** the
+      same gate for lesson candidates once the failures registry carries timestamps.
+- [x] **Critic coverage / blind-spot history (Tier 1, §19/§10.3).** DONE. A pure
+      `internal/critic` coverage log (`AppendCoverage`/`LoadCoverage`/`UnderCovered` +
+      `adh.FindingKinds`, `.adh/critic-coverage.jsonl`): `run`/`step` record an arc's
+      surfaced finding kinds after a critic turn, and the `Inputs`→`Grounding` seam
+      carries the under-covered kinds into `critic.tmpl` ("recent reviews under-covered
+      these check kinds — probe them"), steering the next critic to the gaps. The
+      routing-learns-from-misses pattern applied to the critic/eval lever. Verified:
+      `UnderCovered`/`FindingKinds`/round-trip tables + the template render.
+- [x] **Provenance / receipt verification gate (Tier 1, §10.4).** DONE for the
+      deterministic half (source-path existence; per-claim quote-tracing is the
+      follow-up — needs a claim/citation structure in unit content). `contextstore.
+      LooksLikePath` + `DanglingSources` (pure, filesystem injected) flag a unit `source`
+      that looks like a repo path but does not resolve (URLs and prose skipped); wired
+      into `context lint` (exit 12) and `doctor`/`harnesscheck` (exit 16,
+      `dangling_source`). Serves the "provenance weighted by how it was earned" goal.
+      Verified: `LooksLikePath`/`DanglingSources` tables + `context lint`/`doctor`
+      journeys.
+- [x] **Reflective trace into the optimizer (Tier 2, §18).** DONE. `consolidate.
+      ProposePrompt` now mines the tasks and scores the selection-split assertions
+      against the current artifact (both pure), rendering a **"currently-failing
+      held-out assertions — target these"** section — the failure trace, not just the
+      ranked reflection modes, so the relayed agent proposes a targeted edit. Self-
+      contained: no signature or shell change. Verified: a prompt-trace test (an artifact
+      missing the class surfaces it; a satisfied artifact shows none).
 - [ ] **Scope-tagged lessons (Tier 2, §10/§11).** From `emulo`
       (`contracts.py:78-96`): a promoted unit/lesson carries a `scope:[context-tags]` so
       it routes/gates **only in its context**, not universally — a context-specific
