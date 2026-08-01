@@ -109,6 +109,15 @@ func (k FindingKind) Valid() bool {
 	}
 }
 
+// FindingKinds returns every known finding kind (§19.2), the single owner of the
+// list — so callers (e.g. the critic coverage check) iterate the full set without
+// re-declaring it.
+func FindingKinds() []FindingKind {
+	return []FindingKind{
+		FindingOracle, FindingInvariant, FindingDevice, FindingNFR, FindingContract,
+	}
+}
+
 // NextStage returns the stage after s in the change pipeline and whether one
 // exists. Ops is terminal, so NextStage(StageOps) reports ("", false).
 func NextStage(s Stage) (Stage, bool) {

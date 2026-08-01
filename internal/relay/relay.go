@@ -46,7 +46,7 @@ type Outcome struct {
 func Emit(
 	arc *adh.Arc,
 	storeDir string,
-	in critic.Inputs,
+	in *critic.Inputs,
 	renderer stage.Prompter,
 	class authority.ModelClass,
 	judgment authority.JudgmentRoles,

@@ -9,7 +9,9 @@ package doctorcmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -57,7 +59,29 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	return cfg.report(harnesscheck.Check(&in))
+	// harnesscheck stays pure over metadata; provenance source existence needs the
+	// filesystem, so the command runs it and merges the defects (§10.4).
+	problems := append(harnesscheck.Check(&in), cfg.sourceProblems(in.Units)...)
+	return cfg.report(problems)
+}
+
+// sourceProblems reports each unit provenance source path that does not resolve
+// under the repo root — receipt verification the pure check cannot do (§10.4).
+func (cfg *Config) sourceProblems(units []contextstore.Unit) []harnesscheck.Problem {
+	repo := cfg.repoDir()
+	exists := func(source string) bool {
+		_, err := os.Stat(filepath.Join(repo, source))
+		return err == nil
+	}
+	problems := make([]harnesscheck.Problem, 0)
+	for _, dangling := range contextstore.DanglingSources(units, exists) {
+		id, source, _ := strings.Cut(dangling, ": ")
+		problems = append(problems, harnesscheck.Problem{
+			Kind: harnesscheck.KindDanglingSource, Ref: id,
+			Detail: "provenance source not found: " + source,
+		})
+	}
+	return problems
 }
 
 // load gathers the harness state the check reasons over from the repo root — the

@@ -9,7 +9,10 @@ Change under review (unified diff):
 {{.Diff}}{{end}}{{if .Proof}}
 Proof artifacts the builder left:
 {{range .Proof}}- {{.Path}}
-{{end}}{{end}}{{template "context" .}}{{template "tools" .}}{{if not .HasGrounding}}
+{{end}}{{end}}{{template "context" .}}{{template "tools" .}}{{if .Coverage}}
+Recent reviews under-covered these check kinds — probe them here if the change
+warrants it: {{range $i, $k := .Coverage}}{{if $i}}, {{end}}{{$k}}{{end}}
+{{end}}{{if not .HasGrounding}}
 No repository grounding was routed for this review.
 {{end}}{{else}}
 No repository grounding was routed for this review.

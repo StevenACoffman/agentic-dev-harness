@@ -27,6 +27,7 @@ const (
 	KindDanglingIntegrity = "dangling_integrity" // a unit's integrity check names no declared tool
 	KindDanglingSupersede = "dangling_supersede" // a unit's superseded_by names no existing unit
 	KindInvalidTrust      = "invalid_trust"      // a unit's trust tier is outside the taxonomy
+	KindDanglingSource    = "dangling_source"    // a unit's provenance source path does not resolve
 )
 
 // Inputs bundles the loaded harness state Check reasons over.

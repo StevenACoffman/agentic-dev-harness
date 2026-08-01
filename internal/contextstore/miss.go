@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
@@ -14,29 +15,53 @@ import (
 // arc that declared a footprint the store could not route — not an audit record.
 const MissFile = ".adh/context-misses.jsonl"
 
+// minStrata is how many distinct time strata (year-month) a key must be missed
+// across before a route is proposed (§10.3): a temporal independence axis orthogonal
+// to the count threshold, so a one-day burst of misses does not earn a route — only a
+// pattern sustained across time does.
+const minStrata = 2
+
 // Miss is one recorded routing miss: an arc whose labels/paths routed no context
-// (the §19.1 routing gap). Accumulated misses are the signal that the store is
-// missing a route the arcs keep asking for.
+// (the §19.1 routing gap), stamped with the time Stratum (year-month) it occurred in.
+// Accumulated misses are the signal that the store is missing a route the arcs keep
+// asking for.
 type Miss struct {
-	Arc    string   `json:"arc"`
-	Labels []string `json:"labels,omitempty"`
-	Paths  []string `json:"paths,omitempty"`
+	Arc     string   `json:"arc"`
+	Labels  []string `json:"labels,omitempty"`
+	Paths   []string `json:"paths,omitempty"`
+	Stratum string   `json:"stratum,omitempty"`
 }
 
 // RouteProposal is a proposed deterministic route the miss log has earned: a label
-// or path the arcs missed on at least a threshold number of times, so authoring a
-// unit for it would convert the recurring miss into a route. Kind is "label" or
-// "path"; Count is how many recorded misses named Key.
+// or path the arcs missed on at least a threshold number of times across at least
+// minStrata distinct time strata, so authoring a unit for it would convert the
+// sustained miss into a route. Kind is "label" or "path"; Count is how many recorded
+// misses named Key; Strata is how many distinct strata they spanned.
 type RouteProposal struct {
-	Key   string `json:"key"`
-	Kind  string `json:"kind"`
-	Count int    `json:"count"`
+	Key    string `json:"key"`
+	Kind   string `json:"kind"`
+	Count  int    `json:"count"`
+	Strata int    `json:"strata"`
+}
+
+// keyStat accumulates a candidate route's miss count and the distinct time strata it
+// was missed across, for the temporal-stratum gate.
+type keyStat struct {
+	count  int
+	strata map[string]bool
+}
+
+// Stratum is the year-month time stratum a miss belongs to (§10.3). The shell passes
+// time.Now(); keeping the format here and the clock in the shell leaves the routing
+// core clock-free.
+func Stratum(t time.Time) string {
+	return t.UTC().Format("2006-01")
 }
 
 // AppendMiss records one routing miss to the append-only log at path, creating the
 // parent directory and file if needed. It is the I/O shell to ProposeRoutes' pure
 // core; a caller records misses so the router can later learn from them.
-func AppendMiss(path string, miss Miss) error {
+func AppendMiss(path string, miss *Miss) error {
 	const op = "contextstore.AppendMiss"
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return &adh.Error{Op: op, Err: err}
@@ -79,18 +104,19 @@ func LoadMisses(path string) ([]Miss, error) {
 }
 
 // ProposeRoutes turns the accumulated misses into route proposals: any label or
-// path named in at least threshold misses, ranked by recurrence (then kind, then
-// key) so the most-asked-for route comes first. It is pure — the caller decides
-// what to do with a proposal (author a unit, gated at §11); nothing is auto-routed.
+// path missed on at least threshold times AND across at least minStrata distinct time
+// strata (§10.3 — a sustained pattern, not a one-day burst), ranked by recurrence
+// (then kind, then key). It is pure — the caller decides what to do with a proposal
+// (author a unit, gated at §11); nothing is auto-routed.
 func ProposeRoutes(misses []Miss, threshold int) []RouteProposal {
-	labels := make(map[string]int)
-	paths := make(map[string]int)
+	labels := make(map[string]*keyStat)
+	paths := make(map[string]*keyStat)
 	for i := range misses {
 		for _, label := range misses[i].Labels {
-			labels[label]++
+			tally(labels, label, misses[i].Stratum)
 		}
 		for _, path := range misses[i].Paths {
-			paths[path]++
+			tally(paths, path, misses[i].Stratum)
 		}
 	}
 	proposals := make([]RouteProposal, 0)
@@ -109,16 +135,33 @@ func ProposeRoutes(misses []Miss, threshold int) []RouteProposal {
 	return proposals
 }
 
-// appendOverThreshold adds a proposal for each key whose count reaches threshold.
+// tally records one miss against a candidate key: its count and its distinct
+// non-empty time strata.
+func tally(stats map[string]*keyStat, key, stratum string) {
+	stat := stats[key]
+	if stat == nil {
+		stat = &keyStat{strata: make(map[string]bool)}
+		stats[key] = stat
+	}
+	stat.count++
+	if stratum != "" {
+		stat.strata[stratum] = true
+	}
+}
+
+// appendOverThreshold adds a proposal for each key that reaches the count threshold
+// across at least minStrata distinct strata.
 func appendOverThreshold(
 	proposals []RouteProposal,
-	counts map[string]int,
+	stats map[string]*keyStat,
 	kind string,
 	threshold int,
 ) []RouteProposal {
-	for key, n := range counts {
-		if n >= threshold {
-			proposals = append(proposals, RouteProposal{Key: key, Kind: kind, Count: n})
+	for key, stat := range stats {
+		if stat.count >= threshold && len(stat.strata) >= minStrata {
+			proposals = append(proposals, RouteProposal{
+				Key: key, Kind: kind, Count: stat.count, Strata: len(stat.strata),
+			})
 		}
 	}
 	return proposals

@@ -28,6 +28,7 @@ type Grounding struct {
 	Proof         []proof.Artifact    // the proof packet the builder left
 	Context       []contextstore.Unit // units routed for the arc's labels/paths (§10)
 	Tools         []toolreg.Tool      // capabilities available to the stage (§13)
+	Coverage      []string            // finding kinds recent critics under-covered (§19)
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -39,6 +40,7 @@ type Inputs struct {
 	AcceptanceBar string
 	Diff          string
 	Tools         []toolreg.Tool
+	Coverage      []string
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -49,7 +51,7 @@ func Ground(
 	arc *adh.Arc,
 	units []contextstore.Unit,
 	pkt *proof.Packet,
-	in Inputs,
+	in *Inputs,
 ) Grounding {
 	g := Grounding{
 		Paths:         arc.Paths,
@@ -57,6 +59,7 @@ func Ground(
 		AcceptanceBar: in.AcceptanceBar,
 		Context:       contextstore.Route(units, arc.Labels, arc.Paths, MaxContextUnits),
 		Tools:         in.Tools,
+		Coverage:      in.Coverage,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts
@@ -93,7 +96,7 @@ func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Pack
 
 // Load assembles the critic's working set. in carries the shell-supplied bar and
 // diff, passed through to Ground.
-func Load(arc *adh.Arc, storeDir string, in Inputs) (Grounding, error) {
+func Load(arc *adh.Arc, storeDir string, in *Inputs) (Grounding, error) {
 	units, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return Grounding{}, err
@@ -110,7 +113,7 @@ func Load(arc *adh.Arc, storeDir string, in Inputs) (Grounding, error) {
 // proof, means the environment did not teach this review, so the critic would fall
 // back on its own priors; callers surface it as exit 12 (§10). An empty or absent
 // store, or an arc that declared no footprint, is simply ungrounded, not a gap.
-func ForStage(arc *adh.Arc, storeDir string, in Inputs) (*Grounding, bool, error) {
+func ForStage(arc *adh.Arc, storeDir string, in *Inputs) (*Grounding, bool, error) {
 	units, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return nil, false, err

@@ -156,17 +156,21 @@ func TestDuplicateIDs(t *testing.T) {
 
 func TestProposeRoutes(t *testing.T) {
 	misses := []contextstore.Miss{
-		{Arc: "a1", Labels: []string{"security"}, Paths: []string{"pkg/auth"}},
-		{Arc: "a2", Labels: []string{"security"}},
-		{Arc: "a3", Labels: []string{"perf"}},
+		// "security" missed twice across two distinct strata → proposed.
+		{Arc: "a1", Labels: []string{"security"}, Stratum: "2026-07"},
+		{Arc: "a2", Labels: []string{"security"}, Stratum: "2026-08"},
+		// "burst" missed twice but in one stratum → NOT proposed (temporal gate).
+		{Arc: "a3", Labels: []string{"burst"}, Stratum: "2026-08"},
+		{Arc: "a4", Labels: []string{"burst"}, Stratum: "2026-08"},
+		// "perf" once → below the count threshold.
+		{Arc: "a5", Labels: []string{"perf"}, Stratum: "2026-06"},
 	}
-	// Threshold 2: only "security" (2 hits) is proposed; "perf"/"pkg/auth" (1 each) are not.
 	got := contextstore.ProposeRoutes(misses, 2)
 	if len(got) != 1 {
-		t.Fatalf("ProposeRoutes = %+v, want one proposal", got)
+		t.Fatalf("ProposeRoutes = %+v, want one proposal (only cross-stratum security)", got)
 	}
-	if got[0].Key != "security" || got[0].Kind != "label" || got[0].Count != 2 {
-		t.Errorf("proposal = %+v, want security/label/2", got[0])
+	if got[0].Key != "security" || got[0].Count != 2 || got[0].Strata != 2 {
+		t.Errorf("proposal = %+v, want security count 2 strata 2", got[0])
 	}
 }
 
@@ -176,8 +180,8 @@ func TestAppendLoadMissesRoundTrip(t *testing.T) {
 		{Arc: "a1", Labels: []string{"x"}},
 		{Arc: "a2", Paths: []string{"cmd"}},
 	}
-	for _, m := range want {
-		if err := contextstore.AppendMiss(path, m); err != nil {
+	for i := range want {
+		if err := contextstore.AppendMiss(path, &want[i]); err != nil {
 			t.Fatalf("AppendMiss: %v", err)
 		}
 	}
@@ -292,5 +296,36 @@ func TestIndex(t *testing.T) {
 	}
 	if strings.Contains(idx, "old") {
 		t.Errorf("index must exclude a superseded unit:\n%s", idx)
+	}
+}
+
+func TestLooksLikePath(t *testing.T) {
+	tests := []struct {
+		src  string
+		want bool
+	}{
+		{"docs/security.md", true},
+		{"README.md", true},
+		{"https://owasp.org/asvs", false}, // URL
+		{"OWASP ASVS v4", false},          // prose (whitespace)
+		{"", false},
+		{"glossary", false}, // bare word, no sep/ext
+	}
+	for _, tt := range tests {
+		if got := contextstore.LooksLikePath(tt.src); got != tt.want {
+			t.Errorf("LooksLikePath(%q) = %v, want %v", tt.src, got, tt.want)
+		}
+	}
+}
+
+func TestDanglingSources(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "rule", Sources: []string{"docs/present.md", "https://ok.example", "prose citation"}},
+		{ID: "note", Sources: []string{"docs/missing.md"}},
+	}
+	exists := func(p string) bool { return p == "docs/present.md" }
+	got := contextstore.DanglingSources(units, exists)
+	if len(got) != 1 || got[0] != "note: docs/missing.md" {
+		t.Errorf("DanglingSources = %v, want [note: docs/missing.md]", got)
 	}
 }

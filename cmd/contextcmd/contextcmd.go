@@ -248,7 +248,18 @@ func (cfg *Config) wikiLint(units []contextstore.Unit) int {
 		bad++
 		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: unknown trust tier\n", id)
 	}
+	for _, dangling := range contextstore.DanglingSources(units, cfg.sourceExists) {
+		bad++
+		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s (provenance source not found)\n", dangling)
+	}
 	return bad
+}
+
+// sourceExists reports whether a repo-relative provenance source resolves under the
+// repo root — the injected filesystem check for receipt verification (§10.4).
+func (cfg *Config) sourceExists(source string) bool {
+	_, err := os.Stat(filepath.Join(cfg.repoDir(), source))
+	return err == nil
 }
 
 // verify runs each unit's declared integrity check (§10.4 anti-drift): the §13 tool

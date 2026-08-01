@@ -37,6 +37,34 @@ func DanglingSupersessions(units []Unit) []string {
 	return dangling
 }
 
+// LooksLikePath reports whether a provenance source is a repo-relative path — a
+// candidate for existence checking — rather than a URL or a prose citation: it has
+// no URL scheme, no whitespace, and contains a path separator or a file extension.
+func LooksLikePath(source string) bool {
+	if source == "" || strings.Contains(source, "://") || strings.ContainsAny(source, " \t") {
+		return false
+	}
+	return strings.Contains(source, "/") || strings.Contains(source, ".")
+}
+
+// DanglingSources returns "id: source" for each unit provenance source that looks
+// like a repo path but does not resolve, per the injected exists predicate (§10.4
+// receipt verification): a promoted unit citing a source that is not there is a
+// provenance defect. URL and prose sources are skipped. It is pure — the caller
+// injects the filesystem check so the core stays testable. Sorted.
+func DanglingSources(units []Unit, exists func(string) bool) []string {
+	dangling := make([]string, 0)
+	for i := range units {
+		for _, src := range units[i].Sources {
+			if LooksLikePath(src) && !exists(src) {
+				dangling = append(dangling, units[i].ID+": "+src)
+			}
+		}
+	}
+	sort.Strings(dangling)
+	return dangling
+}
+
 // InvalidTrust returns the ids of units whose trust tier is outside the taxonomy
 // (§10.4). Sorted. Pure.
 func InvalidTrust(units []Unit) []string {
