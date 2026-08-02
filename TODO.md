@@ -342,9 +342,16 @@ pattern is a genuinely novel add for the context lever:
       change to a tool that keeps failing across ≥2 strata (Subject/Proposal now carry a
       `Kind` so the output names "tool" vs "unit"). Verified: `ObserveTools` table,
       `toolrun` round-trip, `Registry.Validate` KPI case, a `kpi` tool journey + smoke.
-      **Residual follow-up:** auto-log tool runs from `context verify`/NFR adjudication too
-      (today `adh tool run` — the relay's actual tool path — is the source), and a
-      `run_duration_ms` metric once timing is recorded.
+      **Residual follow-up DONE:** every §13 tool run is now logged through one owner
+      (`toolrun.AppendOutcome`) carrying its duration — `adh tool run`, `context verify`
+      (a drift is a failed run), and declared-tool adjudication during `adh eval` (the real
+      `RepoAdjudicator` gets a `logPath`; the test constructor stays silent). `ObserveTools`
+      adds a `run_duration_ms` KPI (mean latency over started runs), so `adh kpi` proposes a
+      change to a tool that keeps failing *or* running slow across ≥2 strata. Verified:
+      `AppendOutcome`, `toolDuration`, a `context verify` log journey, an adjudicator log
+      test, and a slow-tool `kpi` journey. **Stays out by design:** NFR Meter runs (their
+      exit code is not the pass/fail signal) and percentile latency (mean is the cheap,
+      deterministic aggregation).
 - [x] Effectiveness north-star (§16): DONE as a coarse proxy. `metrics.ClassifyHistory`
       /`StepClass.Ratio` (pure) classify each arc's history into **deterministic-handled**
       steps (evaluation, gate, commit, close) vs **LLM/critic-handled** turns (a
