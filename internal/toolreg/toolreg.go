@@ -17,13 +17,15 @@ import (
 const DefaultRegistryFile = ".adh/tools.json"
 
 // Tool is one declared capability: how to run it, the shape of its result, what
-// it verifies, and the hint printed when it fails.
+// it verifies, the hint printed when it fails, and any KPIs whose degradation
+// proposes a change to the tool (§16/§18).
 type Tool struct {
-	ID         string `json:"id"`
-	Run        string `json:"run"`
-	Result     string `json:"result,omitempty"`
-	Verifies   string `json:"verifies"`
-	RepairHint string `json:"repair_hint,omitempty"`
+	ID         string    `json:"id"`
+	Run        string    `json:"run"`
+	Result     string    `json:"result,omitempty"`
+	Verifies   string    `json:"verifies"`
+	RepairHint string    `json:"repair_hint,omitempty"`
+	KPIs       []adh.KPI `json:"kpis,omitempty"`
 }
 
 // Registry is the set of declared tools.
@@ -51,6 +53,14 @@ func (r Registry) Validate() error {
 			}
 		case seen[tool.ID]:
 			return &adh.Error{Code: adh.EINVALID, Message: "duplicate tool id: " + tool.ID}
+		}
+		for j := range tool.KPIs {
+			if !tool.KPIs[j].Valid() {
+				return &adh.Error{
+					Code:    adh.EINVALID,
+					Message: "tool " + tool.ID + " declares a malformed KPI (§16/§18)",
+				}
+			}
 		}
 		seen[tool.ID] = true
 	}
