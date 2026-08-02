@@ -1,5 +1,6 @@
-// Package kpicmd implements the "kpi" CLI command: measure each context unit's declared
-// KPIs against the failure-record log and report the degradation proposals a breach
+// Package kpicmd implements the "kpi" CLI command: measure each context unit's and
+// declared tool's KPIs against how they actually behaved — the failure-record log for
+// units, the tool-run log for tools — and report the degradation proposals a breach
 // earned (SPEC-ADDITIONS §16/§18). It proposes, never adopts — the change is a human's,
 // and a proposal fires only after the breach replicates across independent strata (§18.2).
 package kpicmd
@@ -15,6 +16,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	kpilib "github.com/StevenACoffman/agentic-dev-harness/internal/kpi"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // Config holds the configuration for the kpi command.
@@ -32,11 +35,12 @@ func New(parent *root.Config) *Config {
 	cfg.Command = &ff.Command{
 		Name:      "kpi",
 		Usage:     "agentic-dev-harness kpi",
-		ShortHelp: "propose config changes from degraded unit KPIs",
-		LongHelp: "Measure each context unit's declared KPIs against the failure-record " +
-			"log and report the degradation proposals a breach earned (SPEC-ADDITIONS " +
-			"§16/§18). Advisory: a proposal is never auto-adopted, and fires only after " +
-			"the breach replicates across independent time strata (§18.2).",
+		ShortHelp: "propose config changes from degraded unit and tool KPIs",
+		LongHelp: "Measure each context unit's and declared tool's KPIs against how they " +
+			"behaved — the failure-record log for units, the tool-run log for tools — and " +
+			"report the degradation proposals a breach earned (SPEC-ADDITIONS §16/§18). " +
+			"Advisory: a proposal is never auto-adopted, and fires only after the breach " +
+			"replicates across independent time strata (§18.2).",
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -53,7 +57,19 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("kpi: %w", err)
 	}
-	proposals := kpilib.Propose(kpilib.ObserveUnits(units, records), kpilib.MinStrata)
+	reg, err := toolreg.LoadRepo(cfg.repoDir())
+	if err != nil {
+		return fmt.Errorf("kpi: %w", err)
+	}
+	runs, err := toolrun.Load(filepath.Join(cfg.repoDir(), toolrun.RunFile))
+	if err != nil {
+		return fmt.Errorf("kpi: %w", err)
+	}
+	subjects := append(
+		kpilib.ObserveUnits(units, records),
+		kpilib.ObserveTools(reg.Tools, runs)...,
+	)
+	proposals := kpilib.Propose(subjects, kpilib.MinStrata)
 	return cfg.report(proposals)
 }
 
@@ -74,8 +90,8 @@ func (cfg *Config) report(proposals []kpilib.Proposal) error {
 	for i := range proposals {
 		p := proposals[i]
 		_, _ = fmt.Fprintf(cfg.Stdout,
-			"propose: unit %s degraded on %s — observed %g vs threshold %g across %d strata\n",
-			p.Subject, p.Metric, p.Observed, p.Threshold, p.Strata)
+			"propose: %s %s degraded on %s — observed %g vs threshold %g across %d strata\n",
+			p.Kind, p.Subject, p.Metric, p.Observed, p.Threshold, p.Strata)
 	}
 	return nil
 }

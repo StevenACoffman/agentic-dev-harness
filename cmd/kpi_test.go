@@ -60,3 +60,28 @@ func TestKPIProposesDegradedUnit(t *testing.T) {
 		t.Errorf("single-stratum breach should not propose:\n%s", clean)
 	}
 }
+
+// TestKPIProposesDegradedTool: a declared tool that ran and failed across ≥2 strata
+// breaches its run_failure KPI and earns a proposal naming the tool (§16/§18).
+func TestKPIProposesDegradedTool(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir .adh: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(".adh", "tools.json"), []byte(
+		`{"tools":[{"id":"skillsaw-eval","run":"x","verifies":"y","kpis":`+
+			`[{"metric":"run_failure","threshold":1,"direction":"above"}]}]}`,
+	), 0o600); err != nil {
+		t.Fatalf("seed tools: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(".adh", "tool-runs.json"), []byte(
+		`[{"tool":"skillsaw-eval","stratum":"2026-06","ran":true,"failed":true},`+
+			`{"tool":"skillsaw-eval","stratum":"2026-07","ran":true,"failed":true}]`,
+	), 0o600); err != nil {
+		t.Fatalf("seed tool-runs: %v", err)
+	}
+	out := mustRun(t, "kpi")
+	if !strings.Contains(out, "tool skillsaw-eval") || !strings.Contains(out, "run_failure") {
+		t.Fatalf("kpi did not propose the degraded tool:\n%s", out)
+	}
+}

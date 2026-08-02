@@ -7,6 +7,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/kpi"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 func TestProposeGatesOnBreachAndStrata(t *testing.T) {
@@ -114,6 +116,37 @@ func TestObserveUnits(t *testing.T) {
 	}
 	if obs[0].Value != 2 || obs[0].Strata != 2 {
 		t.Errorf("observation = %+v, want value 2 across 2 strata", obs[0])
+	}
+}
+
+func TestObserveTools(t *testing.T) {
+	tools := []toolreg.Tool{
+		{
+			ID: "skillsaw-eval", Verifies: "rubric floor",
+			KPIs: []adh.KPI{{Metric: "run_failure", Threshold: 1, Direction: adh.WorseWhenAbove}},
+		},
+		{ID: "unmonitored", Verifies: "x"}, // no KPI → no subject
+	}
+	records := []toolrun.Record{
+		{Tool: "skillsaw-eval", Stratum: "2026-06", Ran: true, Failed: true},
+		{Tool: "skillsaw-eval", Stratum: "2026-07", Ran: true, Failed: true},
+		{
+			Tool:    "skillsaw-eval",
+			Stratum: "2026-07",
+			Ran:     true,
+			Failed:  false,
+		}, // passed, not counted
+		{Tool: "other", Stratum: "2026-06", Ran: true, Failed: true}, // different tool
+	}
+	subjects := kpi.ObserveTools(tools, records)
+	if len(subjects) != 1 || subjects[0].ID != "skillsaw-eval" ||
+		subjects[0].Kind != kpi.SubjectTool {
+		t.Fatalf("subjects = %+v, want just the skillsaw tool", subjects)
+	}
+	obs := subjects[0].Observations
+	if len(obs) != 1 || obs[0].Metric != kpi.MetricRunFailure || obs[0].Value != 2 ||
+		obs[0].Strata != 2 {
+		t.Errorf("observation = %+v, want run_failure value 2 across 2 strata", obs)
 	}
 }
 

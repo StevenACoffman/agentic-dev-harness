@@ -1,7 +1,8 @@
-// Package kpi turns declared per-unit KPIs (SPEC-ADDITIONS §16/§18) into gated
-// improvement proposals: it measures a unit against the failure-record log and, when a
-// KPI's threshold is breached across enough independent time strata to trust it
-// (§18.2), proposes a change to that unit. It never adopts one — the proposal is a
+// Package kpi turns declared KPIs on §10 units and §13 tools (SPEC-ADDITIONS §16/§18)
+// into gated improvement proposals: it measures a subject against the log of how it
+// actually behaved — the failure-record log for units, the tool-run log for tools — and
+// when a KPI's threshold is breached across enough independent time strata to trust it
+// (§18.2), proposes a change to that subject. It never adopts one — the proposal is a
 // human's to act on. Every function is pure; the command supplies the loaded inputs.
 package kpi
 
@@ -11,6 +12,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // MinStrata is how many distinct time strata a breach must span before it is proposed
@@ -18,10 +21,22 @@ import (
 // and lesson-promotion gates.
 const MinStrata = 2
 
-// MetricGroundedMiss is the per-unit error KPI ObserveUnits measures: how many times an
-// arc failed *despite* the unit's scope being routed (a grounded miss, §19.2) — the
-// unit's guidance was present yet did not prevent the failure.
-const MetricGroundedMiss = "grounded_miss"
+// Subject kinds, so a proposal names what it concerns (§16/§18).
+const (
+	SubjectUnit = "unit"
+	SubjectTool = "tool"
+)
+
+// Metric names the observation sources measure.
+const (
+	// MetricGroundedMiss is the per-unit error KPI: how many times an arc failed
+	// *despite* the unit's scope being routed (a grounded miss, §19.2) — the unit's
+	// guidance was present yet did not prevent the failure.
+	MetricGroundedMiss = "grounded_miss"
+	// MetricRunFailure is the per-tool error KPI: how many times a declared tool ran
+	// and exited non-zero (§16/§18).
+	MetricRunFailure = "run_failure"
+)
 
 // Observation is a subject's measured value for one metric and the count of distinct
 // time strata it was seen across — the replication axis a proposal gates on (§18.2).
@@ -31,19 +46,22 @@ type Observation struct {
 	Strata int
 }
 
-// Subject bundles a tool or unit id, the KPIs it declares, and the observations
-// measured for it, so Propose can match each KPI to its metric's observation.
+// Subject bundles a tool or unit id, its Kind, the KPIs it declares, and the
+// observations measured for it, so Propose can match each KPI to its metric's
+// observation.
 type Subject struct {
 	ID           string
+	Kind         string
 	KPIs         []adh.KPI
 	Observations []Observation
 }
 
-// Proposal is a degradation a crossed KPI earned (§16/§18): the subject and metric, the
-// observed value against the threshold, and the strata it replicated across. It is a
-// proposed change, never an applied one.
+// Proposal is a degradation a crossed KPI earned (§16/§18): the subject (its id and
+// kind) and metric, the observed value against the threshold, and the strata it
+// replicated across. It is a proposed change, never an applied one.
 type Proposal struct {
 	Subject   string  `json:"subject"`
+	Kind      string  `json:"kind"`
 	Metric    string  `json:"metric"`
 	Observed  float64 `json:"observed"`
 	Threshold float64 `json:"threshold"`
@@ -65,6 +83,7 @@ func Propose(subjects []Subject, minStrata int) []Proposal {
 			}
 			proposals = append(proposals, Proposal{
 				Subject:   subjects[i].ID,
+				Kind:      subjects[i].Kind,
 				Metric:    kpi.Metric,
 				Observed:  obs.Value,
 				Threshold: kpi.Threshold,
@@ -94,6 +113,7 @@ func ObserveUnits(units []contextstore.Unit, records []failures.Record) []Subjec
 		count, strata := groundedMissesInScope(&units[i], records)
 		subjects = append(subjects, Subject{
 			ID:   units[i].ID,
+			Kind: SubjectUnit,
 			KPIs: units[i].KPIs,
 			Observations: []Observation{
 				{Metric: MetricGroundedMiss, Value: float64(count), Strata: strata},
@@ -101,6 +121,44 @@ func ObserveUnits(units []contextstore.Unit, records []failures.Record) []Subjec
 		})
 	}
 	return subjects
+}
+
+// ObserveTools measures each KPI-declaring tool's run_failure value from the tool-run
+// log: the count of runs that ran and exited non-zero, and the distinct strata among
+// them. A tool that declares no KPI is skipped. Pure — the caller loads the registry
+// and the run log.
+func ObserveTools(tools []toolreg.Tool, records []toolrun.Record) []Subject {
+	subjects := make([]Subject, 0)
+	for i := range tools {
+		if len(tools[i].KPIs) == 0 {
+			continue
+		}
+		count, strata := toolFailures(tools[i].ID, records)
+		subjects = append(subjects, Subject{
+			ID:   tools[i].ID,
+			Kind: SubjectTool,
+			KPIs: tools[i].KPIs,
+			Observations: []Observation{
+				{Metric: MetricRunFailure, Value: float64(count), Strata: strata},
+			},
+		})
+	}
+	return subjects
+}
+
+// toolFailures counts a tool's failed runs and the distinct strata among them.
+func toolFailures(id string, records []toolrun.Record) (count, strata int) {
+	seen := make(map[string]bool)
+	for i := range records {
+		if records[i].Tool != id || !records[i].Failed {
+			continue
+		}
+		count++
+		if records[i].Stratum != "" {
+			seen[records[i].Stratum] = true
+		}
+	}
+	return count, len(seen)
 }
 
 // groundedMissesInScope counts the grounded-miss records whose scope overlaps the
