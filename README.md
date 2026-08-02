@@ -35,9 +35,10 @@ Strategy → Execution → Critic → Evaluation → Ops
 - **Critic** reviews it in *cold context* — a fresh agent with no memory of
   building it — so it catches what the builder rationalized away.
 - **Evaluation** adjudicates the critic's findings deterministically: it runs the
-  artifact each finding names and disposes of the arc (confirmed → back to
-  Execution; nothing confirmed → advance, with unconfirmed findings kept as lesson
-  candidates).
+  artifact each finding names — a proof manifest, a built-in check, or a repository-
+  declared §13 tool (the repo's own oracle/device/invariant target) — and disposes of
+  the arc (confirmed → back to Execution; nothing confirmed → advance, with
+  unconfirmed findings kept as lesson candidates).
 - **Ops** ships it, behind a human gate.
 
 A unit of work is an **arc**. `adh run <id>` drives an arc through the stages until
@@ -127,8 +128,9 @@ insufficient guidance). A confirmed **structural** finding — one needing a des
 change — escalates to a human instead of burning rework cycles, while a fixable one
 loops back to Execution. The cold critic is steered toward the check kinds recent
 reviews under-covered, so its blind spots close over time. `adh kpi` proposes a change
-to any context unit whose declared performance indicator degrades and the degradation
-**replicates** across strata — never auto-adopted. A periodic **self-evaluation**
+to any context unit *or declared tool* whose performance indicator degrades and the
+degradation **replicates** across strata — a unit that keeps failing in its scope, a
+tool that keeps exiting non-zero — never auto-adopted. A periodic **self-evaluation**
 (`adh selfeval`) scores health with a delta versus the prior period and a failure
 taxonomy that feeds a registry (`adh failures list`); effectiveness accounting
 (`adh metrics`) keeps proven outcomes beside their cost. The harness's own guiding
@@ -140,9 +142,11 @@ split with a replication verdict — and its own planted-regression self-test.
 
 > Scope note: the arc loop wires Strategy, Execution, the cold Critic, deterministic
 > Evaluation, the model-gate, effectiveness, and the human ship gate end to end, and
-> the standing accretion loops run via `adh loop tick`. What remains is domain-specific
-> adjudication depth (a real differential-oracle target and an `adb` device adapter)
-> and an optional live/batch model worker for unattended self-optimization runs — see
+> the standing accretion loops run via `adh loop tick`. Evaluation resolves an
+> oracle/invariant/device finding to a repository-declared §13 tool when the repo
+> provides one, so the harness side of adjudication is complete; what remains is the
+> domain artifact itself (a real differential-oracle target, an `adb` device binary) and
+> an optional live/batch model worker for unattended self-optimization runs — see
 > [`TODO.md`](./TODO.md).
 
 ## Command reference
