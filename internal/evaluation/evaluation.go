@@ -61,12 +61,14 @@ type Adjudicator interface {
 	Adjudicate(ctx context.Context, finding adh.Finding) (ran, failed bool, err error)
 }
 
-// RepoAdjudicator runs the concrete repository artifacts a finding can name. The
-// oracle/invariant/device runs are self-contained checks; a contract finding names
-// a proof manifest verified against it; an NFR finding names a declared check in
-// the tool registry, run by runner. dir is the repository root the checks run in.
-// The zero value is usable (dir defaults to ".", a nil runner makes NFR findings
-// unrunnable), so a caller with no registry configured needs no setup.
+// RepoAdjudicator runs the concrete repository artifacts a finding can name. An
+// oracle/invariant/device finding runs the declared §13 tool its ref names (the real
+// domain target the repository provides) or, when it names none, adh's built-in check
+// for that kind; a contract finding names a proof manifest verified against it; an NFR
+// finding names a declared check in the tool registry, run by runner. dir is the
+// repository root the checks run in. The zero value is usable (dir defaults to ".", a
+// nil runner makes tool-backed findings unrunnable), so a caller with no registry
+// configured needs no setup.
 type RepoAdjudicator struct {
 	dir    string
 	checks toolreg.Registry
@@ -290,35 +292,34 @@ func recordStrata(arc *adh.Arc, verdict *critic.Verdict, stratum string) error {
 	return nil
 }
 
-// Adjudicate runs the artifact finding names. oracle/invariant/device are
-// self-contained checks; a contract finding names a proof manifest and fails when
-// the packet is missing or does not verify; an NFR finding names a declared check
-// in the tool registry and fails when that check exits non-zero. A finding whose
-// artifact cannot be run (an NFR check the repository does not declare, an NFR
-// finding with no runner) is unrunnable (ran=false) and disposes as unconfirmed —
-// the gate drops a prior the repository does not hold (§19.2).
+// Adjudicate runs the artifact a finding names (§19.2). An oracle/invariant/device
+// finding runs the repository's declared §13 tool when its ref names one (the real
+// domain target), else adh's built-in check for that kind; a contract finding names a
+// proof manifest and fails when the packet is missing or does not verify; an NFR
+// finding names a declared check or Planguage spec and fails when it breaches. A
+// finding whose artifact cannot be run — a declared check the repository does not hold,
+// an unstartable tool — is unrunnable (ran=false) and disposes as unconfirmed, so the
+// gate drops a prior the repository does not hold.
 func (a *RepoAdjudicator) Adjudicate(
 	ctx context.Context,
 	finding adh.Finding,
 ) (ran, failed bool, err error) {
 	switch finding.Kind {
 	case adh.FindingOracle:
-		boards := oracle.GenerateBoards(oracleSeed, oracleBoards, oracleDim, oracleDim, oracleHues)
-		return true, oracle.Diverges(oracle.React, oracle.Native, boards) != nil, nil
+		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return ran, failed, nil
+		}
+		return true, a.builtinOracle(), nil // the built-in oracle always runs
 	case adh.FindingInvariant:
-		boards := oracle.GenerateBoards(oracleSeed, oracleBoards, oracleDim, oracleDim, oracleHues)
-		for _, board := range boards {
-			if !oracle.InvariantsHold(board, oracle.Native(board)) {
-				return true, true, nil
-			}
+		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return ran, failed, nil
 		}
-		return true, false, nil
+		return true, a.builtinInvariant(), nil // the built-in invariant check always runs
 	case adh.FindingDevice:
-		report, verr := (device.Mock{Healthy: true}).Validate(ctx)
-		if verr != nil {
-			return false, false, fmt.Errorf("device validate: %w", verr)
+		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return ran, failed, nil
 		}
-		return true, !report.OK, nil
+		return a.builtinDevice(ctx)
 	case adh.FindingContract:
 		ran, failed = a.adjudicateContract(finding.Ref)
 		return ran, failed, nil
@@ -330,12 +331,63 @@ func (a *RepoAdjudicator) Adjudicate(
 	}
 }
 
+// builtinOracle runs adh's in-package differential oracle — the React/Native pair
+// grade each other (§2.1) — and reports whether they diverged (a confirmation). It
+// always runs, so it returns only the failed signal; the fallback when a finding names
+// no declared oracle tool.
+func (a *RepoAdjudicator) builtinOracle() (failed bool) {
+	boards := oracle.GenerateBoards(oracleSeed, oracleBoards, oracleDim, oracleDim, oracleHues)
+	return oracle.Diverges(oracle.React, oracle.Native, boards) != nil
+}
+
+// builtinInvariant runs adh's in-package property checks over the native engine's
+// output and reports whether an invariant broke (a confirmation). It always runs; the
+// fallback for an invariant finding that names no declared tool.
+func (a *RepoAdjudicator) builtinInvariant() (failed bool) {
+	boards := oracle.GenerateBoards(oracleSeed, oracleBoards, oracleDim, oracleDim, oracleHues)
+	for _, board := range boards {
+		if !oracle.InvariantsHold(board, oracle.Native(board)) {
+			return true
+		}
+	}
+	return false
+}
+
+// builtinDevice runs adh's healthy device mock; an unhealthy report confirms the
+// finding. The fallback for a device finding that names no declared tool (a real adb
+// adapter is provided as a §13 tool).
+func (a *RepoAdjudicator) builtinDevice(ctx context.Context) (ran, failed bool, err error) {
+	report, verr := (device.Mock{Healthy: true}).Validate(ctx)
+	if verr != nil {
+		return false, false, fmt.Errorf("device validate: %w", verr)
+	}
+	return true, !report.OK, nil
+}
+
+// runDeclaredTool runs the §13 tool a finding's ref names, if the repository declares
+// one (§19.2): the tool's exit code is the signal — the domain-specific artifact the
+// repository provides rather than an adh built-in. ok is false when ref is empty, no
+// runner is wired, or ref names no declared tool, so the caller falls back to adh's
+// built-in check for that kind. A declared tool that cannot start is ran=false
+// (unconfirmed), the same as any unrunnable artifact — never a false confirmation.
+func (a *RepoAdjudicator) runDeclaredTool(ctx context.Context, ref string) (ran, failed, ok bool) {
+	if ref == "" || a.runner == nil {
+		return false, false, false
+	}
+	tool, found := a.checks.FindByID(ref)
+	if !found {
+		return false, false, false
+	}
+	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
+	return ranCheck, ranCheck && !passed, true
+}
+
 // adjudicateNFR runs the executable check an NFR finding names (§10, §19.2). The
-// finding's ref is a tool ID in the registry; the check's own command is run in
-// the repository. A finding that names no check, names one the registry does not
-// declare, or has no runner wired is unrunnable — an invented requirement the
-// repository does not hold, which the gate drops as unconfirmed. A declared check
-// that exits non-zero confirms the finding.
+// finding's ref is a Planguage spec or a tool ID in the registry; the check's own
+// command is run in the repository. A finding that names no check, names one the
+// registry does not declare, or has no runner wired is unrunnable — an invented
+// requirement the repository does not hold, which the gate drops as unconfirmed. A
+// declared check that exits non-zero confirms the finding.
 func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, failed bool) {
 	if ref == "" || a.runner == nil {
 		return false, false
@@ -347,15 +399,8 @@ func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, f
 	if spec, ok := nfr.ByID(a.specs, ref); ok {
 		return a.adjudicateSpec(ctx, &spec)
 	}
-	tool, ok := a.checks.FindByID(ref)
-	if !ok {
-		return false, false
-	}
-	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
-	if !ranCheck {
-		return false, false
-	}
-	return true, !passed
+	ran, failed, _ = a.runDeclaredTool(ctx, ref)
+	return ran, failed
 }
 
 // adjudicateSpec measures a Planguage spec's Meter and confirms the finding when the

@@ -318,6 +318,98 @@ func TestRepoAdjudicatorNFR(t *testing.T) {
 	}
 }
 
+// TestAdjudicateDeclaredToolForKind: an oracle/invariant/device finding whose Ref names
+// a declared §13 tool adjudicates against that tool (the real domain target), and a
+// failing tool confirms it. Naming no tool falls back to adh's built-in check, which
+// passes here (the built-in oracle pair agrees, the mock device is healthy), so the
+// finding is unconfirmed (§19.2).
+func TestAdjudicateDeclaredToolForKind(t *testing.T) {
+	t.Parallel()
+	reg := toolreg.Registry{Tools: []toolreg.Tool{
+		{ID: "device-adb", Run: "adb test", Verifies: "on-device behavior"},
+		{ID: "game-oracle", Run: "oracle diff", Verifies: "reference vs native parity"},
+	}}
+	tests := []struct {
+		name    string
+		kind    adh.FindingKind
+		ref     string
+		runner  evaluation.CheckRunner
+		wantRan bool
+		wantF   bool
+	}{
+		{
+			"device tool fails confirms",
+			adh.FindingDevice,
+			"device-adb",
+			fakeRunner{ran: true},
+			true,
+			true,
+		},
+		{
+			"oracle tool passes clears",
+			adh.FindingOracle,
+			"game-oracle",
+			fakeRunner{passed: true, ran: true},
+			true,
+			false,
+		},
+		{
+			"device tool unstartable is unrunnable",
+			adh.FindingDevice,
+			"device-adb",
+			fakeRunner{ran: false},
+			false,
+			false,
+		},
+		{
+			"oracle no tool falls back to built-in",
+			adh.FindingOracle,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+		{
+			"device no tool falls back to healthy mock",
+			adh.FindingDevice,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+		{
+			"invariant no tool falls back to built-in",
+			adh.FindingInvariant,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, nil, tt.runner)
+			ran, failed, err := adj.Adjudicate(
+				context.Background(),
+				adh.Finding{Summary: "x", Kind: tt.kind, Ref: tt.ref},
+			)
+			if err != nil {
+				t.Fatalf("Adjudicate: %v", err)
+			}
+			if ran != tt.wantRan || failed != tt.wantF {
+				t.Errorf(
+					"(ran, failed) = (%v, %v), want (%v, %v)",
+					ran,
+					failed,
+					tt.wantRan,
+					tt.wantF,
+				)
+			}
+		})
+	}
+}
+
 // TestRepoAdjudicatorNFRSpec: an NFR finding whose Ref names a Planguage spec gates
 // on the spec's Fail threshold — the measured Meter value, not a tool exit code. A
 // value that breaches Fail confirms; one that meets it does not; an unmeasurable or
