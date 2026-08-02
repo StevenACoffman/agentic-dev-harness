@@ -130,7 +130,9 @@ loops back to Execution. The cold critic is steered toward the check kinds recen
 reviews under-covered, so its blind spots close over time. `adh kpi` proposes a change
 to any context unit *or declared tool* whose performance indicator degrades and the
 degradation **replicates** across strata — a unit that keeps failing in its scope, a
-tool that keeps exiting non-zero — never auto-adopted. A periodic **self-evaluation**
+tool that keeps failing or running slow (its outcome and duration logged from every
+path it runs: `adh tool run`, `context verify`, and adjudication) — never
+auto-adopted. A periodic **self-evaluation**
 (`adh selfeval`) scores health with a delta versus the prior period and a failure
 taxonomy that feeds a registry (`adh failures list`); effectiveness accounting
 (`adh metrics`) keeps proven outcomes beside their cost. The harness's own guiding
