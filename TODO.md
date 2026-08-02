@@ -321,12 +321,22 @@ pattern is a genuinely novel add for the context lever:
       Verified: pure `ProposeRoutes` table, append/load round-trip, and an E2E test (a
       relayed gap writes a miss; `context misses` proposes the label). **Accretion
       applied to the #1 lever — the router improves the more it is used.**
-- [ ] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).**
-      Generalize §18 self-optimization beyond the guiding artifact: every §13 tool and
-      §10 unit declares KPIs (acceptance, error, duration, domain-specific) with
-      degradation thresholds; a crossed threshold proposes a config change (prompt
-      amendment, flag default, threshold) — subject to the §18.2 outcome-and-
-      replication bar before adoption, never auto-adopted on one signal.
+- [x] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).** DONE for
+      per-unit (the deterministic slice that reuses data already logged); per-tool is the
+      documented follow-up. A `§10` unit declares KPIs (`adh.KPI`: metric + threshold +
+      degradation `Direction`, `Breached`/`Valid`); `contextstore.Unit.KPIs`, with a
+      malformed one caught by `doctor`/`harnesscheck` (exit 16, `invalid_kpi`) so it never
+      silently fails to fire. `adh kpi` measures each unit's `grounded_miss` KPI against
+      the failure-record log — how often an arc failed *despite* the unit's scope being
+      routed — and proposes a change to any unit whose breach **replicates across ≥2
+      strata** (§18.2, the same never-on-one-signal bar as the miss/lesson gates). Advisory
+      by design (exit 0, like `context misses`): a human makes the change, never the
+      harness. The `internal/kpi` core is pure and **source-agnostic**
+      (`Observation`/`Subject`/`Propose`), so per-tool KPIs drop in once a tool-run outcome
+      log exists. Verified: `KPI.Breached`/`Valid`, `Propose` (breach × strata gate),
+      `ObserveUnits` (label/path scope overlap, ungrounded ignored) tables + `kpi`/`doctor`
+      journeys. **Follow-up:** a persistent per-tool run log (duration/exit per `tool run`/
+      `context verify`/NFR check) → a `kpi.ObserveTools` source; the gate already handles it.
 - [x] Effectiveness north-star (§16): DONE as a coarse proxy. `metrics.ClassifyHistory`
       /`StepClass.Ratio` (pure) classify each arc's history into **deterministic-handled**
       steps (evaluation, gate, commit, close) vs **LLM/critic-handled** turns (a
