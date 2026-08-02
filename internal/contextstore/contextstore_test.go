@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 )
 
@@ -347,5 +348,19 @@ func TestUnverifiedClaims(t *testing.T) {
 	want := []string{"absent: not here", "unreadable: x"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("UnverifiedClaims = %v, want %v", got, want)
+	}
+}
+
+func TestInvalidKPIs(t *testing.T) {
+	units := []contextstore.Unit{
+		{ID: "ok", KPIs: []adh.KPI{{Metric: "grounded_miss", Direction: adh.WorseWhenAbove}}},
+		{ID: "no-metric", KPIs: []adh.KPI{{Metric: "", Direction: adh.WorseWhenAbove}}},
+		{ID: "bad-dir", KPIs: []adh.KPI{{Metric: "x", Direction: "sideways"}}},
+		{ID: "none"},
+	}
+	got := contextstore.InvalidKPIs(units)
+	want := []string{"bad-dir", "no-metric"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("InvalidKPIs = %v, want %v", got, want)
 	}
 }

@@ -101,6 +101,24 @@ func InvalidTrust(units []Unit) []string {
 	return bad
 }
 
+// InvalidKPIs returns the ids of units declaring a malformed KPI (§16/§18) — an empty
+// metric or an unknown direction — so a silently-ignored indicator is caught rather
+// than never firing. A unit is listed once however many KPIs are malformed. Sorted.
+// Pure.
+func InvalidKPIs(units []Unit) []string {
+	bad := make([]string, 0)
+	for i := range units {
+		for j := range units[i].KPIs {
+			if !units[i].KPIs[j].Valid() {
+				bad = append(bad, units[i].ID)
+				break
+			}
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
 // Index renders the read-first routing catalog (§10 compounding-wiki): one line per
 // routable (non-superseded) unit — id, kind, trust tier, labels, and the one-line
 // provenance — the JIT grounding preview a worker reads before pulling any unit's

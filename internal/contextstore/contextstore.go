@@ -54,8 +54,9 @@ type Claim struct {
 // (`context verify`, §10.4 anti-drift). Verified is the trust tier (weights routing);
 // SupersededBy is the unit id that has replaced this one (a superseded unit no longer
 // routes). Claims are verifiable quote/source citations traced back to their source
-// (§10.4 receipt verification). The optional fields let a metadata-only unit route
-// with no text of its own.
+// (§10.4 receipt verification). KPIs are declared performance indicators whose breach
+// proposes a change to the unit (§16/§18). The optional fields let a metadata-only
+// unit route with no text of its own.
 type Unit struct {
 	ID           string    `json:"id"`
 	Kind         string    `json:"kind"`
@@ -66,6 +67,7 @@ type Unit struct {
 	Provenance   string    `json:"provenance,omitempty"`
 	Sources      []string  `json:"sources,omitempty"`
 	Claims       []Claim   `json:"claims,omitempty"`
+	KPIs         []adh.KPI `json:"kpis,omitempty"`
 	Integrity    string    `json:"integrity,omitempty"`
 	Verified     TrustTier `json:"verified,omitempty"`
 	SupersededBy string    `json:"superseded_by,omitempty"`

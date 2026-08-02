@@ -85,6 +85,28 @@ func writeClaimUnit(t *testing.T, id, quote, source string) {
 	}
 }
 
+// TestDoctorCatchesInvalidKPI: a unit declaring a malformed KPI (unknown direction) is
+// a harness defect (exit 16), so a silently-ignored indicator is caught.
+func TestDoctorCatchesInvalidKPI(t *testing.T) {
+	t.Chdir(t.TempDir())
+	mustRun(t, "init")
+	if err := os.MkdirAll(contextstore.DefaultStoreDir, 0o750); err != nil {
+		t.Fatalf("mkdir store: %v", err)
+	}
+	data := []byte(`{"id":"rule","kind":"base-rule","labels":["x"],` +
+		`"kpis":[{"metric":"grounded_miss","threshold":3,"direction":"sideways"}]}`)
+	if err := os.WriteFile(
+		filepath.Join(contextstore.DefaultStoreDir, "rule.json"), data, 0o600,
+	); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+	_, err := run(t, "doctor")
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 16 {
+		t.Fatalf("doctor with an invalid KPI = %v, want ExitError(16)", err)
+	}
+}
+
 // TestContextLintUnverifiedClaim: a claim whose quote is absent from its cited source
 // fails lint (exit 12); tracing the quote to the source lints clean.
 func TestContextLintUnverifiedClaim(t *testing.T) {

@@ -45,6 +45,14 @@ const (
 	StructuralFinding FindingClass = "structural" // needs a design change (escalate)
 )
 
+// Direction values name which side of a KPI's threshold is degradation (SPEC-ADDITIONS
+// §16/§18): a higher value is worse for an error/duration metric, a lower value for an
+// acceptance metric.
+const (
+	WorseWhenAbove Direction = "above" // higher is worse (error rate, duration)
+	WorseWhenBelow Direction = "below" // lower is worse (acceptance rate)
+)
+
 // Stage is one station of the five-stage arc loop.
 type Stage string
 
@@ -60,6 +68,20 @@ type FindingKind string
 // FindingClass triages how a confirmed finding is resolved (§19.2): fixable by a
 // bounded edit or structural (a design change that escalates).
 type FindingClass string
+
+// Direction names which side of a KPI threshold is degradation (§16/§18).
+type Direction string
+
+// KPI is a declared performance indicator on a tool or context unit (§16/§18): a
+// Metric, the Threshold that bounds acceptable performance, and the Direction of
+// degradation. A crossed threshold proposes a config change — never auto-adopted, and
+// only after the breach replicates (§18.2). It is declared data; the kpi package
+// evaluates observed values against it.
+type KPI struct {
+	Metric    string    `json:"metric"`
+	Threshold float64   `json:"threshold"`
+	Direction Direction `json:"direction"`
+}
 
 // Finding is a critic's hypothesis about the change under review (§19.2): a
 // summary and the repository artifact (Kind + Ref) whose run would confirm it.
@@ -138,6 +160,37 @@ func (c FindingClass) Valid() bool {
 // bounded edit (§19.2), so a confirmed one escalates instead of reworking.
 func (f *Finding) IsStructural() bool {
 	return f.Class == StructuralFinding
+}
+
+// Valid reports whether d is a known degradation direction (§16/§18).
+func (d Direction) Valid() bool {
+	switch d {
+	case WorseWhenAbove, WorseWhenBelow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Valid reports whether the KPI is well-formed (§16/§18): a non-empty metric and a
+// known direction. It does not check that the metric is observable — a declared KPI
+// whose metric no source measures simply never fires.
+func (k *KPI) Valid() bool {
+	return k.Metric != "" && k.Direction.Valid()
+}
+
+// Breached reports whether an observed value has crossed into the degradation region
+// (§16/§18): strictly past the threshold on the direction's bad side. Exactly at the
+// threshold is acceptable — the same strict boundary as the §18.2 gate.
+func (k *KPI) Breached(value float64) bool {
+	switch k.Direction {
+	case WorseWhenAbove:
+		return value > k.Threshold
+	case WorseWhenBelow:
+		return value < k.Threshold
+	default:
+		return false
+	}
 }
 
 // FindingKinds returns every known finding kind (§19.2), the single owner of the
