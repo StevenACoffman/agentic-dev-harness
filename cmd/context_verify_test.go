@@ -11,6 +11,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // seedIntegrity writes one context unit that declares an integrity check plus a
@@ -72,6 +73,24 @@ func TestContextVerifyDrift(t *testing.T) {
 	var exit root.ExitError
 	if !errors.As(err, &exit) || int(exit) != 18 {
 		t.Fatalf("verify with drift = %v, want ExitError(18)", err)
+	}
+}
+
+// TestContextVerifyLogsToolRun: a verify run of an integrity tool is recorded to the
+// tool-run log (§16/§18) — a drift is a failed run for that tool's KPI — so `adh kpi`
+// can measure the tool over time.
+func TestContextVerifyLogsToolRun(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedIntegrity(t, "exit 1") // drift → ran and failed
+	if _, err := run(t, "context", "verify"); err == nil {
+		t.Fatal("expected drift to exit non-zero")
+	}
+	records, err := toolrun.Load(toolrun.RunFile)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(records) != 1 || records[0].Tool != "drift-check" || !records[0].Ran || !records[0].Failed {
+		t.Fatalf("tool-run log = %+v, want one ran+failed drift-check run", records)
 	}
 }
 

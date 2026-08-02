@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // Exit codes for the context command (SPEC §7), kept distinct from the arc gates.
@@ -277,6 +279,21 @@ func (cfg *Config) sourceRead(source string) (string, error) {
 	return string(data), err
 }
 
+// logIntegrityRun records a verify run of a unit's integrity tool to the tool-run log
+// (§16/§18): a drift (ran and non-zero) is a failed run for that tool's KPI, an
+// unverified one (could not start) is Ran=false. Best-effort — a log-write failure is
+// surfaced but never fails verify. The clock stays here in the shell.
+func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Duration) {
+	err := toolrun.AppendOutcome(
+		filepath.Join(cfg.repoDir(), toolrun.RunFile),
+		id, contextstore.Stratum(time.Now()),
+		ran, ran && code != 0, int(took.Milliseconds()),
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "context: could not record integrity run: %v\n", err)
+	}
+}
+
 // verify runs each unit's declared integrity check (§10.4 anti-drift): the §13 tool
 // that proves the unit's content still matches its canonical source. With an arc id
 // it verifies only the units routed to that arc; otherwise the whole store. A check
@@ -308,7 +325,9 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 				unit.Integrity,
 			)}
 		}
+		start := time.Now()
 		code, ran := shell.Runner{}.Run(ctx, tool.Run, cfg.repoDir())
+		cfg.logIntegrityRun(tool.ID, code, ran, time.Since(start))
 		result := integrityResult{Unit: unit.ID, Tool: tool.ID, Status: "ok"}
 		switch {
 		case shell.NotRun(code, ran):

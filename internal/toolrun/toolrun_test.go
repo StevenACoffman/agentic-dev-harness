@@ -31,6 +31,24 @@ func TestAppendThenLoad(t *testing.T) {
 	}
 }
 
+func TestAppendOutcome(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tool-runs.json")
+	if err := toolrun.AppendOutcome(path, "chk", "2026-06", true, true, 42); err != nil {
+		t.Fatalf("AppendOutcome: %v", err)
+	}
+	records, err := toolrun.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %v, want 1", records)
+	}
+	r := records[0]
+	if r.Tool != "chk" || !r.Ran || !r.Failed || r.DurationMS != 42 || r.Stratum != "2026-06" {
+		t.Errorf("record = %+v, want chk ran+failed 42ms in 2026-06", r)
+	}
+}
+
 func TestLoadMissingIsEmpty(t *testing.T) {
 	records, err := toolrun.Load(filepath.Join(t.TempDir(), "absent.json"))
 	if err != nil {

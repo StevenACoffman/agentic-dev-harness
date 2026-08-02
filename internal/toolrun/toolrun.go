@@ -18,13 +18,15 @@ import (
 const RunFile = ".adh/tool-runs.json"
 
 // Record is one tool invocation's outcome: the tool id, the year-month Stratum it ran
-// in (the §18.2 replication axis), whether it Ran at all (a startable command), and
-// whether it Failed (ran and exited non-zero). A run that could not start is Ran=false.
+// in (the §18.2 replication axis), whether it Ran at all (a startable command), whether
+// it Failed (ran and exited non-zero), and how long it took (DurationMS, 0 when it did
+// not run). A run that could not start is Ran=false.
 type Record struct {
-	Tool    string `json:"tool"`
-	Stratum string `json:"stratum,omitempty"`
-	Ran     bool   `json:"ran"`
-	Failed  bool   `json:"failed"`
+	Tool       string `json:"tool"`
+	Stratum    string `json:"stratum,omitempty"`
+	Ran        bool   `json:"ran"`
+	Failed     bool   `json:"failed"`
+	DurationMS int    `json:"duration_ms,omitempty"`
 }
 
 // Load reads the tool-run log at path. A missing file is empty, not an error; a
@@ -43,6 +45,21 @@ func Load(path string) ([]Record, error) {
 		return nil, &adh.Error{Op: op, Err: err}
 	}
 	return records, nil
+}
+
+// AppendOutcome records one tool run to the log at path: it builds the stratum-stamped
+// record from the run's outcome and appends it. It is the single owner of the Record
+// field mapping, so every tool-run site — `adh tool run`, `context verify`, adjudication
+// — turns its result into telemetry the same way. Best-effort at the call site: the
+// returned error is for surfacing, never for failing the run.
+func AppendOutcome(path, tool, stratum string, ran, failed bool, durationMS int) error {
+	return Append(path, Record{
+		Tool:       tool,
+		Stratum:    stratum,
+		Ran:        ran,
+		Failed:     failed,
+		DurationMS: durationMS,
+	})
 }
 
 // Append adds records to the log at path, creating it and its directory if absent, and

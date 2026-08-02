@@ -14,8 +14,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/device"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
@@ -24,6 +26,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // oracle corpus for adjudicating oracle/invariant findings; a small deterministic
@@ -70,10 +73,11 @@ type Adjudicator interface {
 // nil runner makes tool-backed findings unrunnable), so a caller with no registry
 // configured needs no setup.
 type RepoAdjudicator struct {
-	dir    string
-	checks toolreg.Registry
-	specs  []nfr.Spec
-	runner CheckRunner
+	dir     string
+	checks  toolreg.Registry
+	specs   []nfr.Spec
+	runner  CheckRunner
+	logPath string // tool-run log to append to; empty disables logging (the test path)
 }
 
 // CheckRunner runs a repository-declared executable check (an NFR constraint, §10)
@@ -121,7 +125,11 @@ func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
 	if err != nil {
 		return RepoAdjudicator{}, &adh.Error{Op: "evaluation.RepoAdjudicatorFor", Err: err}
 	}
-	return NewRepoAdjudicator(repoDir, checks, specs, ShellRunner{}), nil
+	adj := NewRepoAdjudicator(repoDir, checks, specs, ShellRunner{})
+	// The real adjudicator logs each declared-tool run to the tool-run log (§16/§18) so
+	// `adh kpi` sees adjudication-time behavior; the test constructor leaves it disabled.
+	adj.logPath = filepath.Join(repoDir, toolrun.RunFile)
+	return adj, nil
 }
 
 // loadChecks reads the tool registry under repoDir (best-effort: an absent file is
@@ -378,8 +386,24 @@ func (a *RepoAdjudicator) runDeclaredTool(ctx context.Context, ref string) (ran,
 	if !found {
 		return false, false, false
 	}
+	start := time.Now()
 	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
+	a.logRun(tool.ID, ranCheck, ranCheck && !passed, time.Since(start))
 	return ranCheck, ranCheck && !passed, true
+}
+
+// logRun records a declared-tool adjudication run to the tool-run log (§16/§18) when
+// logging is enabled (the real adjudicator; disabled for tests). Best-effort — a
+// log-write failure never changes the adjudication result. The clock stays in this
+// shell-side engine; the log stores only the duration and the opaque stratum.
+func (a *RepoAdjudicator) logRun(id string, ran, failed bool, took time.Duration) {
+	if a.logPath == "" {
+		return
+	}
+	_ = toolrun.AppendOutcome(
+		a.logPath, id, contextstore.Stratum(time.Now()),
+		ran, failed, int(took.Milliseconds()),
+	)
 }
 
 // adjudicateNFR runs the executable check an NFR finding names (§10, §19.2). The

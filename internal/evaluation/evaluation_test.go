@@ -2,6 +2,8 @@ package evaluation_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -10,6 +12,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // fakeAdjudicator confirms exactly the findings whose kind is failKind.
@@ -407,6 +410,59 @@ func TestAdjudicateDeclaredToolForKind(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// TestRepoAdjudicatorForLogsDeclaredToolRun: the real adjudicator records each
+// declared-tool run to the tool-run log (§16/§18) so `adh kpi` sees adjudication-time
+// behavior; the test constructor (NewRepoAdjudicator) leaves logging disabled.
+func TestRepoAdjudicatorForLogsDeclaredToolRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".adh"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// A declared tool whose command exits non-zero (`false`): ran and failed.
+	if err := os.WriteFile(filepath.Join(dir, ".adh", "tools.json"),
+		[]byte(`{"tools":[{"id":"chk","run":"false","verifies":"x"}]}`), 0o600); err != nil {
+		t.Fatalf("write tools: %v", err)
+	}
+	adj, err := evaluation.RepoAdjudicatorFor(dir)
+	if err != nil {
+		t.Fatalf("RepoAdjudicatorFor: %v", err)
+	}
+	ran, failed, err := adj.Adjudicate(
+		context.Background(),
+		adh.Finding{Kind: adh.FindingOracle, Ref: "chk"},
+	)
+	if err != nil {
+		t.Fatalf("Adjudicate: %v", err)
+	}
+	if !ran || !failed {
+		t.Fatalf("(ran, failed) = (%v, %v), want the failing tool confirmed", ran, failed)
+	}
+	records, err := toolrun.Load(filepath.Join(dir, toolrun.RunFile))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(records) != 1 || records[0].Tool != "chk" || !records[0].Failed {
+		t.Fatalf("tool-run log = %+v, want one failed chk run", records)
+	}
+
+	// The test constructor never logs, so a fake-runner adjudication writes nothing.
+	fakeDir := t.TempDir()
+	fake := evaluation.NewRepoAdjudicator(
+		fakeDir,
+		toolreg.Registry{Tools: []toolreg.Tool{{ID: "chk", Run: "x", Verifies: "y"}}},
+		nil,
+		fakeRunner{passed: false, ran: true},
+	)
+	if _, _, aerr := fake.Adjudicate(
+		context.Background(), adh.Finding{Kind: adh.FindingOracle, Ref: "chk"},
+	); aerr != nil {
+		t.Fatalf("Adjudicate: %v", aerr)
+	}
+	if _, statErr := os.Stat(filepath.Join(fakeDir, toolrun.RunFile)); !os.IsNotExist(statErr) {
+		t.Errorf("NewRepoAdjudicator wrote a tool-run log: %v", statErr)
 	}
 }
 
