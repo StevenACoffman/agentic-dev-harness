@@ -85,3 +85,28 @@ func TestKPIProposesDegradedTool(t *testing.T) {
 		t.Fatalf("kpi did not propose the degraded tool:\n%s", out)
 	}
 }
+
+// TestKPIProposesSlowTool: a tool whose mean run duration exceeds its run_duration_ms
+// threshold across ≥2 strata earns a latency proposal (§16/§18).
+func TestKPIProposesSlowTool(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir .adh: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(".adh", "tools.json"), []byte(
+		`{"tools":[{"id":"bench","run":"x","verifies":"y","kpis":`+
+			`[{"metric":"run_duration_ms","threshold":500,"direction":"above"}]}]}`,
+	), 0o600); err != nil {
+		t.Fatalf("seed tools: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(".adh", "tool-runs.json"), []byte(
+		`[{"tool":"bench","stratum":"2026-06","ran":true,"failed":false,"duration_ms":800},`+
+			`{"tool":"bench","stratum":"2026-07","ran":true,"failed":false,"duration_ms":900}]`,
+	), 0o600); err != nil {
+		t.Fatalf("seed tool-runs: %v", err)
+	}
+	out := mustRun(t, "kpi")
+	if !strings.Contains(out, "tool bench") || !strings.Contains(out, "run_duration_ms") {
+		t.Fatalf("kpi did not propose the slow tool:\n%s", out)
+	}
+}

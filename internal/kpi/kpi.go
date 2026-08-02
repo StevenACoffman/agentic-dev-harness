@@ -36,6 +36,9 @@ const (
 	// MetricRunFailure is the per-tool error KPI: how many times a declared tool ran
 	// and exited non-zero (§16/§18).
 	MetricRunFailure = "run_failure"
+	// MetricRunDuration is the per-tool latency KPI: a tool's mean run duration in
+	// milliseconds, over the runs that started (§16/§18).
+	MetricRunDuration = "run_duration_ms"
 )
 
 // Observation is a subject's measured value for one metric and the count of distinct
@@ -123,23 +126,26 @@ func ObserveUnits(units []contextstore.Unit, records []failures.Record) []Subjec
 	return subjects
 }
 
-// ObserveTools measures each KPI-declaring tool's run_failure value from the tool-run
-// log: the count of runs that ran and exited non-zero, and the distinct strata among
-// them. A tool that declares no KPI is skipped. Pure — the caller loads the registry
-// and the run log.
+// ObserveTools measures each KPI-declaring tool from the tool-run log: a run_failure
+// observation (the count of runs that ran and exited non-zero) and a run_duration_ms
+// observation (the mean duration of runs that started), each with the distinct strata
+// it spanned. A tool that declares no KPI is skipped, and a KPI naming neither metric
+// simply never fires. Pure — the caller loads the registry and the run log.
 func ObserveTools(tools []toolreg.Tool, records []toolrun.Record) []Subject {
 	subjects := make([]Subject, 0)
 	for i := range tools {
 		if len(tools[i].KPIs) == 0 {
 			continue
 		}
-		count, strata := toolFailures(tools[i].ID, records)
+		failCount, failStrata := toolFailures(tools[i].ID, records)
+		meanMS, runStrata := toolDuration(tools[i].ID, records)
 		subjects = append(subjects, Subject{
 			ID:   tools[i].ID,
 			Kind: SubjectTool,
 			KPIs: tools[i].KPIs,
 			Observations: []Observation{
-				{Metric: MetricRunFailure, Value: float64(count), Strata: strata},
+				{Metric: MetricRunFailure, Value: float64(failCount), Strata: failStrata},
+				{Metric: MetricRunDuration, Value: meanMS, Strata: runStrata},
 			},
 		})
 	}
@@ -159,6 +165,28 @@ func toolFailures(id string, records []toolrun.Record) (count, strata int) {
 		}
 	}
 	return count, len(seen)
+}
+
+// toolDuration returns a tool's mean run duration in milliseconds over the runs that
+// started, and the distinct strata those runs spanned. A tool with no started run has
+// no duration (0, 0), so its KPI never fires.
+func toolDuration(id string, records []toolrun.Record) (meanMS float64, strata int) {
+	var sum, count int
+	seen := make(map[string]bool)
+	for i := range records {
+		if records[i].Tool != id || !records[i].Ran {
+			continue
+		}
+		sum += records[i].DurationMS
+		count++
+		if records[i].Stratum != "" {
+			seen[records[i].Stratum] = true
+		}
+	}
+	if count == 0 {
+		return 0, 0
+	}
+	return float64(sum) / float64(count), len(seen)
 }
 
 // groundedMissesInScope counts the grounded-miss records whose scope overlaps the

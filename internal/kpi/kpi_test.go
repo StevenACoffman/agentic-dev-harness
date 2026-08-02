@@ -128,26 +128,49 @@ func TestObserveTools(t *testing.T) {
 		{ID: "unmonitored", Verifies: "x"}, // no KPI → no subject
 	}
 	records := []toolrun.Record{
-		{Tool: "skillsaw-eval", Stratum: "2026-06", Ran: true, Failed: true},
-		{Tool: "skillsaw-eval", Stratum: "2026-07", Ran: true, Failed: true},
+		{Tool: "skillsaw-eval", Stratum: "2026-06", Ran: true, Failed: true, DurationMS: 100},
+		{Tool: "skillsaw-eval", Stratum: "2026-07", Ran: true, Failed: true, DurationMS: 200},
 		{
-			Tool:    "skillsaw-eval",
-			Stratum: "2026-07",
-			Ran:     true,
-			Failed:  false,
-		}, // passed, not counted
-		{Tool: "other", Stratum: "2026-06", Ran: true, Failed: true}, // different tool
+			Tool:       "skillsaw-eval",
+			Stratum:    "2026-07",
+			Ran:        true,
+			Failed:     false,
+			DurationMS: 300,
+		}, // passed
+		{
+			Tool:       "other",
+			Stratum:    "2026-06",
+			Ran:        true,
+			Failed:     true,
+			DurationMS: 999,
+		}, // other tool
 	}
 	subjects := kpi.ObserveTools(tools, records)
 	if len(subjects) != 1 || subjects[0].ID != "skillsaw-eval" ||
 		subjects[0].Kind != kpi.SubjectTool {
 		t.Fatalf("subjects = %+v, want just the skillsaw tool", subjects)
 	}
-	obs := subjects[0].Observations
-	if len(obs) != 1 || obs[0].Metric != kpi.MetricRunFailure || obs[0].Value != 2 ||
-		obs[0].Strata != 2 {
-		t.Errorf("observation = %+v, want run_failure value 2 across 2 strata", obs)
+	fail := observation(t, &subjects[0], kpi.MetricRunFailure)
+	if fail.Value != 2 || fail.Strata != 2 {
+		t.Errorf("run_failure = %+v, want value 2 across 2 strata (passes not counted)", fail)
 	}
+	// Mean over the three runs that started: (100+200+300)/3 = 200.
+	dur := observation(t, &subjects[0], kpi.MetricRunDuration)
+	if dur.Value != 200 || dur.Strata != 2 {
+		t.Errorf("run_duration_ms = %+v, want mean 200 across 2 strata", dur)
+	}
+}
+
+// observation returns the subject's observation for a metric, failing if absent.
+func observation(t *testing.T, s *kpi.Subject, metric string) kpi.Observation {
+	t.Helper()
+	for _, o := range s.Observations {
+		if o.Metric == metric {
+			return o
+		}
+	}
+	t.Fatalf("subject %q has no %q observation: %+v", s.ID, metric, s.Observations)
+	return kpi.Observation{}
 }
 
 func TestObserveUnitsMatchesByPath(t *testing.T) {
