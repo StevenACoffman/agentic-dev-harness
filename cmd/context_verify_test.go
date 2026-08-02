@@ -89,7 +89,8 @@ func TestContextVerifyLogsToolRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(records) != 1 || records[0].Tool != "drift-check" || !records[0].Ran || !records[0].Failed {
+	if len(records) != 1 || records[0].Tool != "drift-check" || !records[0].Ran ||
+		!records[0].Failed {
 		t.Fatalf("tool-run log = %+v, want one ran+failed drift-check run", records)
 	}
 }
