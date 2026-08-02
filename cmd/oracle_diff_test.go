@@ -12,7 +12,15 @@ import (
 // exit 0.
 func TestOracleDiffCommandsMatch(t *testing.T) {
 	t.Chdir(t.TempDir())
-	out := mustRun(t, "oracle", "--reference", "printf 'a\\nb\\n'", "--candidate", "printf 'a\\nb\\n'", "diff")
+	out := mustRun(
+		t,
+		"oracle",
+		"--reference",
+		"printf 'a\\nb\\n'",
+		"--candidate",
+		"printf 'a\\nb\\n'",
+		"diff",
+	)
 	if !strings.Contains(out, "match") {
 		t.Errorf("matching commands = %q, want a match line", out)
 	}
@@ -22,7 +30,15 @@ func TestOracleDiffCommandsMatch(t *testing.T) {
 // with the oracle gate code (5), so a §13 tool wrapping it confirms an oracle finding.
 func TestOracleDiffCommandsDiverge(t *testing.T) {
 	t.Chdir(t.TempDir())
-	_, err := run(t, "oracle", "--reference", "printf 'a\\nb\\n'", "--candidate", "printf 'a\\nX\\n'", "diff")
+	_, err := run(
+		t,
+		"oracle",
+		"--reference",
+		"printf 'a\\nb\\n'",
+		"--candidate",
+		"printf 'a\\nX\\n'",
+		"diff",
+	)
 	var exit root.ExitError
 	if !errors.As(err, &exit) || int(exit) != 5 {
 		t.Fatalf("diverging commands = %v, want ExitError(5)", err)
