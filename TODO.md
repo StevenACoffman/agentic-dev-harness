@@ -335,8 +335,16 @@ pattern is a genuinely novel add for the context lever:
       (`Observation`/`Subject`/`Propose`), so per-tool KPIs drop in once a tool-run outcome
       log exists. Verified: `KPI.Breached`/`Valid`, `Propose` (breach × strata gate),
       `ObserveUnits` (label/path scope overlap, ungrounded ignored) tables + `kpi`/`doctor`
-      journeys. **Follow-up:** a persistent per-tool run log (duration/exit per `tool run`/
-      `context verify`/NFR check) → a `kpi.ObserveTools` source; the gate already handles it.
+      journeys. **Per-tool KPIs DONE:** tools declare KPIs (`toolreg.Tool.KPIs`, malformed
+      ones rejected by `Registry.Validate`/`tool doctor`); `adh tool run` appends a
+      stratum-stamped outcome to `.adh/tool-runs.json` (`internal/toolrun`); and
+      `kpi.ObserveTools` measures each tool's `run_failure` KPI so `adh kpi` proposes a
+      change to a tool that keeps failing across ≥2 strata (Subject/Proposal now carry a
+      `Kind` so the output names "tool" vs "unit"). Verified: `ObserveTools` table,
+      `toolrun` round-trip, `Registry.Validate` KPI case, a `kpi` tool journey + smoke.
+      **Residual follow-up:** auto-log tool runs from `context verify`/NFR adjudication too
+      (today `adh tool run` — the relay's actual tool path — is the source), and a
+      `run_duration_ms` metric once timing is recorded.
 - [x] Effectiveness north-star (§16): DONE as a coarse proxy. `metrics.ClassifyHistory`
       /`StepClass.Ratio` (pure) classify each arc's history into **deterministic-handled**
       steps (evaluation, gate, commit, close) vs **LLM/critic-handled** turns (a
@@ -684,11 +692,18 @@ around them is partial.
   critic supplies only the tool ID. `RepoAdjudicatorFor` wires it for `eval`,
   `run`, and `step`; the contract path's `proof.Verify` is now rooted at the same
   repo dir instead of `.`.
-- [ ] §19.2 remaining adjudication depth: `oracle`/`invariant` findings run the
-  in-package React/Native equivalence + invariant checks, which pass (the pair is
-  the correct oracle), so a per-arc confirmed path waits on a **real oracle
-  target**; `device` findings run `device.Mock{Healthy:true}`, pending an **adb
-  adapter**. Both are domain-specific (mobile port) and deferred.
+- [x] §19.2 adjudication depth — **generalized (the domain-specific targets stay
+  deferred).** An `oracle`/`invariant`/`device` finding now resolves its `ref` to a
+  repository-declared §13 tool when one exists (the real domain target the repo provides,
+  its exit code the signal — exactly how NFR findings already adjudicate), falling back to
+  adh's built-in check when it names none; a declared-but-unstartable tool is
+  unrunnable/unconfirmed, never a false confirmation. This makes the per-arc *confirmed*
+  path reachable for **any** repo via `evaluation.runDeclaredTool` (shared with the NFR
+  branch) without adh hard-coding a mobile target. Verified: a declared-tool table
+  (device fails → confirms; oracle passes → clears; no-tool → built-in fallback). What
+  stays deferred is providing the actual artifacts — a real differential-oracle target and
+  an `adb` device binary — which are domain-specific (mobile port) and belong to the repo,
+  now pluggable as §13 tools rather than baked into adh.
 - [x] §19.1 unified diff *text*: `vcs.Diff(paths)` renders a unified diff of the
   HEAD-blob vs worktree content via the go-git handle, formatted with
   `github.com/hexops/gotextdiff` (no `git` binary — tests stay hermetic). The critic
