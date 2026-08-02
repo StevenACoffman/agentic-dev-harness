@@ -30,6 +30,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/harnesscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/initcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/judgecmd"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/kpicmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/lessoncmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/loopcmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/metricscmd"
@@ -140,6 +141,7 @@ func register(r *root.Config) {
 	lessoncmd.New(r)
 	failurescmd.New(r)
 	metricscmd.New(r)
+	kpicmd.New(r)
 	nfrcmd.New(r)
 	doctorcmd.New(r)
 	selfeval.New(r)
