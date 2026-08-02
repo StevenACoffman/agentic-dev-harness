@@ -23,7 +23,6 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
@@ -31,6 +30,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 const (

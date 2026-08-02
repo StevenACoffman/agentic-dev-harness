@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
+	"github.com/StevenACoffman/skillet/identity"
 )
 
 // DefaultStateFile is the conventional path the recorded epoch lives under; it is

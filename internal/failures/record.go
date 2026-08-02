@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 // Root-cause categories (§19.2 triage) — derived deterministically from the arc's

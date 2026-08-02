@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 const (

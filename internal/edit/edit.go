@@ -3,7 +3,7 @@
 // hash-based no-op check. Ported from skillsaw's edit; both are pure, no I/O.
 package edit
 
-import "github.com/StevenACoffman/agentic-dev-harness/internal/identity"
+import "github.com/StevenACoffman/skillet/identity"
 
 // WithinSizeBudget reports whether an edited artifact of newBytes stays within
 // ratio × origBytes (adh's default ratio is 1.5). A non-positive origBytes

@@ -20,9 +20,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	gatelib "github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/skillsaw"
+	"github.com/StevenACoffman/skillet/identity"
 )
 
 // Config holds the configuration for the harness command and its subcommands.

@@ -23,10 +23,10 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
+	"github.com/StevenACoffman/skillet/proof"
 )
 
 // oracle corpus for adjudicating oracle/invariant findings; a small deterministic

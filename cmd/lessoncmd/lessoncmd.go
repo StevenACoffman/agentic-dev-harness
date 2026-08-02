@@ -16,10 +16,10 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	lessonlib "github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 // Config holds the configuration for the lesson command.

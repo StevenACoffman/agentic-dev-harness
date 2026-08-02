@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 // RunFile is the tool-run outcome log path (§16/§18): a JSON array of records `adh

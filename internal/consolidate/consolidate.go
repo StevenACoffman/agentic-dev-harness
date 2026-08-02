@@ -25,10 +25,10 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	"github.com/StevenACoffman/skillet/identity"
 )
 
 // Split values partition mined tasks. Selection is held out for acceptance;
