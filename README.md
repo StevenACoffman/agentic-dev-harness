@@ -100,7 +100,11 @@ nonfunctional requirements as testable Planguage specs.
 - **Differential oracle.** When a domain has no objective grader, two independent
   implementations of the same rules grade each other — any disagreement is a defect
   in one of them. `adh oracle selftest` proves the gate catches a *planted* bug (a
-  negative control), so the oracle is trustworthy before it's trusted.
+  negative control), so the oracle is trustworthy before it's trusted. The technique
+  generalizes to any repository: `adh oracle diff --reference <cmd> --candidate <cmd>`
+  runs two commands (a reference build vs an optimized port, an old vs new
+  implementation) and confirms divergence in their output — declare it as a §13 tool
+  and an oracle finding confirms real divergence, no domain-specific harness required.
 - **Provenance.** Proof packets bind each artifact to its content by `sha256[:16]`
   identity, computed when `adh proof create` writes the manifest, so an artifact
   traces back to exactly the bytes it proves.
@@ -146,9 +150,10 @@ split with a replication verdict — and its own planted-regression self-test.
 > Evaluation, the model-gate, effectiveness, and the human ship gate end to end, and
 > the standing accretion loops run via `adh loop tick`. Evaluation resolves an
 > oracle/invariant/device finding to a repository-declared §13 tool when the repo
-> provides one, so the harness side of adjudication is complete; what remains is the
-> domain artifact itself (a real differential-oracle target, an `adb` device binary) and
-> an optional live/batch model worker for unattended self-optimization runs — see
+> provides one, and `adh oracle diff` is a ready-made command-level differential oracle,
+> so a repo supplies only its own two commands or a check script; what remains is the
+> device/`adb` hardware path and an optional live/batch model worker for unattended
+> self-optimization runs — see
 > [`TODO.md`](./TODO.md).
 
 ## Command reference
