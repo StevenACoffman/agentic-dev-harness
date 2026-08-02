@@ -618,9 +618,18 @@ around them is partial.
   token. A `Clock` seam today would be a speculative abstraction; the strata gates
   assert on records seeded with a fixed stratum, not on wall-clock. Revisit when a
   state time field or a test needs deterministic time.
-- [ ] The oracle's two "implementations" are in-package functions, not a real
-  reference build vs native port. Domain-specific (a mobile-port profile) — see
-  the proof-contract note below.
+- [x] The oracle's two "implementations" are in-package functions — **generalized to a
+  command-level differential oracle.** `oracle diff --reference <cmd> --candidate <cmd>`
+  runs two repository commands and confirms divergence in their output (`oracle.DiffOutputs`
+  pure; the shell captures and formats), the general form of "two implementations grade
+  each other" for any repo — a reference build vs an optimized port, an old vs new
+  implementation. It exits the oracle gate code on divergence, so declaring it as a §13
+  tool makes `adh eval` confirm an oracle finding against **real** divergence, no
+  mobile-port profile and no adb. The in-package board oracle stays the built-in fallback
+  (diff with no flags). An **invariant** finding is likewise providable — declare any
+  property-check command as a §13 tool; the adjudicator already runs it. Verified:
+  `DiffOutputs` table, command journeys, an end-to-end tool-wrapping smoke. `device`/adb
+  stays deferred by choice (domain-specific hardware).
 
 ## Proof Contract Generalization
 
