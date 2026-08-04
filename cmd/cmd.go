@@ -5,6 +5,7 @@ package cmd
 
 // climax:name agentic-dev-harness
 // climax:root-pkg root
+// climax:features jsonl
 // climax:env-prefix AGENTIC_DEV_HARNESS
 
 import (
