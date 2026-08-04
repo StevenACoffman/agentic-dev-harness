@@ -23,12 +23,13 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/edit"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
 	"github.com/StevenACoffman/skillet/identity"
+	gate "github.com/StevenACoffman/skillet/ratchet"
+	"github.com/StevenACoffman/skillet/stats"
 )
 
 // Split values partition mined tasks. Selection is held out for acceptance;
@@ -467,7 +468,7 @@ func Plan(
 // the test split. It never changes staging — the strict gate already decided that;
 // the verdict labels how much to trust the change.
 func verdictFor(baseScore, candScore float64, long Longitudinal) verdict.Verdict {
-	_, significant := verdict.McNemar(long.Improved, long.Regressed)
+	_, significant := stats.McNemar(long.Improved, long.Regressed)
 	hasReplication := long.Improved+long.Regressed+long.StableSuccess+long.PersistentFail > 0
 	return verdict.Decide(
 		verdict.Outcome{Delta: candScore - baseScore},
@@ -545,7 +546,7 @@ func runOutcome(
 		return verdict.Outcome{}, err
 	}
 	improved, regressed := pairedCounts(baseDiags, candDiags)
-	_, significant := verdict.McNemar(improved, regressed)
+	_, significant := stats.McNemar(improved, regressed)
 	return verdict.Outcome{Delta: candScore - baseScore, Significant: significant}, nil
 }
 

@@ -18,11 +18,11 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	gatelib "github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/skillsaw"
 	"github.com/StevenACoffman/skillet/identity"
+	gatelib "github.com/StevenACoffman/skillet/ratchet"
 )
 
 // Config holds the configuration for the harness command and its subcommands.

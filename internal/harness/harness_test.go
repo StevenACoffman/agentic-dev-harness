@@ -3,9 +3,9 @@ package harness_test
 import (
 	"testing"
 
-	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
+	gate "github.com/StevenACoffman/skillet/ratchet"
 )
 
 const evalDoc = "# Skill\nIf the build fails, open an early PR.\n## Boundary\nNot for zero-to-one work.\n"

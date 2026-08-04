@@ -25,12 +25,12 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
 	"github.com/StevenACoffman/skillet/atomicfile"
+	gate "github.com/StevenACoffman/skillet/ratchet"
 )
 
 const (
