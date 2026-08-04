@@ -27,6 +27,9 @@ const (
 	KindDanglingIntegrity = "dangling_integrity" // a unit's integrity check names no declared tool
 	KindDanglingSupersede = "dangling_supersede" // a unit's superseded_by names no existing unit
 	KindInvalidTrust      = "invalid_trust"      // a unit's trust tier is outside the taxonomy
+	KindDanglingSource    = "dangling_source"    // a unit's provenance source path does not resolve
+	KindUnverifiedClaim   = "unverified_claim"   // a unit's claim quote is not found in its cited source
+	KindInvalidKPI        = "invalid_kpi"        // a unit declares a malformed KPI (§16/§18)
 )
 
 // Inputs bundles the loaded harness state Check reasons over.
@@ -134,7 +137,8 @@ func appendCrossRefProblems(
 }
 
 // appendLifecycleProblems reports the OKF lifecycle defects (§10.4): a supersession
-// pointing at a unit that does not exist, and a trust tier outside the taxonomy.
+// pointing at a unit that does not exist, a trust tier outside the taxonomy, and a
+// malformed KPI declaration (§16/§18) that would silently never fire.
 func appendLifecycleProblems(problems []Problem, units []contextstore.Unit) []Problem {
 	for _, id := range contextstore.DanglingSupersessions(units) {
 		problems = append(problems, Problem{
@@ -145,6 +149,13 @@ func appendLifecycleProblems(problems []Problem, units []contextstore.Unit) []Pr
 	for _, id := range contextstore.InvalidTrust(units) {
 		problems = append(problems, Problem{
 			Kind: KindInvalidTrust, Ref: id, Detail: "trust tier is outside the taxonomy",
+		})
+	}
+	for _, id := range contextstore.InvalidKPIs(units) {
+		problems = append(problems, Problem{
+			Kind:   KindInvalidKPI,
+			Ref:    id,
+			Detail: "declares a KPI with an empty metric or unknown direction",
 		})
 	}
 	return problems

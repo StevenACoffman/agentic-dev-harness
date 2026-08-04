@@ -23,7 +23,6 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
@@ -31,6 +30,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 const (
@@ -57,12 +57,13 @@ type Config struct {
 // manifest records what a staging directory contains: the candidate's id, the
 // live path it targets, the gate decision, and the two scores.
 type manifest struct {
-	StagingID string          `json:"staging_id"`
-	Artifact  string          `json:"artifact"`
-	Decision  gate.Result     `json:"decision"`
-	Baseline  float64         `json:"baseline"`
-	Candidate float64         `json:"candidate"`
-	Verdict   verdict.Verdict `json:"verdict,omitempty"`
+	StagingID   string          `json:"staging_id"`
+	Artifact    string          `json:"artifact"`
+	Decision    gate.Result     `json:"decision"`
+	Baseline    float64         `json:"baseline"`
+	Candidate   float64         `json:"candidate"`
+	Verdict     verdict.Verdict `json:"verdict,omitempty"`
+	Replication verdict.Verdict `json:"replication,omitempty"`
 }
 
 // New creates and registers the sleep command with the given parent config.
@@ -239,7 +240,7 @@ func (cfg *Config) settle(cycle *consolidate.Cycle, rejected map[string]bool) er
 	long := cycle.Longitudinal
 	_, _ = fmt.Fprintf(
 		cfg.Stdout,
-		"staged %s (selection %.3f -> %.3f; longitudinal %di/%dr/%dp; verdict %s); adopt with: adh sleep adopt %s\n",
+		"staged %s (selection %.3f -> %.3f; longitudinal %di/%dr/%dp; verdict %s; replication %s); adopt with: adh sleep adopt %s\n",
 		cycle.StagingID,
 		cycle.Baseline,
 		cycle.Candidate,
@@ -247,6 +248,7 @@ func (cfg *Config) settle(cycle *consolidate.Cycle, rejected map[string]bool) er
 		long.Regressed,
 		long.PersistentFail,
 		cycle.Verdict,
+		cycle.Replication,
 		cycle.StagingID,
 	)
 	return root.ExitError(14)
@@ -336,7 +338,8 @@ func writeStaging(livePath string, cycle *consolidate.Cycle) error {
 	}
 	man := manifest{
 		StagingID: cycle.StagingID, Artifact: livePath, Decision: cycle.Decision,
-		Baseline: cycle.Baseline, Candidate: cycle.Candidate, Verdict: cycle.Verdict,
+		Baseline: cycle.Baseline, Candidate: cycle.Candidate,
+		Verdict: cycle.Verdict, Replication: cycle.Replication,
 	}
 	if err := writeJSON(filepath.Join(dir, "manifest.json"), man); err != nil {
 		return err

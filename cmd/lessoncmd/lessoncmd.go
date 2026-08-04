@@ -10,14 +10,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	lessonlib "github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 // Config holds the configuration for the lesson command.
@@ -122,6 +124,18 @@ func (cfg *Config) promote(args []string) error {
 	if !ok {
 		return fmt.Errorf("lesson: no candidate class %q; see `adh lesson list`", class)
 	}
+	records, err := failures.LoadRecords(failures.RecordsFile)
+	if err != nil {
+		return fmt.Errorf("lesson: %w", err)
+	}
+	// Temporal gate: a class promotes only after recurring across ≥2 strata (§11).
+	if strata := failures.StrataCount(records)[class]; strata < lessonlib.MinStrata {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"promotion of %q blocked: recurred across %d time stratum(s), needs %d "+
+				"— a lesson promotes only on a pattern sustained across time (§11)\n",
+			class, strata, lessonlib.MinStrata)
+		return root.ExitError(19)
+	}
 	// An executable owner changes a gate and needs human approval (§11.2).
 	if owner.RequiresApproval() && !cfg.Approve {
 		_, _ = fmt.Fprintf(cfg.Stderr,
@@ -130,7 +144,7 @@ func (cfg *Config) promote(args []string) error {
 		return root.ExitError(13)
 	}
 	if owner.Materializes() {
-		return cfg.materialize(&lesson, owner)
+		return cfg.materialize(&lesson, owner, records)
 	}
 	// Skill and the executable owners are authored separately; record the intent.
 	_, _ = fmt.Fprintf(cfg.Stdout,
@@ -151,8 +165,14 @@ func findLesson(lessons []lessonlib.Lesson, class string) (lessonlib.Lesson, boo
 
 // materialize writes the lesson as a routable §10 context unit (a content file plus
 // its unit JSON) under the context store, so the next arc inherits the correction
-// (§11.2). The unit routes by the class label and carries its lesson provenance.
-func (cfg *Config) materialize(l *lessonlib.Lesson, owner lessonlib.Owner) error {
+// (§11.2). The unit routes by the class label and the scope the class recurred under
+// (§19.2 scope-tagging), so it lands where it was learned; it carries its lesson
+// provenance and the root-cause triage from the failure records.
+func (cfg *Config) materialize(
+	l *lessonlib.Lesson,
+	owner lessonlib.Owner,
+	records []failures.Record,
+) error {
 	id := lessonlib.Slug(l.Class) + "-" + string(owner)
 	contentFile := id + ".md"
 	dir := contextstore.DefaultStoreDir
@@ -164,8 +184,11 @@ func (cfg *Config) materialize(l *lessonlib.Lesson, owner lessonlib.Owner) error
 	); err != nil {
 		return fmt.Errorf("lesson: write content: %w", err)
 	}
+	labels, paths := failures.ScopeFor(records, l.Class)
 	unit := contextstore.Unit{
-		ID: id, Kind: owner.Kind(), Labels: []string{l.Class},
+		ID: id, Kind: owner.Kind(),
+		Labels:      append([]string{l.Class}, labels...),
+		Paths:       paths,
 		ContentPath: contentFile,
 		Provenance:  fmt.Sprintf("lesson: %s (%d instances)", l.Class, len(l.Instances)),
 	}
@@ -174,27 +197,50 @@ func (cfg *Config) materialize(l *lessonlib.Lesson, owner lessonlib.Owner) error
 		return fmt.Errorf("lesson: %w", err)
 	}
 	if err := atomicfile.WriteFile(
-		filepath.Join(dir, id+".json"),
-		append(data, '\n'),
-		0o600,
+		filepath.Join(dir, id+".json"), append(data, '\n'), 0o600,
 	); err != nil {
 		return fmt.Errorf("lesson: write unit: %w", err)
 	}
+	return cfg.reportPromotion(l, owner, id, failures.RootCauseCounts(records, l.Class))
+}
+
+// reportPromotion reports a materialized lesson: one JSONL outcome carrying the unit
+// and its root-cause triage, or a human line naming the routing scope and root cause.
+func (cfg *Config) reportPromotion(
+	l *lessonlib.Lesson,
+	owner lessonlib.Owner,
+	id string,
+	rootCauses map[string]int,
+) error {
 	if cfg.JSONL {
-		if emitErr := cfg.EmitOK(map[string]any{
+		if err := cfg.EmitOK(map[string]any{
 			"promoted": l.Class, "owner": string(owner), "unit": id, "kind": owner.Kind(),
-		}); emitErr != nil {
-			return fmt.Errorf("lesson: %w", emitErr)
+			"root_cause": rootCauses,
+		}); err != nil {
+			return fmt.Errorf("lesson: %w", err)
 		}
 		return nil
 	}
-	_, _ = fmt.Fprintf(
-		cfg.Stdout,
-		"promoted %q to %s: wrote context unit %s (routes by label %q)\n",
-		l.Class,
-		owner,
-		id,
-		l.Class,
-	)
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"promoted %q to %s: wrote context unit %s (routes by label %q; root cause %s)\n",
+		l.Class, owner, id, l.Class, renderCounts(rootCauses))
 	return nil
+}
+
+// renderCounts formats a root-cause tally deterministically (sorted by cause), or
+// "unrecorded" when the class carries no root cause.
+func renderCounts(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "unrecorded"
+	}
+	causes := make([]string, 0, len(counts))
+	for cause := range counts {
+		causes = append(causes, cause)
+	}
+	sort.Strings(causes)
+	parts := make([]string, len(causes))
+	for i, cause := range causes {
+		parts[i] = fmt.Sprintf("%s×%d", cause, counts[cause])
+	}
+	return strings.Join(parts, ", ")
 }

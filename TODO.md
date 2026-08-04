@@ -111,10 +111,14 @@ each as one bounded baseline → intervention → verify → fresh-rerun → ret
       --skillsaw <file>` surface skillsaw's score and needs-judge dimensions beside
       adh's floor, so the worker runs `tool run skillsaw-eval > s.json` (Loop B) then
       feeds the score to `harness gate` — skillsaw as the cheap floor under adh's bar.
-      **Follow-up (deferred):** exact field-alignment with an installed skillsaw (the
-      decoder is adh's documented contract; a real install verifies/tunes the mapping);
-      `diagnose`/`history` stay `tool run`; the mock `Propose` remains the non-relay
-      default.
+      The decoder is now **aligned to skillsaw's real schema** (verified against the
+      upstream `internal/rubric` source, since skillsaw is not installed here): the
+      first cut assumed `{score, dimensions[{name,score}]}` but the real `eval --json`
+      emits `Evaluation{deterministic_score, full_score, has_full_score, dims[{num,
+      name, final (int 1–10), needs_judge}]}` — fixed, with `Eval.Score()` preferring
+      `full_score` once the judge dimensions are scored. **Follow-up (deferred):**
+      re-verify against an *installed* skillsaw when available; `diagnose`/`history`
+      stay `tool run`; the mock `Propose` remains the non-relay default.
 
 ### From `agentic-harness-bootstrap` (Data Formats / Processes Worth Folding In)
 
@@ -228,18 +232,27 @@ single strict-`>` gate is insufficient.
       verdict. The **fresh-replication** verdict now ships: `verdict.Replicate(runs,
       minEffect)` (pure) ELEVATEs only when ≥2 *independent* runs each clear the
       effect-size + significance bar (a fresh replication, not just a held-out split),
-      KILLs on any regression, and is REPLICATION-MISSING with <2 runs. **Follow-up
-      (deferred):** the live-rollout data source — a worker producing N independent
-      paired control-vs-treatment runs to feed `Replicate`; the selection/test split
-      stays the in-process stand-in for the single-run `Decide`.
+      KILLs on any regression, and is REPLICATION-MISSING with <2 runs. It is now
+      **fed by a real multi-run rollout**: `consolidate.SplitForSeed` re-partitions the
+      mined tasks N independent ways and `replicationVerdict` scores the candidate over
+      `DefaultReplicationRuns` (3) independent seeded partitions (each an Outcome with
+      McNemar significance), so `Cycle.Replication` is a genuine fresh-replication
+      verdict, not the single held-out split — no live model worker needed, because
+      adh's deterministic task-check *is* the rollout. `sleep` surfaces it. **Follow-up
+      (deferred):** *model-generated* rollouts (a live worker running K model attempts)
+      remain a separate capability; the deterministic evaluator is the rollout today.
 - [x] **Validate the graders and the splits (§18.2).** DONE. Splits:
       `verdict.ValidateSplits` is a pure leakage guard (a task id in two splits →
       EINVALID). Grader: `harness.GraderSelfTest` extends the negative control from the
       *gate* to the *grader* — it proves the rubric scores a known-strong artifact
       strictly above a known-weak one (a blind grader makes the ratchet measure noise →
       EINTERNAL), and `sleep run` runs it beside `SelfTest` (exit 15) before trusting
-      the loop. **Follow-up:** calibrate the *model* judge (not just the deterministic
-      rubric) once a live judge is wired.
+      the loop. Judge calibration against labeled fixtures now ships too:
+      `harness.CalibrateJudge` (pure) runs the deterministic judge over labeled
+      `JudgeCase` fixtures and reports agreement, and `harness calibrate --cases <file>`
+      exits non-zero on any disagreement — so the operator's check-sets are validated to
+      discriminate. **Follow-up:** calibrate a *model* judge's free-text verdicts once a
+      live judge is wired (this calibrates the deterministic rule-judge adh owns).
 - [x] **Routing eval for the context lever (§10, Loop A/E).** DONE. `contextstore.
       EvaluateRouting` (a pure core) scores routing fixtures — each `RoutingCase`
       asserts the units that should route for an arc's labels/paths (an empty `Want`
@@ -308,12 +321,37 @@ pattern is a genuinely novel add for the context lever:
       Verified: pure `ProposeRoutes` table, append/load round-trip, and an E2E test (a
       relayed gap writes a miss; `context misses` proposes the label). **Accretion
       applied to the #1 lever — the router improves the more it is used.**
-- [ ] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).**
-      Generalize §18 self-optimization beyond the guiding artifact: every §13 tool and
-      §10 unit declares KPIs (acceptance, error, duration, domain-specific) with
-      degradation thresholds; a crossed threshold proposes a config change (prompt
-      amendment, flag default, threshold) — subject to the §18.2 outcome-and-
-      replication bar before adoption, never auto-adopted on one signal.
+- [x] **Per-tool / per-unit KPIs → gated improvement proposals (§16, §18).** DONE for
+      per-unit (the deterministic slice that reuses data already logged); per-tool is the
+      documented follow-up. A `§10` unit declares KPIs (`adh.KPI`: metric + threshold +
+      degradation `Direction`, `Breached`/`Valid`); `contextstore.Unit.KPIs`, with a
+      malformed one caught by `doctor`/`harnesscheck` (exit 16, `invalid_kpi`) so it never
+      silently fails to fire. `adh kpi` measures each unit's `grounded_miss` KPI against
+      the failure-record log — how often an arc failed *despite* the unit's scope being
+      routed — and proposes a change to any unit whose breach **replicates across ≥2
+      strata** (§18.2, the same never-on-one-signal bar as the miss/lesson gates). Advisory
+      by design (exit 0, like `context misses`): a human makes the change, never the
+      harness. The `internal/kpi` core is pure and **source-agnostic**
+      (`Observation`/`Subject`/`Propose`), so per-tool KPIs drop in once a tool-run outcome
+      log exists. Verified: `KPI.Breached`/`Valid`, `Propose` (breach × strata gate),
+      `ObserveUnits` (label/path scope overlap, ungrounded ignored) tables + `kpi`/`doctor`
+      journeys. **Per-tool KPIs DONE:** tools declare KPIs (`toolreg.Tool.KPIs`, malformed
+      ones rejected by `Registry.Validate`/`tool doctor`); `adh tool run` appends a
+      stratum-stamped outcome to `.adh/tool-runs.json` (`internal/toolrun`); and
+      `kpi.ObserveTools` measures each tool's `run_failure` KPI so `adh kpi` proposes a
+      change to a tool that keeps failing across ≥2 strata (Subject/Proposal now carry a
+      `Kind` so the output names "tool" vs "unit"). Verified: `ObserveTools` table,
+      `toolrun` round-trip, `Registry.Validate` KPI case, a `kpi` tool journey + smoke.
+      **Residual follow-up DONE:** every §13 tool run is now logged through one owner
+      (`toolrun.AppendOutcome`) carrying its duration — `adh tool run`, `context verify`
+      (a drift is a failed run), and declared-tool adjudication during `adh eval` (the real
+      `RepoAdjudicator` gets a `logPath`; the test constructor stays silent). `ObserveTools`
+      adds a `run_duration_ms` KPI (mean latency over started runs), so `adh kpi` proposes a
+      change to a tool that keeps failing *or* running slow across ≥2 strata. Verified:
+      `AppendOutcome`, `toolDuration`, a `context verify` log journey, an adjudicator log
+      test, and a slow-tool `kpi` journey. **Stays out by design:** NFR Meter runs (their
+      exit code is not the pass/fail signal) and percentile latency (mean is the cheap,
+      deterministic aggregation).
 - [x] Effectiveness north-star (§16): DONE as a coarse proxy. `metrics.ClassifyHistory`
       /`StepClass.Ratio` (pure) classify each arc's history into **deterministic-handled**
       steps (evaluation, gate, commit, close) vs **LLM/critic-handled** turns (a
@@ -325,6 +363,89 @@ pattern is a genuinely novel add for the context lever:
       a **pipe/pipeline** composition model for §13 tools (atomic tools + recursive
       pipelines over the `--jsonl` envelope), so distill→optimize→gate is a declared
       pipeline.
+
+### From a Peer-System Survey (`emulo`, `PolyBrain`, the Hermes family, `darwinian_evolver`)
+
+Seven `~/Documents/git` systems examined for additive techniques (2026-08-01). Most
+overlap adh's existing machinery — and adh is **ahead** of both evolution repos
+(`darwinian_evolver`, `hermes-agent-self-evolution`) on gating rigor: neither has
+McNemar, effect-size thresholds, multi-run seeded replication, or judge calibration,
+which adh does. **Overlap to skip** (confirmed across all seven): the five-stage gated
+loop, tool registry + `run`, the relay, the full sleep cycle (rubric floor + strict-`>`
+ratchet + judge + held-out splits + replication verdict), lesson promotion, standing
+loops + `tick`, `doctor`, routing eval, effectiveness north-star, staged-never-auto-
+adopt, provenance/trust/lifecycle units, content-hash no-op guards, secret redaction,
+PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
+
+- [x] **Temporal-stratum gating for promotions (Tier 1, §11/§18.2).** DONE for the
+      structured miss log (the `[]string` failures registry is a documented follow-up).
+      `contextstore.Miss` gained a `Stratum` (year-month); `run`/`step` `recordMiss`
+      stamp `contextstore.Stratum(time.Now())` (the Clock stays in the shell — its first
+      real consumer). `ProposeRoutes` now requires **≥2 distinct strata** (`minStrata`)
+      *and* the count threshold, so a same-day burst is recorded but not proposed — only
+      a pattern sustained across time earns a route. An independence axis orthogonal to
+      the seeded-partition replication verdict. Verified: `ProposeRoutes` strata table +
+      an E2E test (two same-stratum gaps record but do not propose). **Follow-up DONE:**
+      the same gate now covers lesson promotion via the stamped failure-record log —
+      see "Multi-signal accretion + root-cause triage" below.
+- [x] **Critic coverage / blind-spot history (Tier 1, §19/§10.3).** DONE. A pure
+      `internal/critic` coverage log (`AppendCoverage`/`LoadCoverage`/`UnderCovered` +
+      `adh.FindingKinds`, `.adh/critic-coverage.jsonl`): `run`/`step` record an arc's
+      surfaced finding kinds after a critic turn, and the `Inputs`→`Grounding` seam
+      carries the under-covered kinds into `critic.tmpl` ("recent reviews under-covered
+      these check kinds — probe them"), steering the next critic to the gaps. The
+      routing-learns-from-misses pattern applied to the critic/eval lever. Verified:
+      `UnderCovered`/`FindingKinds`/round-trip tables + the template render.
+- [x] **Provenance / receipt verification gate (Tier 1, §10.4).** DONE — both halves.
+      Path existence: `contextstore.LooksLikePath` + `DanglingSources` (pure, filesystem
+      injected) flag a unit `source` that looks like a repo path but does not resolve
+      (URLs and prose skipped). Quote-tracing (the receipt half): `Unit.Claims`
+      (quote + source) + `UnverifiedClaims` (pure, file read injected) flag a claim whose
+      quote is not found in its cited source. Both wired into `context lint` (exit 12) and
+      `doctor`/`harnesscheck` (exit 16: `dangling_source`, `unverified_claim`). Serves the
+      "provenance weighted by how it was earned" goal. Verified: `LooksLikePath`/
+      `DanglingSources`/`UnverifiedClaims` tables + `context lint`/`doctor` journeys.
+- [x] **Reflective trace into the optimizer (Tier 2, §18).** DONE. `consolidate.
+      ProposePrompt` now mines the tasks and scores the selection-split assertions
+      against the current artifact (both pure), rendering a **"currently-failing
+      held-out assertions — target these"** section — the failure trace, not just the
+      ranked reflection modes, so the relayed agent proposes a targeted edit. Self-
+      contained: no signature or shell change. Verified: a prompt-trace test (an artifact
+      missing the class surfaces it; a satisfied artifact shows none).
+- [x] **Scope-tagged lessons (Tier 2, §10/§11).** DONE. Every disposed finding is
+      stamped into `.adh/failure-records.json` (`failures.Record`) with the arc's routing
+      scope; on promotion, `failures.ScopeFor` tags the materialized unit with the
+      distinct labels/paths the class recurred under, so the lesson routes to where it was
+      learned rather than only by its generic class label — a context-specific correction
+      cannot over-govern every arc. Composes with the OKF labels + trust tier. Verified:
+      `ScopeFor` table + a promote journey asserting the unit routes by its scope label.
+- [x] **Multi-signal accretion triggers + root-cause triage (Tier 2, §11/§10.3).** DONE
+      for the deterministic core. Accretion trigger: lesson promotion requires a class to
+      recur across **≥2 distinct time strata** (`failures.StrataCount` + `lesson.MinStrata`,
+      exit 19) — corroboration across independent temporal signals, not a single-stratum
+      burst. Root-cause triage: each record is classed **ungrounded** (failed with no
+      routed context — fix routing) vs **grounded-miss** (failed despite it — fix content),
+      derived deterministically from `arc.Context`; `failures.RootCauseCounts` surfaces the
+      breakdown at promotion so a human sees whether the class is a routing or a content
+      problem. Verified: `StrataCount`/`RootCauseCounts`/`ClassifyRootCause` tables +
+      `Apply`-stamps-record + a strata-gate promote journey. **Follow-up:** richer causes
+      (infra/auth/rate-limit) need a live model worker's diagnostics, still deferred.
+- [x] **Fixable-vs-structural finding taxonomy (Tier 2, §12/§19.2).** DONE. `Finding`
+      gained an optional `Class` (fixable | structural; empty defaults to fixable,
+      validated by `ParseFindings`); a confirmed **structural** finding now fails the arc
+      terminally at `evaluation.Decide` — escalating to a human — instead of spending
+      rework cycles on an edit that cannot close a design change, while fixable findings
+      keep the return-to-Execution path. The critic prompt asks for the class. Verified:
+      `Decide` structural→Fail case + `HasStructural`/`ParseFindings` class tables.
+- [ ] Optional / against-grain / larger (Tier 3): adaptive percentile + novelty
+      selection (`darwinian_evolver`'s sigmoid sharpness/midpoint + `1/(1+novelty·
+      children)`) — an *alternative* to adh's deliberate strict-`>` gate, not a
+      replacement; richer generated-artifact templates (checklist/anti-patterns/
+      integration) from `hermes-skill-factory`; schema-enforced plan-audit before
+      execution from `PolyBrain` (`schema.json`); and external session-log mining
+      (Claude/Codex/Copilot `*.jsonl` → context units / eval examples, secret-redacted —
+      adh's `redact` already covers the safety half) from `emulo` + `hermes-agent-self-
+      evolution`.
 
 ## Ported from Skillsaw (Done)
 
@@ -348,8 +469,9 @@ Remaining wiring for these:
 
 ## Disposition
 
-- [ ] Branch `implement/adh-spec` is unpushed; upstream PRs are owner-only.
-  Decide whether to push to a fork or hand off.
+- [x] Branch `implement/adh-spec` merged to `main` via PR #1 (`6180963`); the whole
+  implementation is now on `main`. Remaining tidy-up: delete the merged branch
+  (`git branch -d implement/adh-spec`, and the remote copy if still present).
 
 ## Fidelity to the Source Implementations
 
@@ -415,6 +537,14 @@ around them is partial.
   tokens (`at_ops`, `ungrounded`, `gate`, `proof`) replace the relay's stderr
   string-matching. Follow-up: structured logging (`log/slog`) on stderr keeps the
   diagnostic stream separate from this data plane.
+  - [x] Aligned to climax's generated envelope (climax v0.8.0 `climax init --jsonl`):
+    the generic shell (`Status*`/`Outcome`/`Emit*`) moved to `cmd/root/outcome.go`
+    matching the template verbatim (`EmitJSONL` now `json.NewEncoder(...).Encode`);
+    adh's words stay — specialized `CodeForError` (over the climax stub),
+    `ReasonForError`, and the `Reason*` tokens. `// climax:features jsonl` in the
+    dispatcher makes `climax lint` drift-check the surface (reports clean). This
+    closes skillet's deferred "envelope → climax", which was blocked on climax
+    shipping an `outcome` surface.
 - [ ] Deferred — global `--yes`/`--dry-run`: local today (approve owns them for the
   safety gate). Binding globally needs the same unification pass; lower priority
   than machine output.
@@ -488,14 +618,26 @@ around them is partial.
   (go-git merge is experimental → a `git` shell-out via
   `github.com/ldez/go-git-cmd-wrapper/v2`); returning to the base branch after ship.
 - [ ] No injected `Clock` (deterministic timestamps). **Deferred deliberately**:
-  the precondition is unmet — no `time.Time` on `adh.Arc`/state, and the only
-  `time.Now()` sites are commit-authorship (go-git, never pinned by a test) and
-  `sleep.stamp`, which already isolates time to a one-line shell so the consolidate
-  core stays pure. A `Clock` seam today would be a speculative abstraction with no
-  consumer. Revisit when a state time field or a test needs deterministic time.
-- [ ] The oracle's two "implementations" are in-package functions, not a real
-  reference build vs native port. Domain-specific (a mobile-port profile) — see
-  the proof-contract note below.
+  the precondition is still unmet — no `time.Time` on `adh.Arc`/state. The `time.Now()`
+  sites all isolate time to a one-line shell so the pure cores never see it:
+  commit-authorship (go-git, never pinned by a test), `sleep.stamp`, and the
+  stratum stamping (`contextstore.Stratum(time.Now())` in `run`/`step`/`eval`) whose
+  year-month string the miss log and the failure-record gate consume as an opaque
+  token. A `Clock` seam today would be a speculative abstraction; the strata gates
+  assert on records seeded with a fixed stratum, not on wall-clock. Revisit when a
+  state time field or a test needs deterministic time.
+- [x] The oracle's two "implementations" are in-package functions — **generalized to a
+  command-level differential oracle.** `oracle diff --reference <cmd> --candidate <cmd>`
+  runs two repository commands and confirms divergence in their output (`oracle.DiffOutputs`
+  pure; the shell captures and formats), the general form of "two implementations grade
+  each other" for any repo — a reference build vs an optimized port, an old vs new
+  implementation. It exits the oracle gate code on divergence, so declaring it as a §13
+  tool makes `adh eval` confirm an oracle finding against **real** divergence, no
+  mobile-port profile and no adb. The in-package board oracle stays the built-in fallback
+  (diff with no flags). An **invariant** finding is likewise providable — declare any
+  property-check command as a §13 tool; the adjudicator already runs it. Verified:
+  `DiffOutputs` table, command journeys, an end-to-end tool-wrapping smoke. `device`/adb
+  stays deferred by choice (domain-specific hardware).
 
 ## Proof Contract Generalization
 
@@ -574,11 +716,18 @@ around them is partial.
   critic supplies only the tool ID. `RepoAdjudicatorFor` wires it for `eval`,
   `run`, and `step`; the contract path's `proof.Verify` is now rooted at the same
   repo dir instead of `.`.
-- [ ] §19.2 remaining adjudication depth: `oracle`/`invariant` findings run the
-  in-package React/Native equivalence + invariant checks, which pass (the pair is
-  the correct oracle), so a per-arc confirmed path waits on a **real oracle
-  target**; `device` findings run `device.Mock{Healthy:true}`, pending an **adb
-  adapter**. Both are domain-specific (mobile port) and deferred.
+- [x] §19.2 adjudication depth — **generalized (the domain-specific targets stay
+  deferred).** An `oracle`/`invariant`/`device` finding now resolves its `ref` to a
+  repository-declared §13 tool when one exists (the real domain target the repo provides,
+  its exit code the signal — exactly how NFR findings already adjudicate), falling back to
+  adh's built-in check when it names none; a declared-but-unstartable tool is
+  unrunnable/unconfirmed, never a false confirmation. This makes the per-arc *confirmed*
+  path reachable for **any** repo via `evaluation.runDeclaredTool` (shared with the NFR
+  branch) without adh hard-coding a mobile target. Verified: a declared-tool table
+  (device fails → confirms; oracle passes → clears; no-tool → built-in fallback). What
+  stays deferred is providing the actual artifacts — a real differential-oracle target and
+  an `adb` device binary — which are domain-specific (mobile port) and belong to the repo,
+  now pluggable as §13 tools rather than baked into adh.
 - [x] §19.1 unified diff *text*: `vcs.Diff(paths)` renders a unified diff of the
   HEAD-blob vs worktree content via the go-git handle, formatted with
   `github.com/hexops/gotextdiff` (no `git` binary — tests stay hermetic). The critic

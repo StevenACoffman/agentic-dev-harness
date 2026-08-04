@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
+	"github.com/StevenACoffman/skillet/proof"
 )
 
 func TestProofCreateWritesManifestAndRecordsOnArc(t *testing.T) {

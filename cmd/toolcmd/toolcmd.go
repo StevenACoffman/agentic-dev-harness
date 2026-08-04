@@ -9,12 +9,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // Exit codes for the tool command (SPEC §7), kept in one family distinct from the
@@ -116,7 +120,9 @@ func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string)
 // propagates its exit code. A command that could not start (an uninstalled binary)
 // is a registry-level problem carrying the repair hint.
 func (cfg *Config) runStreamed(ctx context.Context, tool *toolreg.Tool) error {
+	start := time.Now()
 	exit, ran := shell.Runner{}.RunIO(ctx, tool.Run, cfg.repoDir(), cfg.Stdout, cfg.Stderr)
+	cfg.logRun(tool.ID, exit, ran, time.Since(start))
 	if shell.NotRun(exit, ran) {
 		return cfg.reportRunProblem(codeRegistry, "tool_unavailable", unavailableMessage(tool))
 	}
@@ -130,7 +136,9 @@ func (cfg *Config) runStreamed(ctx context.Context, tool *toolreg.Tool) error {
 // worker parses one structured envelope carrying the exit code, stdout, and stderr.
 func (cfg *Config) runCaptured(ctx context.Context, tool *toolreg.Tool) error {
 	var stdout, stderr bytes.Buffer
+	start := time.Now()
 	exit, ran := shell.Runner{}.RunIO(ctx, tool.Run, cfg.repoDir(), &stdout, &stderr)
+	cfg.logRun(tool.ID, exit, ran, time.Since(start))
 	if shell.NotRun(exit, ran) {
 		return cfg.reportRunProblem(codeRegistry, "tool_unavailable", unavailableMessage(tool))
 	}
@@ -189,4 +197,20 @@ func (cfg *Config) repoDir() string {
 		return cfg.Repo
 	}
 	return "."
+}
+
+// logRun records one tool invocation's outcome and duration to the tool-run log
+// (§16/§18) so `adh kpi` can measure the tool's declared KPIs over time. It is
+// best-effort: a log-write failure never fails the run — the tool's own exit is the
+// result — but is surfaced on stderr so a broken log is not silent. The clock stays here
+// in the shell; the log stores only the duration and the opaque year-month stratum.
+func (cfg *Config) logRun(id string, exit int, ran bool, took time.Duration) {
+	err := toolrun.AppendOutcome(
+		filepath.Join(cfg.repoDir(), toolrun.RunFile),
+		id, contextstore.Stratum(time.Now()),
+		ran, ran && exit != 0, int(took.Milliseconds()),
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "tool: could not record run outcome: %v\n", err)
+	}
 }

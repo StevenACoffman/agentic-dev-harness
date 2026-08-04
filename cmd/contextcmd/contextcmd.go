@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // Exit codes for the context command (SPEC §7), kept distinct from the arc gates.
@@ -248,7 +250,48 @@ func (cfg *Config) wikiLint(units []contextstore.Unit) int {
 		bad++
 		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: unknown trust tier\n", id)
 	}
+	for _, dangling := range contextstore.DanglingSources(units, cfg.sourceExists) {
+		bad++
+		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s (provenance source not found)\n", dangling)
+	}
+	for _, unverified := range contextstore.UnverifiedClaims(units, cfg.sourceRead) {
+		bad++
+		_, _ = fmt.Fprintf(
+			cfg.Stderr,
+			"unit %s (claim quote not found in cited source)\n",
+			unverified,
+		)
+	}
 	return bad
+}
+
+// sourceExists reports whether a repo-relative provenance source resolves under the
+// repo root — the injected filesystem check for receipt verification (§10.4).
+func (cfg *Config) sourceExists(source string) bool {
+	_, err := os.Stat(filepath.Join(cfg.repoDir(), source))
+	return err == nil
+}
+
+// sourceRead reads a repo-relative provenance source — the injected file read that
+// lets claim quote-tracing stay a pure core (§10.4 receipt verification).
+func (cfg *Config) sourceRead(source string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(cfg.repoDir(), source))
+	return string(data), err
+}
+
+// logIntegrityRun records a verify run of a unit's integrity tool to the tool-run log
+// (§16/§18): a drift (ran and non-zero) is a failed run for that tool's KPI, an
+// unverified one (could not start) is Ran=false. Best-effort — a log-write failure is
+// surfaced but never fails verify. The clock stays here in the shell.
+func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Duration) {
+	err := toolrun.AppendOutcome(
+		filepath.Join(cfg.repoDir(), toolrun.RunFile),
+		id, contextstore.Stratum(time.Now()),
+		ran, ran && code != 0, int(took.Milliseconds()),
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(cfg.Stderr, "context: could not record integrity run: %v\n", err)
+	}
 }
 
 // verify runs each unit's declared integrity check (§10.4 anti-drift): the §13 tool
@@ -282,7 +325,9 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 				unit.Integrity,
 			)}
 		}
+		start := time.Now()
 		code, ran := shell.Runner{}.Run(ctx, tool.Run, cfg.repoDir())
+		cfg.logIntegrityRun(tool.ID, code, ran, time.Since(start))
 		result := integrityResult{Unit: unit.ID, Tool: tool.ID, Status: "ok"}
 		switch {
 		case shell.NotRun(code, ran):

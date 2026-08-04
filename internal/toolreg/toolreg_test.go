@@ -3,6 +3,7 @@ package toolreg_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -44,6 +45,27 @@ func TestValidate(t *testing.T) {
 				{ID: "t", Run: "z", Verifies: "w"},
 			}},
 			wantCode: adh.EINVALID,
+		},
+		{
+			name: "malformed kpi",
+			reg: toolreg.Registry{Tools: []toolreg.Tool{
+				{
+					ID:       "t",
+					Run:      "x",
+					Verifies: "y",
+					KPIs:     []adh.KPI{{Metric: "run_failure", Direction: "sideways"}},
+				},
+			}},
+			wantCode: adh.EINVALID,
+		},
+		{
+			name: "valid kpi",
+			reg: toolreg.Registry{Tools: []toolreg.Tool{
+				{ID: "t", Run: "x", Verifies: "y", KPIs: []adh.KPI{
+					{Metric: "run_failure", Threshold: 2, Direction: adh.WorseWhenAbove},
+				}},
+			}},
+			wantCode: "",
 		},
 	}
 	for _, tt := range tests {
@@ -92,7 +114,7 @@ func TestMarshalRoundTrips(t *testing.T) {
 		t.Fatalf("round-trip tool count = %d, want %d", len(got.Tools), len(want.Tools))
 	}
 	for i := range want.Tools {
-		if got.Tools[i] != want.Tools[i] {
+		if !reflect.DeepEqual(got.Tools[i], want.Tools[i]) {
 			t.Errorf("round-trip tool %d = %+v, want %+v", i, got.Tools[i], want.Tools[i])
 		}
 	}

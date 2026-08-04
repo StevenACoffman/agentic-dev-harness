@@ -22,7 +22,8 @@ func TestHarnessEvalSkillsaw(t *testing.T) {
 	saw := filepath.Join(dir, "s.json")
 	if err := os.WriteFile(
 		saw,
-		[]byte(`{"score":81.0,"dimensions":[{"name":"clarity","score":0.7,"needs_judge":true}]}`),
+		[]byte(`{"skill":"g","deterministic_score":81.0,"has_full_score":false,`+
+			`"dims":[{"num":1,"name":"clarity","final":7,"needs_judge":true}]}`),
 		0o600,
 	); err != nil {
 		t.Fatalf("write skillsaw: %v", err)

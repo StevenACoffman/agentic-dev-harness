@@ -114,3 +114,40 @@ func TestAccept(t *testing.T) {
 		})
 	}
 }
+
+func TestCalibrateJudge(t *testing.T) {
+	cases := []harness.JudgeCase{
+		{
+			Name:     "good passes",
+			Output:   "the deadline was respected",
+			Checks:   []judge.Check{{Op: "contains", Arg: "deadline"}},
+			WantPass: true,
+		},
+		{
+			Name:     "bad fails",
+			Output:   "nothing relevant here",
+			Checks:   []judge.Check{{Op: "contains", Arg: "deadline"}},
+			WantPass: false,
+		},
+		{
+			Name:     "mislabeled — judge disagrees",
+			Output:   "no match",
+			Checks:   []judge.Check{{Op: "contains", Arg: "deadline"}},
+			WantPass: true, // labeled pass but the check fails → disagreement
+		},
+	}
+	cal, err := harness.CalibrateJudge(cases)
+	if err != nil {
+		t.Fatalf("CalibrateJudge: %v", err)
+	}
+	if cal.Cases != 3 || cal.Agree != 2 {
+		t.Fatalf("calibration = %+v, want 2/3 agree", cal)
+	}
+	if len(cal.Disagree) != 1 || cal.Disagree[0] != "mislabeled — judge disagrees" {
+		t.Errorf("disagree = %v, want the mislabeled case", cal.Disagree)
+	}
+	// An empty check set on a case is a caller error.
+	if _, err := harness.CalibrateJudge([]harness.JudgeCase{{Name: "x"}}); err == nil {
+		t.Error("a case with no checks should error")
+	}
+}

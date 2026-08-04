@@ -2,6 +2,8 @@ package evaluation_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -10,6 +12,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
 
 // fakeAdjudicator confirms exactly the findings whose kind is failKind.
@@ -70,7 +73,13 @@ func TestApplyConfirmedReturnsToExecution(t *testing.T) {
 	v := critic.Verdict{
 		Confirmed: []adh.Finding{{Summary: "screen wrong", Kind: adh.FindingDevice}},
 	}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Stage != adh.StageExecution || arc.Status != adh.StatusOpen {
@@ -103,7 +112,13 @@ func TestApplyFailsTerminallyPastBudget(t *testing.T) {
 	v := critic.Verdict{
 		Confirmed: []adh.Finding{{Summary: "still wrong", Kind: adh.FindingDevice}},
 	}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Status != adh.StatusFailed {
@@ -120,11 +135,54 @@ func TestApplyFailsTerminallyPastBudget(t *testing.T) {
 	}
 }
 
+// TestApplyStampsFailureRecord: Apply writes one failure record per disposed class,
+// carrying the stratum, the arc's scope, and the root cause from its grounding — the
+// evidence the §11 accretion gate reads. An ungrounded attempt (no routed context)
+// triages as such.
+func TestApplyStampsFailureRecord(t *testing.T) {
+	t.Chdir(t.TempDir())
+	arc := adh.Arc{
+		ID: "arc-0001", Stage: adh.StageEvaluation, Status: adh.StatusOpen,
+		Labels:   []string{"ui"},
+		Paths:    []string{"board.go"},
+		Findings: []adh.Finding{{Kind: adh.FindingDevice}},
+	}
+	v := critic.Verdict{
+		Confirmed: []adh.Finding{{Summary: "screen wrong", Kind: adh.FindingDevice}},
+	}
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-07",
+	); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	recs, err := failures.LoadRecords(failures.RecordsFile)
+	if err != nil {
+		t.Fatalf("LoadRecords: %v", err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("records = %v, want one for the disposed device class", recs)
+	}
+	r := recs[0]
+	if r.Class != "device" || r.Stratum != "2026-07" || r.RootCause != failures.RootUngrounded {
+		t.Errorf("record = %+v, want device/2026-07/ungrounded", r)
+	}
+	if len(r.Labels) != 1 || r.Labels[0] != "ui" || len(r.Paths) != 1 || r.Paths[0] != "board.go" {
+		t.Errorf("record scope = (%v, %v), want ([ui], [board.go])", r.Labels, r.Paths)
+	}
+}
+
 // TestDecide covers the three-way disposition and the budget boundary.
 func TestDecide(t *testing.T) {
 	t.Parallel()
 	confirmed := &critic.Verdict{Confirmed: []adh.Finding{{Kind: adh.FindingDevice}}}
 	clean := &critic.Verdict{Unconfirmed: []adh.Finding{{Kind: adh.FindingOracle}}}
+	structural := &critic.Verdict{Confirmed: []adh.Finding{
+		{Kind: adh.FindingContract, Class: adh.StructuralFinding},
+	}}
 	tests := []struct {
 		name    string
 		verdict *critic.Verdict
@@ -137,6 +195,7 @@ func TestDecide(t *testing.T) {
 		{"confirmed one below budget reworks", confirmed, 1, 2, evaluation.ReturnToExecution},
 		{"confirmed at budget fails", confirmed, 2, 2, evaluation.Fail},
 		{"zero budget fails on first confirm", confirmed, 0, 0, evaluation.Fail},
+		{"structural escalates under budget", structural, 0, 2, evaluation.Fail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -153,7 +212,13 @@ func TestApplyUnconfirmedAdvancesAndRecordsLesson(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, true, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		true,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if arc.Stage != adh.StageOps {
@@ -169,7 +234,13 @@ func TestApplyUnconfirmedSkipsLessonWhenDisabled(t *testing.T) {
 	t.Chdir(t.TempDir())
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageEvaluation}
 	v := critic.Verdict{Unconfirmed: []adh.Finding{{Summary: "hunch", Kind: adh.FindingOracle}}}
-	if err := evaluation.Apply(&arc, &v, false, evaluation.DefaultMaxReworks); err != nil {
+	if err := evaluation.Apply(
+		&arc,
+		&v,
+		false,
+		evaluation.DefaultMaxReworks,
+		"2026-01",
+	); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if candidates, _ := failures.Load(failures.CandidatesFile); len(candidates) != 0 {
@@ -247,6 +318,151 @@ func TestRepoAdjudicatorNFR(t *testing.T) {
 				t.Errorf("confirms = %v, want %v", confirms, tt.wantConfirms)
 			}
 		})
+	}
+}
+
+// TestAdjudicateDeclaredToolForKind: an oracle/invariant/device finding whose Ref names
+// a declared §13 tool adjudicates against that tool (the real domain target), and a
+// failing tool confirms it. Naming no tool falls back to adh's built-in check, which
+// passes here (the built-in oracle pair agrees, the mock device is healthy), so the
+// finding is unconfirmed (§19.2).
+func TestAdjudicateDeclaredToolForKind(t *testing.T) {
+	t.Parallel()
+	reg := toolreg.Registry{Tools: []toolreg.Tool{
+		{ID: "device-adb", Run: "adb test", Verifies: "on-device behavior"},
+		{ID: "game-oracle", Run: "oracle diff", Verifies: "reference vs native parity"},
+	}}
+	tests := []struct {
+		name    string
+		kind    adh.FindingKind
+		ref     string
+		runner  evaluation.CheckRunner
+		wantRan bool
+		wantF   bool
+	}{
+		{
+			"device tool fails confirms",
+			adh.FindingDevice,
+			"device-adb",
+			fakeRunner{ran: true},
+			true,
+			true,
+		},
+		{
+			"oracle tool passes clears",
+			adh.FindingOracle,
+			"game-oracle",
+			fakeRunner{passed: true, ran: true},
+			true,
+			false,
+		},
+		{
+			"device tool unstartable is unrunnable",
+			adh.FindingDevice,
+			"device-adb",
+			fakeRunner{ran: false},
+			false,
+			false,
+		},
+		{
+			"oracle no tool falls back to built-in",
+			adh.FindingOracle,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+		{
+			"device no tool falls back to healthy mock",
+			adh.FindingDevice,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+		{
+			"invariant no tool falls back to built-in",
+			adh.FindingInvariant,
+			"",
+			fakeRunner{ran: true},
+			true,
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			adj := evaluation.NewRepoAdjudicator(t.TempDir(), reg, nil, tt.runner)
+			ran, failed, err := adj.Adjudicate(
+				context.Background(),
+				adh.Finding{Summary: "x", Kind: tt.kind, Ref: tt.ref},
+			)
+			if err != nil {
+				t.Fatalf("Adjudicate: %v", err)
+			}
+			if ran != tt.wantRan || failed != tt.wantF {
+				t.Errorf(
+					"(ran, failed) = (%v, %v), want (%v, %v)",
+					ran,
+					failed,
+					tt.wantRan,
+					tt.wantF,
+				)
+			}
+		})
+	}
+}
+
+// TestRepoAdjudicatorForLogsDeclaredToolRun: the real adjudicator records each
+// declared-tool run to the tool-run log (§16/§18) so `adh kpi` sees adjudication-time
+// behavior; the test constructor (NewRepoAdjudicator) leaves logging disabled.
+func TestRepoAdjudicatorForLogsDeclaredToolRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".adh"), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// A declared tool whose command exits non-zero (`false`): ran and failed.
+	if err := os.WriteFile(filepath.Join(dir, ".adh", "tools.json"),
+		[]byte(`{"tools":[{"id":"chk","run":"false","verifies":"x"}]}`), 0o600); err != nil {
+		t.Fatalf("write tools: %v", err)
+	}
+	adj, err := evaluation.RepoAdjudicatorFor(dir)
+	if err != nil {
+		t.Fatalf("RepoAdjudicatorFor: %v", err)
+	}
+	ran, failed, err := adj.Adjudicate(
+		context.Background(),
+		adh.Finding{Kind: adh.FindingOracle, Ref: "chk"},
+	)
+	if err != nil {
+		t.Fatalf("Adjudicate: %v", err)
+	}
+	if !ran || !failed {
+		t.Fatalf("(ran, failed) = (%v, %v), want the failing tool confirmed", ran, failed)
+	}
+	records, err := toolrun.Load(filepath.Join(dir, toolrun.RunFile))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(records) != 1 || records[0].Tool != "chk" || !records[0].Failed {
+		t.Fatalf("tool-run log = %+v, want one failed chk run", records)
+	}
+
+	// The test constructor never logs, so a fake-runner adjudication writes nothing.
+	fakeDir := t.TempDir()
+	fake := evaluation.NewRepoAdjudicator(
+		fakeDir,
+		toolreg.Registry{Tools: []toolreg.Tool{{ID: "chk", Run: "x", Verifies: "y"}}},
+		nil,
+		fakeRunner{passed: false, ran: true},
+	)
+	if _, _, aerr := fake.Adjudicate(
+		context.Background(), adh.Finding{Kind: adh.FindingOracle, Ref: "chk"},
+	); aerr != nil {
+		t.Fatalf("Adjudicate: %v", aerr)
+	}
+	if _, statErr := os.Stat(filepath.Join(fakeDir, toolrun.RunFile)); !os.IsNotExist(statErr) {
+		t.Errorf("NewRepoAdjudicator wrote a tool-run log: %v", statErr)
 	}
 }
 

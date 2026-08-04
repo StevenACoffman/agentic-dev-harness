@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -168,16 +169,47 @@ func (cfg *Config) resumeRelay(
 		return fmt.Errorf("run: %w", err)
 	}
 	wasExecution := arc.Stage == adh.StageExecution
+	wasCritic := arc.Stage == adh.StageCritic
 	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	if wasExecution {
 		worktree.CaptureFootprint(cfg.repoDir(), arc)
 	}
+	if wasCritic {
+		cfg.recordCoverage(ctx, arc)
+	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
+}
+
+// underCovered returns the finding kinds recent critics under-covered (§19), read
+// from the coverage log — best-effort: a load error yields no hint, never a failure.
+func (cfg *Config) underCovered(ctx context.Context) []string {
+	entries, err := critic.LoadCoverage(filepath.Join(cfg.repoDir(), critic.CoverageFile))
+	if err != nil {
+		cfg.Log.WarnContext(ctx, "load critic coverage", "err", err)
+		return nil
+	}
+	kinds := critic.UnderCovered(entries, adh.FindingKinds())
+	names := make([]string, len(kinds))
+	for i := range kinds {
+		names[i] = string(kinds[i])
+	}
+	return names
+}
+
+// recordCoverage appends the arc's surfaced finding kinds to the coverage log after a
+// critic turn (§19), steering the next critic to under-covered kinds. Best-effort.
+func (cfg *Config) recordCoverage(ctx context.Context, arc *adh.Arc) {
+	entry := critic.CoverageEntry{Arc: arc.ID, Kinds: critic.FindingKinds(arc.Findings)}
+	if err := critic.AppendCoverage(
+		filepath.Join(cfg.repoDir(), critic.CoverageFile), &entry,
+	); err != nil {
+		cfg.Log.WarnContext(ctx, "record critic coverage", "arc", arc.ID, "err", err)
+	}
 }
 
 // emitRelay grounds and emits the current model stage's prompt, parks it, and
@@ -197,9 +229,10 @@ func (cfg *Config) emitRelay(
 	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
+		in.Coverage = cfg.underCovered(ctx)
 	}
 	out, err := relay.Emit(
-		arc, contextstore.DefaultStoreDir, in, renderer, model.Relay{}.ModelClass(), judgment,
+		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,
 	)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
@@ -402,7 +435,8 @@ func (cfg *Config) adjudicate(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	if err := evaluation.Apply(arc, &verdict, recordLessons, maxReworks); err != nil {
+	stratum := contextstore.Stratum(time.Now())
+	if err := evaluation.Apply(arc, &verdict, recordLessons, maxReworks, stratum); err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
 	return nil
@@ -412,9 +446,14 @@ func (cfg *Config) adjudicate(
 // (§10.3): accumulated misses earn a route proposal (`adh context misses`). It is
 // best-effort — a failed append must not mask the gap the arc actually hit.
 func (cfg *Config) recordMiss(ctx context.Context, arc *adh.Arc) {
-	miss := contextstore.Miss{Arc: arc.ID, Labels: arc.Labels, Paths: arc.Paths}
+	miss := contextstore.Miss{
+		Arc:     arc.ID,
+		Labels:  arc.Labels,
+		Paths:   arc.Paths,
+		Stratum: contextstore.Stratum(time.Now()),
+	}
 	if err := contextstore.AppendMiss(
-		filepath.Join(cfg.repoDir(), contextstore.MissFile), miss,
+		filepath.Join(cfg.repoDir(), contextstore.MissFile), &miss,
 	); err != nil {
 		cfg.Log.WarnContext(ctx, "record routing miss", "arc", arc.ID, "err", err)
 	}

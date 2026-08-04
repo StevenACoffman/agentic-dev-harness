@@ -12,7 +12,7 @@ import (
 	"sort"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
+	"github.com/StevenACoffman/skillet/atomicfile"
 )
 
 // DefaultArcsDir is the arc workspace path relative to the repo root.

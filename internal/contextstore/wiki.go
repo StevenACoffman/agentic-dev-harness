@@ -37,6 +37,57 @@ func DanglingSupersessions(units []Unit) []string {
 	return dangling
 }
 
+// LooksLikePath reports whether a provenance source is a repo-relative path — a
+// candidate for existence checking — rather than a URL or a prose citation: it has
+// no URL scheme, no whitespace, and contains a path separator or a file extension.
+func LooksLikePath(source string) bool {
+	if source == "" || strings.Contains(source, "://") || strings.ContainsAny(source, " \t") {
+		return false
+	}
+	return strings.Contains(source, "/") || strings.Contains(source, ".")
+}
+
+// DanglingSources returns "id: source" for each unit provenance source that looks
+// like a repo path but does not resolve, per the injected exists predicate (§10.4
+// receipt verification): a promoted unit citing a source that is not there is a
+// provenance defect. URL and prose sources are skipped. It is pure — the caller
+// injects the filesystem check so the core stays testable. Sorted.
+func DanglingSources(units []Unit, exists func(string) bool) []string {
+	dangling := make([]string, 0)
+	for i := range units {
+		for _, src := range units[i].Sources {
+			if LooksLikePath(src) && !exists(src) {
+				dangling = append(dangling, units[i].ID+": "+src)
+			}
+		}
+	}
+	sort.Strings(dangling)
+	return dangling
+}
+
+// UnverifiedClaims returns "id: quote" for each unit claim whose source looks like a
+// repo path but whose file cannot be read or does not contain the quoted text, per
+// the injected read function (§10.4 receipt verification): the receipt half of
+// provenance, beyond DanglingSources' check that the path resolves. A claim citing a
+// URL or prose source is skipped — its quote cannot be traced deterministically. It
+// is pure — the caller injects the file read so the core stays testable. Sorted.
+func UnverifiedClaims(units []Unit, read func(string) (string, error)) []string {
+	unverified := make([]string, 0)
+	for i := range units {
+		for _, claim := range units[i].Claims {
+			if !LooksLikePath(claim.Source) {
+				continue
+			}
+			text, err := read(claim.Source)
+			if err != nil || !strings.Contains(text, claim.Quote) {
+				unverified = append(unverified, units[i].ID+": "+claim.Quote)
+			}
+		}
+	}
+	sort.Strings(unverified)
+	return unverified
+}
+
 // InvalidTrust returns the ids of units whose trust tier is outside the taxonomy
 // (§10.4). Sorted. Pure.
 func InvalidTrust(units []Unit) []string {
@@ -44,6 +95,24 @@ func InvalidTrust(units []Unit) []string {
 	for i := range units {
 		if !units[i].Verified.Valid() {
 			bad = append(bad, units[i].ID)
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// InvalidKPIs returns the ids of units declaring a malformed KPI (§16/§18) — an empty
+// metric or an unknown direction — so a silently-ignored indicator is caught rather
+// than never firing. A unit is listed once however many KPIs are malformed. Sorted.
+// Pure.
+func InvalidKPIs(units []Unit) []string {
+	bad := make([]string, 0)
+	for i := range units {
+		for j := range units[i].KPIs {
+			if !units[i].KPIs[j].Valid() {
+				bad = append(bad, units[i].ID)
+				break
+			}
 		}
 	}
 	sort.Strings(bad)

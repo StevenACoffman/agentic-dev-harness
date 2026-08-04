@@ -15,9 +15,9 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/skillet/identity"
+	"github.com/StevenACoffman/skillet/proof"
 )
 
 func TestHarnessEvalDispatch(t *testing.T) {

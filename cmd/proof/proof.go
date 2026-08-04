@@ -13,9 +13,9 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
+	prooflib "github.com/StevenACoffman/skillet/proof"
 )
 
 // shortSHALen is how many leading hex characters of a provenance SHA the create

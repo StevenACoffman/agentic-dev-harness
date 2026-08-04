@@ -18,11 +18,11 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adr"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/atomicfile"
 	metricslib "github.com/StevenACoffman/agentic-dev-harness/internal/metrics"
-	prooflib "github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
+	"github.com/StevenACoffman/skillet/atomicfile"
+	prooflib "github.com/StevenACoffman/skillet/proof"
 )
 
 // metricsFile is the effectiveness ledger the metrics command summarizes.

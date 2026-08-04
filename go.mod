@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.47.0 // indirect
 )
 
 require (
@@ -25,6 +25,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
+	github.com/StevenACoffman/skillet v0.1.0
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/sevenzip v1.6.2 // indirect

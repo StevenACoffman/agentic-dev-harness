@@ -25,16 +25,40 @@ func seedFailures(t *testing.T, notesJSON string) {
 	}
 }
 
-// TestLessonPromoteMaterializesRoutableUnit: promoting a class to a reversible
-// owner writes a real §10 context unit that `context show`/`route` then see — the
-// correction becomes accretive (§11.2), not a printed intent.
+// seedRecords writes the stamped failure-record log so a class clears the §11
+// temporal gate and carries its routing scope and root cause.
+func seedRecords(t *testing.T, recordsJSON string) {
+	t.Helper()
+	if err := os.MkdirAll(".adh", 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(".adh", "failure-records.json"),
+		[]byte(recordsJSON),
+		0o600,
+	); err != nil {
+		t.Fatalf("seed records: %v", err)
+	}
+}
+
+// TestLessonPromoteMaterializesRoutableUnit: promoting a class that recurred across
+// ≥2 strata to a reversible owner writes a real §10 context unit that `context
+// show`/`route` then see, tagged with the scope it recurred under — the correction
+// becomes accretive (§11.2, §19.2), not a printed intent.
 func TestLessonPromoteMaterializesRoutableUnit(t *testing.T) {
 	t.Chdir(t.TempDir())
 	seedFailures(t, `["oracle: clears differ from reference", "oracle: seed drift"]`)
+	seedRecords(t, `[
+		{"class":"oracle","stratum":"2026-06","labels":["ui"],"paths":["board.go"],"root_cause":"ungrounded"},
+		{"class":"oracle","stratum":"2026-07","labels":["ui"],"root_cause":"grounded-miss"}
+	]`)
 
 	out := mustRun(t, "lesson", "--to", "decision", "promote", "oracle")
 	if !strings.Contains(out, "oracle-decision") {
 		t.Fatalf("promote did not report the written unit:\n%s", out)
+	}
+	if !strings.Contains(out, "grounded-miss") || !strings.Contains(out, "ungrounded") {
+		t.Errorf("promote did not surface the root-cause triage:\n%s", out)
 	}
 	// The unit is routable and shows its ADR content.
 	show := mustRun(t, "context", "show", "oracle-decision")
@@ -43,16 +67,35 @@ func TestLessonPromoteMaterializesRoutableUnit(t *testing.T) {
 			t.Errorf("promoted decision unit missing %q:\n%s", want, show)
 		}
 	}
-	if routed := mustRun(
-		t,
-		"context",
-		"route",
-		"oracle",
-	); !strings.Contains(
-		routed,
-		"oracle-decision",
-	) {
-		t.Errorf("promoted unit did not route by its class label: %q", routed)
+	// It routes both by its class label and the scope it recurred under (§19.2).
+	for _, footprint := range []string{"oracle", "ui"} {
+		if routed := mustRun(
+			t,
+			"context",
+			"route",
+			footprint,
+		); !strings.Contains(
+			routed,
+			"oracle-decision",
+		) {
+			t.Errorf("promoted unit did not route by %q: %q", footprint, routed)
+		}
+	}
+}
+
+// TestLessonPromoteBlockedByStrataGate: a class that recurred in only one time
+// stratum cannot promote (exit 19) — accretion requires a pattern across time (§11).
+func TestLessonPromoteBlockedByStrataGate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	seedFailures(t, `["oracle: once"]`)
+	seedRecords(t, `[{"class":"oracle","stratum":"2026-07"}]`)
+	_, err := run(t, "lesson", "--to", "context", "promote", "oracle")
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 19 {
+		t.Fatalf("single-stratum promotion = %v, want ExitError(19)", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(".adh", "context")); !os.IsNotExist(statErr) {
+		t.Errorf("gated promotion wrote to the context store: %v", statErr)
 	}
 }
 
@@ -61,6 +104,10 @@ func TestLessonPromoteMaterializesRoutableUnit(t *testing.T) {
 func TestLessonPromoteExecutableGates(t *testing.T) {
 	t.Chdir(t.TempDir())
 	seedFailures(t, `["invariant: board must clear"]`)
+	seedRecords(t, `[
+		{"class":"invariant","stratum":"2026-06"},
+		{"class":"invariant","stratum":"2026-07"}
+	]`)
 
 	_, err := run(t, "lesson", "--to", "check", "promote", "invariant")
 	var exit root.ExitError

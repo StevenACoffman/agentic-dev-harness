@@ -22,6 +22,42 @@ func TestFindingKindValid(t *testing.T) {
 	}
 }
 
+func TestKPIBreachedAndValid(t *testing.T) {
+	above := adh.KPI{Metric: "grounded_miss", Threshold: 3, Direction: adh.WorseWhenAbove}
+	below := adh.KPI{Metric: "acceptance", Threshold: 0.8, Direction: adh.WorseWhenBelow}
+	cases := []struct {
+		name  string
+		kpi   adh.KPI
+		value float64
+		want  bool
+	}{
+		{"above breached", above, 4, true},
+		{"above at threshold not breached", above, 3, false},
+		{"above under", above, 1, false},
+		{"below breached", below, 0.5, true},
+		{"below at threshold not breached", below, 0.8, false},
+		{"below over", below, 0.9, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.kpi.Breached(tc.value); got != tc.want {
+				t.Errorf("Breached(%v) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
+	if !above.Valid() || !below.Valid() {
+		t.Error("well-formed KPIs must be valid")
+	}
+	for _, bad := range []adh.KPI{
+		{Metric: "", Direction: adh.WorseWhenAbove},
+		{Metric: "x", Direction: "sideways"},
+	} {
+		if bad.Valid() {
+			t.Errorf("KPI %+v must be invalid", bad)
+		}
+	}
+}
+
 func TestParseResolution(t *testing.T) {
 	for _, res := range []adh.Resolution{
 		adh.ResolutionChange, adh.ResolutionInvestigation,

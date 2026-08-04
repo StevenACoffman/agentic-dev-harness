@@ -25,10 +25,10 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evidence"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/identity"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	"github.com/StevenACoffman/skillet/identity"
 )
 
 // Split values partition mined tasks. Selection is held out for acceptance;
@@ -50,6 +50,11 @@ const (
 // longitudinalLineCap bounds the number of regressed/persistent lines carried in
 // a Longitudinal summary, keeping the slow-update guidance short.
 const longitudinalLineCap = 8
+
+// DefaultReplicationRuns is how many independent seeded partitions the fresh-
+// replication eval scores a candidate over (§18.2) — enough for ≥2 independent
+// passing runs to earn an ELEVATE.
+const DefaultReplicationRuns = 3
 
 // Split is the held-out partition a mined task belongs to.
 type Split string
@@ -154,6 +159,7 @@ type Cycle struct {
 	Longitudinal  Longitudinal      `json:"longitudinal"`
 	SlowGuidance  string            `json:"slow_guidance,omitempty"`
 	Verdict       verdict.Verdict   `json:"verdict,omitempty"`
+	Replication   verdict.Verdict   `json:"replication,omitempty"`
 	Records       []evidence.Record `json:"records"`
 }
 
@@ -271,6 +277,8 @@ func ProposePrompt(signals []Signal, artifact string, cfg Config) string {
 	writeModes(&b, reflection.Failure)
 	b.WriteString("\nSuccess modes to reinforce:\n")
 	writeModes(&b, reflection.Success)
+	b.WriteString("\nCurrently-failing held-out assertions — target these (§18.6):\n")
+	writeFailingTasks(&b, signals, artifact, cfg)
 	b.WriteString("\nCurrent LEARNED region:\n")
 	if current := currentLearned(artifact, cfg.Marker); current != "" {
 		b.WriteString(current)
@@ -279,6 +287,29 @@ func ProposePrompt(signals []Signal, artifact string, cfg Config) string {
 		b.WriteString("(empty)\n")
 	}
 	return b.String()
+}
+
+// writeFailingTasks renders the held-out assertions the current artifact fails —
+// the reflective trace (§18.6, GEPA): scoring the mined selection-split tasks against
+// the artifact so the worker targets a bounded edit at what actually fails, not just
+// the recurring modes. It is pure (judge.Score reads no I/O); a task whose score
+// cannot be computed is skipped rather than surfaced.
+func writeFailingTasks(b *strings.Builder, signals []Signal, artifact string, cfg Config) {
+	failing := 0
+	for _, task := range Mine(signals, cfg) {
+		if task.Split != SplitSelection {
+			continue
+		}
+		result, err := judge.Score(artifact, task.Checks)
+		if err != nil || result.Hard >= 1.0 {
+			continue
+		}
+		_, _ = fmt.Fprintf(b, "- %s (%s)\n", task.ID, reasonFor(result.Hard))
+		failing++
+	}
+	if failing == 0 {
+		b.WriteString("- (none — the current artifact passes every held-out assertion)\n")
+	}
 }
 
 // writeModes lists reflected modes as ranked bullets, or "(none)" when empty.
@@ -346,6 +377,17 @@ func SplitFor(id string) Split {
 	}
 }
 
+// SplitForSeed is SplitFor over an independent partition selected by seed, so the
+// same mined tasks can be re-partitioned N ways for a fresh-replication eval (§18.2)
+// — each seed is an independent held-out selection set, and no clock or randomness is
+// used. Seed 0 is the canonical partition SplitFor uses.
+func SplitForSeed(id string, seed uint64) Split {
+	if seed == 0 {
+		return SplitFor(id)
+	}
+	return SplitFor(fmt.Sprintf("%d:%s", seed, id))
+}
+
 // Plan runs one consolidation cycle purely. Given the current artifact, the
 // optimizer's proposed learned text, the harvested arcs, and the set of
 // previously rejected candidate hashes, it mines tasks, scores the baseline and
@@ -400,7 +442,9 @@ func Plan(
 	if err := cycle.setLongitudinal(artifact, candidate, tasks); err != nil {
 		return Cycle{}, err
 	}
-	cycle.Verdict = verdictFor(baseScore, candScore, cycle.Longitudinal)
+	if err := cycle.setVerdicts(artifact, candidate, tasks, baseScore, candScore, cfg); err != nil {
+		return Cycle{}, err
+	}
 	// A scored candidate is identified by its content hash whatever the verdict,
 	// so the shell can remember a rejected one in the negative-feedback buffer
 	// (§18.3); only an accepted candidate is proposed for staging.
@@ -431,6 +475,100 @@ func verdictFor(baseScore, candScore float64, long Longitudinal) verdict.Verdict
 		verdict.DefaultMinEffect,
 		hasReplication,
 	)
+}
+
+// setVerdicts records the two trust labels on the cycle (§18.2): the single held-out
+// verdict (selection primary vs test-split replication) and the fresh multi-run
+// replication verdict over independent seeded partitions. Neither changes staging —
+// the strict gate already decided that; they label how much to trust the change.
+func (c *Cycle) setVerdicts(
+	artifact, candidate string,
+	tasks []Task,
+	baseScore, candScore float64,
+	cfg Config,
+) error {
+	c.Verdict = verdictFor(baseScore, candScore, c.Longitudinal)
+	replication, err := replicationVerdict(artifact, candidate, tasks, cfg, DefaultReplicationRuns)
+	if err != nil {
+		return err
+	}
+	c.Replication = replication
+	return nil
+}
+
+// replicationVerdict is the fresh-replication verdict (§18.2): it scores the
+// candidate against the baseline over `runs` independent seeded partitions of the
+// mined tasks — each an independent held-out selection set — and requires the
+// candidate to win significantly on enough of them (verdict.Replicate). This is the
+// fresh replication adh's own deterministic evaluator can run without a live model
+// worker: a real multi-run check, not the single held-out split verdictFor uses.
+func replicationVerdict(
+	artifact, candidate string,
+	tasks []Task,
+	cfg Config,
+	runs int,
+) (verdict.Verdict, error) {
+	outcomes := make([]verdict.Outcome, 0, runs)
+	for seed := 1; seed <= runs; seed++ {
+		outcome, err := runOutcome(artifact, candidate, tasks, cfg, uint64(seed))
+		if err != nil {
+			return "", err
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return verdict.Replicate(outcomes, verdict.DefaultMinEffect), nil
+}
+
+// runOutcome scores one independent seeded partition: the candidate's selection
+// improvement over the baseline (the delta) and whether the paired before/after
+// outcomes are significant (McNemar) — one independent run for verdict.Replicate.
+func runOutcome(
+	artifact, candidate string,
+	tasks []Task,
+	cfg Config,
+	seed uint64,
+) (verdict.Outcome, error) {
+	baseSplit, baseDiags, err := scoreSeeded(artifact, tasks, seed)
+	if err != nil {
+		return verdict.Outcome{}, err
+	}
+	baseScore, err := metricScore(cfg, baseSplit)
+	if err != nil {
+		return verdict.Outcome{}, err
+	}
+	candSplit, candDiags, err := scoreSeeded(candidate, tasks, seed)
+	if err != nil {
+		return verdict.Outcome{}, err
+	}
+	candScore, err := metricScore(cfg, candSplit)
+	if err != nil {
+		return verdict.Outcome{}, err
+	}
+	improved, regressed := pairedCounts(baseDiags, candDiags)
+	_, significant := verdict.McNemar(improved, regressed)
+	return verdict.Outcome{Delta: candScore - baseScore, Significant: significant}, nil
+}
+
+// pairedCounts compares each task's hard outcome before and after over the same
+// seeded selection set: improved counts fail→pass, regressed counts pass→fail.
+func pairedCounts(before, after []Diagnostic) (improved, regressed int) {
+	prev := make(map[string]float64, len(before))
+	for i := range before {
+		prev[before[i].Task] = before[i].Hard
+	}
+	for i := range after {
+		was, ok := prev[after[i].Task]
+		if !ok {
+			continue
+		}
+		switch {
+		case after[i].Hard > was:
+			improved++
+		case after[i].Hard < was:
+			regressed++
+		}
+	}
+	return improved, regressed
 }
 
 // setLongitudinal scores both artifacts over the report-only test split and
@@ -540,6 +678,26 @@ func proposal(
 // rule-judge score over its tasks (SkillOpt's aggregate_scores) — plus a
 // per-task diagnostic. An empty split scores zero with no diagnostics.
 func scoreSplit(artifact string, tasks []Task, split Split) (SplitScore, []Diagnostic, error) {
+	return scoreWhere(artifact, tasks, split, func(i int) bool { return tasks[i].Split == split })
+}
+
+// scoreSeeded scores the selection split of an independent seeded partition (§18.2),
+// used by the multi-run replication eval — the same tasks, re-partitioned by seed.
+func scoreSeeded(artifact string, tasks []Task, seed uint64) (SplitScore, []Diagnostic, error) {
+	return scoreWhere(artifact, tasks, SplitSelection, func(i int) bool {
+		return SplitForSeed(tasks[i].ID, seed) == SplitSelection
+	})
+}
+
+// scoreWhere is the split's aggregate score — the mean hard and mean soft rule-judge
+// score over the tasks include selects (SkillOpt's aggregate_scores) — plus a
+// per-task diagnostic labeled with split. An empty selection scores zero.
+func scoreWhere(
+	artifact string,
+	tasks []Task,
+	split Split,
+	include func(int) bool,
+) (SplitScore, []Diagnostic, error) {
 	var (
 		diags   []Diagnostic
 		sumHard float64
@@ -547,13 +705,13 @@ func scoreSplit(artifact string, tasks []Task, split Split) (SplitScore, []Diagn
 		count   int
 	)
 	for i := range tasks {
-		if tasks[i].Split != split {
+		if !include(i) {
 			continue
 		}
 		count++
 		result, err := judge.Score(artifact, tasks[i].Checks)
 		if err != nil {
-			return SplitScore{}, nil, &adh.Error{Op: "consolidate.scoreSplit", Err: err}
+			return SplitScore{}, nil, &adh.Error{Op: "consolidate.scoreWhere", Err: err}
 		}
 		sumHard += result.Hard
 		sumSoft += result.Soft

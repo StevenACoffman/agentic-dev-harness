@@ -32,6 +32,24 @@ type EvalReport struct {
 	Behavioral *judge.Result `json:"behavioral,omitempty"`
 }
 
+// JudgeCase is one labeled judge-calibration fixture (§18.2): an output, the checks
+// to score it with, and whether it should pass.
+type JudgeCase struct {
+	Name     string        `json:"name"`
+	Output   string        `json:"output"`
+	Checks   []judge.Check `json:"checks"`
+	WantPass bool          `json:"want_pass"`
+}
+
+// Calibration is the judge-calibration outcome: how many labeled fixtures the
+// deterministic judge scored in agreement with their label, and the names of the
+// ones it disagreed with.
+type Calibration struct {
+	Cases    int      `json:"cases"`
+	Agree    int      `json:"agree"`
+	Disagree []string `json:"disagree,omitempty"`
+}
+
 // MeetsFloor reports whether the report's deterministic score meets the minimum
 // floor. A non-positive floor disables the gate; since DetScore is always >= 0,
 // floor == 0 is equivalent to "no floor".
@@ -91,6 +109,32 @@ func SelfTest() error {
 		}
 	}
 	return nil
+}
+
+// CalibrateJudge runs the deterministic rule-judge over labeled fixtures and reports
+// agreement (§18.2): a judge that scores a known-good fixture as failing, or a
+// known-bad one as passing, is miscalibrated, so the ratchet cannot trust its
+// verdicts. It extends the negative-control discipline from the gate/grader to the
+// judge's actual verdicts on cases the operator labeled. It is pure; an empty check
+// set on a case is a caller error surfaced as EINVALID.
+func CalibrateJudge(cases []JudgeCase) (Calibration, error) {
+	cal := Calibration{Cases: len(cases), Disagree: make([]string, 0)}
+	for i := range cases {
+		result, err := judge.Score(cases[i].Output, cases[i].Checks)
+		if err != nil {
+			return Calibration{}, fmt.Errorf(
+				"harness.CalibrateJudge: case %q: %w",
+				cases[i].Name,
+				err,
+			)
+		}
+		if (result.Hard >= 1.0) == cases[i].WantPass {
+			cal.Agree++
+		} else {
+			cal.Disagree = append(cal.Disagree, cases[i].Name)
+		}
+	}
+	return cal, nil
 }
 
 // GraderSelfTest calibrates the grader (§18.2): a toothless gate is caught by

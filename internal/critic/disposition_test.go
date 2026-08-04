@@ -10,7 +10,7 @@ import (
 func TestParseFindingsValid(t *testing.T) {
 	reply := `{"findings":[
 		{"summary":"clears differ from the reference","kind":"oracle","ref":"board-corpus"},
-		{"summary":"proof does not cover the new path","kind":"contract","ref":".adh/proof/p.json"}
+		{"summary":"proof misses the new path","kind":"contract","class":"structural"}
 	]}`
 	findings, err := critic.ParseFindings(reply)
 	if err != nil {
@@ -21,6 +21,51 @@ func TestParseFindingsValid(t *testing.T) {
 	}
 	if findings[0].Kind != adh.FindingOracle || findings[1].Kind != adh.FindingContract {
 		t.Errorf("kinds = %q,%q; want oracle,contract", findings[0].Kind, findings[1].Kind)
+	}
+	if findings[0].Class != "" || findings[1].Class != adh.StructuralFinding {
+		t.Errorf("classes = %q,%q; want (default),structural", findings[0].Class, findings[1].Class)
+	}
+}
+
+func TestVerdictClasses(t *testing.T) {
+	v := critic.Verdict{
+		Confirmed: []adh.Finding{
+			{Kind: adh.FindingOracle}, {Kind: adh.FindingContract},
+		},
+		Unconfirmed: []adh.Finding{
+			{Kind: adh.FindingOracle}, {Kind: adh.FindingNFR},
+		},
+	}
+	got := v.Classes()
+	want := []string{"contract", "nfr", "oracle"}
+	if len(got) != len(want) {
+		t.Fatalf("Classes() = %v, want %v (distinct, sorted)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Classes()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestVerdictHasStructural(t *testing.T) {
+	fixable := critic.Verdict{Confirmed: []adh.Finding{{Kind: adh.FindingOracle}}}
+	if fixable.HasStructural() {
+		t.Error("a default-class confirmed finding is fixable, not structural")
+	}
+	structural := critic.Verdict{Confirmed: []adh.Finding{
+		{Kind: adh.FindingOracle},
+		{Kind: adh.FindingContract, Class: adh.StructuralFinding},
+	}}
+	if !structural.HasStructural() {
+		t.Error("a structural confirmed finding must be reported")
+	}
+	// A structural finding that is only unconfirmed does not escalate.
+	unconfirmed := critic.Verdict{Unconfirmed: []adh.Finding{
+		{Kind: adh.FindingContract, Class: adh.StructuralFinding},
+	}}
+	if unconfirmed.HasStructural() {
+		t.Error("HasStructural reads confirmed findings only")
 	}
 }
 
@@ -44,6 +89,7 @@ func TestParseFindingsRejectsMalformed(t *testing.T) {
 		"unknown kind":  `{"findings":[{"summary":"x","kind":"vibes"}]}`,
 		"empty summary": `{"findings":[{"summary":"  ","kind":"oracle"}]}`,
 		"unknown field": `{"findings":[],"trust_me":true}`,
+		"unknown class": `{"findings":[{"summary":"x","kind":"oracle","class":"vibes"}]}`,
 	}
 	for name, reply := range tests {
 		t.Run(name, func(t *testing.T) {

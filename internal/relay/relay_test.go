@@ -28,7 +28,7 @@ func noStore(t *testing.T) string {
 
 func TestEmitParksPending(t *testing.T) {
 	arc := adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Status: adh.StatusOpen}
-	out, err := relay.Emit(&arc, noStore(t), critic.Inputs{}, fakePrompter{},
+	out, err := relay.Emit(&arc, noStore(t), &critic.Inputs{}, fakePrompter{},
 		authority.ClassReasoning, nil)
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
@@ -48,7 +48,7 @@ func TestEmitReEmitIsIdempotent(t *testing.T) {
 		Status:  adh.StatusOpen,
 		Pending: &adh.Pending{Stage: adh.StageStrategy, Prompt: "already parked"},
 	}
-	out, err := relay.Emit(&arc, noStore(t), critic.Inputs{}, fakePrompter{},
+	out, err := relay.Emit(&arc, noStore(t), &critic.Inputs{}, fakePrompter{},
 		authority.ClassReasoning, nil)
 	if err != nil {
 		t.Fatalf("Emit: %v", err)

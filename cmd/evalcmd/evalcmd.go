@@ -10,12 +10,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -100,7 +102,14 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("eval: %w", err)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
-	if err := evaluation.Apply(&arc, &verdict, recordLessons, conf.MaxReworks()); err != nil {
+	stratum := contextstore.Stratum(time.Now())
+	if err := evaluation.Apply(
+		&arc,
+		&verdict,
+		recordLessons,
+		conf.MaxReworks(),
+		stratum,
+	); err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
 	if err := store.Save(&arc); err != nil {

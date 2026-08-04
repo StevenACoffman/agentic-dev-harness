@@ -9,8 +9,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/proof"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/skillet/proof"
 )
 
 func TestGroundRoutesAndAssembles(t *testing.T) {
@@ -30,7 +30,7 @@ func TestGroundRoutesAndAssembles(t *testing.T) {
 		Artifacts: []proof.Artifact{{Path: "proof/oracle.txt", Digest: "abc"}},
 	}
 
-	g := critic.Ground(arc, units, pkt, critic.Inputs{
+	g := critic.Ground(arc, units, pkt, &critic.Inputs{
 		AcceptanceBar: "tests pass and CI is green",
 		Diff:          "--- a/x\n+++ b/x\n",
 	})
@@ -74,7 +74,7 @@ func TestForStageNonCriticIsGroundedNoGap(t *testing.T) {
 	// Strategy and Execution are grounded now (§10) — they load routed context and
 	// tools — but never record a routing gap (that is a cold-critic concern).
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageStrategy, Labels: []string{"auth"}}
-	g, gap, err := critic.ForStage(arc, t.TempDir(), critic.Inputs{
+	g, gap, err := critic.ForStage(arc, t.TempDir(), &critic.Inputs{
 		AcceptanceBar: "bar",
 		Tools: []toolreg.Tool{
 			{ID: "oracle-diff", Run: "make oracle", Verifies: "equivalence"},
@@ -107,7 +107,7 @@ func TestForStageEmptyStoreIsNotGap(t *testing.T) {
 	_, gap, err := critic.ForStage(
 		arc,
 		filepath.Join(t.TempDir(), "no-store"),
-		critic.Inputs{AcceptanceBar: "bar"},
+		&critic.Inputs{AcceptanceBar: "bar"},
 	)
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
@@ -126,7 +126,7 @@ func TestForStageGapWhenPopulatedStoreDoesNotMatch(t *testing.T) {
 	// The store exists (has a unit) but nothing routes for the arc's labels — the
 	// environment is set up yet did not teach this arc: a routing gap.
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
-	_, gap, err := critic.ForStage(arc, dir, critic.Inputs{AcceptanceBar: "bar"})
+	_, gap, err := critic.ForStage(arc, dir, &critic.Inputs{AcceptanceBar: "bar"})
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestForStageUndeclaredIsNotGap(t *testing.T) {
 	g, gap, err := critic.ForStage(
 		arc,
 		filepath.Join(t.TempDir(), "no-store"),
-		critic.Inputs{AcceptanceBar: "bar"},
+		&critic.Inputs{AcceptanceBar: "bar"},
 	)
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
@@ -160,7 +160,7 @@ func TestForStageGroundedFromStore(t *testing.T) {
 		t.Fatalf("write unit: %v", err)
 	}
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
-	g, gap, err := critic.ForStage(arc, dir, critic.Inputs{AcceptanceBar: "bar"})
+	g, gap, err := critic.ForStage(arc, dir, &critic.Inputs{AcceptanceBar: "bar"})
 	if err != nil {
 		t.Fatalf("ForStage: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestLoadReadsProofManifest(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Proof: manifest}
-	g, err := critic.Load(arc, filepath.Join(dir, "no-store"), critic.Inputs{AcceptanceBar: "bar"})
+	g, err := critic.Load(arc, filepath.Join(dir, "no-store"), &critic.Inputs{AcceptanceBar: "bar"})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
