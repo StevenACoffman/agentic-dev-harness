@@ -537,6 +537,14 @@ around them is partial.
   tokens (`at_ops`, `ungrounded`, `gate`, `proof`) replace the relay's stderr
   string-matching. Follow-up: structured logging (`log/slog`) on stderr keeps the
   diagnostic stream separate from this data plane.
+  - [x] Aligned to climax's generated envelope (climax v0.8.0 `climax init --jsonl`):
+    the generic shell (`Status*`/`Outcome`/`Emit*`) moved to `cmd/root/outcome.go`
+    matching the template verbatim (`EmitJSONL` now `json.NewEncoder(...).Encode`);
+    adh's words stay — specialized `CodeForError` (over the climax stub),
+    `ReasonForError`, and the `Reason*` tokens. `// climax:features jsonl` in the
+    dispatcher makes `climax lint` drift-check the surface (reports clean). This
+    closes skillet's deferred "envelope → climax", which was blocked on climax
+    shipping an `outcome` surface.
 - [ ] Deferred — global `--yes`/`--dry-run`: local today (approve owns them for the
   safety gate). Binding globally needs the same unification pass; lower priority
   than machine output.
