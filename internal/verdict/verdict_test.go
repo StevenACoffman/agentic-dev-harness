@@ -56,18 +56,7 @@ func TestDecide(t *testing.T) {
 	}
 }
 
-func TestMcNemar(t *testing.T) {
-	t.Parallel()
-	if _, sig := verdict.McNemar(0, 0); sig {
-		t.Error("no discordant pairs cannot be significant")
-	}
-	if _, sig := verdict.McNemar(2, 1); sig {
-		t.Error("3 discordant pairs is below the χ² critical value")
-	}
-	if _, sig := verdict.McNemar(12, 0); !sig {
-		t.Error("12 vs 0 discordant pairs should be significant")
-	}
-}
+// McNemar moved to skillet/stats; see stats.TestMcNemarSignificance.
 
 func TestValidateSplits(t *testing.T) {
 	t.Parallel()

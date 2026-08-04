@@ -7,8 +7,8 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/consolidate"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	gate "github.com/StevenACoffman/skillet/ratchet"
 )
 
 // realisticArtifact is a few hundred bytes — the size a real guiding doc runs —

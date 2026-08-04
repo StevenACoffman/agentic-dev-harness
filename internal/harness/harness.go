@@ -1,16 +1,16 @@
 // Package harness holds the self-optimization decisions (SPEC-ADDITIONS §18):
 // classify a miss as a harness defect or an execution lapse (§18.3), and accept
 // a candidate only on a strict held-out improvement via the gate ratchet
-// (§18.2). It composes internal/gate as a leaf; it performs no effect.
+// (§18.2). It composes skillet/ratchet as a leaf; it performs no effect.
 package harness
 
 import (
 	"fmt"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/gate"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/rubric"
+	gate "github.com/StevenACoffman/skillet/ratchet"
 )
 
 // Disposition values classify a miss.

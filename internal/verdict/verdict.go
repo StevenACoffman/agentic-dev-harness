@@ -7,14 +7,8 @@
 package verdict
 
 import (
-	"math"
-
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
-
-// chiSqCritical is the χ²(1 df, α=.05) critical value; a McNemar statistic above it
-// is a significant paired difference.
-const chiSqCritical = 3.841
 
 // DefaultMinEffect is the smallest score delta (on the 0..1 rule-judge scale) that
 // counts as a meaningful effect for ELEVATE — a smaller gain is real but not worth
@@ -102,24 +96,6 @@ func allElevate(runs []Outcome, minEffect float64) bool {
 		}
 	}
 	return true
-}
-
-// McNemar runs McNemar's test over paired before/after binary outcomes (§18.2):
-// improved is the count that flipped fail→pass, regressed the count that flipped
-// pass→fail. It returns the continuity-corrected χ² statistic and whether it clears
-// the χ²(1, .05) critical value. With no discordant pairs there is no evidence of a
-// difference. It is pure.
-func McNemar(improved, regressed int) (stat float64, significant bool) {
-	discordant := improved + regressed
-	if discordant == 0 {
-		return 0, false
-	}
-	corrected := math.Abs(float64(improved-regressed)) - 1
-	if corrected < 0 {
-		corrected = 0
-	}
-	stat = corrected * corrected / float64(discordant)
-	return stat, stat > chiSqCritical
 }
 
 // ValidateSplits guards against split leakage (§18.2): a task id assigned to more
