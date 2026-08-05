@@ -916,15 +916,19 @@ Surfaced by a survey across the skillet-family repos (skillet, exegesis, skillsa
 canonizer, toerr). adh is the only CLI in the family that fails the base-scaffold
 check its siblings pass.
 
-- [ ] **`climax lint` base-scaffold: add the unmatched-subcommand guard.** A mistyped
-  subcommand on a group parent (`Exec == nil` with a leftover positional after Parse)
-  falls through to `Run`, returns `ff.ErrNoExec`, and exits 0 — indistinguishable from
-  a bare invocation, so `climax lint` reports 1 error. exegesis and skillsaw both fixed
-  this: detect the selected group parent with a leftover positional and return
-  `"<cmd>: unknown subcommand \"x\""` (exit 1), while a bare invocation still returns
-  `ff.ErrNoExec` (exit 0). Adopt the same guard in `cmd/cmd.go`. (This corrects the
-  now-stale "reports clean" note under the `--jsonl` envelope item above: the `outcome`
-  surface is clean, but the overall lint is not.)
+- [x] **`climax lint` base-scaffold: add the unmatched-subcommand guard.** DONE (2026-08-05):
+  `Run` now checks, after Parse, whether the selected command is a group parent
+  (`Exec == nil`) with a leftover positional; if so it prints usage and returns
+  `"<cmd>: unknown subcommand %q"` (exit 1). A bare invocation leaves no leftover arg and
+  still returns `ff.ErrNoExec` (exit 0). This is the exact canonical shape exegesis and
+  skillsaw use — `climax lint` reports **no structural drift**, and it also guards nested
+  ff-group parents (e.g. `adh proof bogus`). A dispatcher test (`cmd/dispatch_test.go`)
+  asserts a typo fails and is not `ErrNoExec`, a nested-group typo fails, and a bare
+  invocation stays the exit-0 no-op. Note: the canonical guard prints the usage banner
+  unconditionally, so under `--jsonl` a typo yields a banner on stderr plus exit 1 (the
+  machine signal) rather than a JSON outcome — acceptable, since a mistyped subcommand is
+  an operator error, not a machine-consumed result; conforming to the shared scaffold was
+  chosen over an adh-only `--jsonl` refinement that `climax lint` rejects.
 - [x] **Bump skillet v0.3.0 → v0.5.0.** DONE (2026-08-05): go.mod/go.sum only — no code
   change, 43 packages test green, `golangci-lint` clean. adh imports none of the packages
   that changed between v0.3.0 and v0.5.0 (`errs`/`identity`/`proof`/`ratchet`/`stats`/
