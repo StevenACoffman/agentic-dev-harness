@@ -85,6 +85,9 @@ func (c *stageCmd) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("%s: requires an arc id", c.name)
 	}
+	if c.DryRun {
+		return root.DryRunUnsupportedError(c.name)
+	}
 	store := state.Default()
 	arc, err := store.Get(args[0])
 	if err != nil {

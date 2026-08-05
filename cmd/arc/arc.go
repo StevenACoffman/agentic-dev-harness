@@ -63,6 +63,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("arc: expected a verb: new, list, or show")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("arc")
+	}
 	store := state.Default()
 	switch args[0] {
 	case "new":

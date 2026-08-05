@@ -85,6 +85,9 @@ func (cfg *Config) create(args []string) error {
 	if len(args) < 2 {
 		return errors.New("proof: create requires an arc id and at least one artifact path")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("proof create")
+	}
 	arcID, paths := args[0], args[1:]
 	store := state.Default()
 	arc, err := store.Get(arcID)
