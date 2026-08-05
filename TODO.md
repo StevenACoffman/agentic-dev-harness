@@ -925,9 +925,10 @@ check its siblings pass.
   `ff.ErrNoExec` (exit 0). Adopt the same guard in `cmd/cmd.go`. (This corrects the
   now-stale "reports clean" note under the `--jsonl` envelope item above: the `outcome`
   surface is clean, but the overall lint is not.)
-- [ ] **Bump skillet v0.3.0 → v0.5.0.** adh trails the shared kernel by two minor
-  versions. v0.5.0 brings `ruleset/synthesize`, `ruleset.SourceAnchor`, and the
-  `toerr.WrapWithMessage`/`wrapcheck` integration. Because adh re-exports
-  `skillet/errs.Error` as `adh.Error`, a later skillet errs→toerr consolidation would
-  reach adh's 157 `adh.Error` sites for free once this bump lands. Keeping current also
-  restores the single-kernel guarantee skillet exists to provide.
+- [x] **Bump skillet v0.3.0 → v0.5.0.** DONE (2026-08-05): go.mod/go.sum only — no code
+  change, 43 packages test green, `golangci-lint` clean. adh imports none of the packages
+  that changed between v0.3.0 and v0.5.0 (`errs`/`identity`/`proof`/`ratchet`/`stats`/
+  `atomicfile` were stable), and `go mod tidy` did not pull in `toerr` because adh imports
+  nothing that reaches `ruleset/synthesize`. Because adh re-exports `skillet/errs.Error`
+  as `adh.Error`, a later skillet errs→toerr consolidation would still reach adh's 157
+  `adh.Error` sites for free. Restores the single-kernel guarantee skillet exists to provide.
