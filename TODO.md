@@ -542,9 +542,10 @@ around them is partial.
     matching the template verbatim (`EmitJSONL` now `json.NewEncoder(...).Encode`);
     adh's words stay — specialized `CodeForError` (over the climax stub),
     `ReasonForError`, and the `Reason*` tokens. `// climax:features jsonl` in the
-    dispatcher makes `climax lint` drift-check the surface (reports clean). This
-    closes skillet's deferred "envelope → climax", which was blocked on climax
-    shipping an `outcome` surface.
+    dispatcher makes `climax lint` drift-check the `outcome` surface (which reports
+    clean; the separate base-scaffold check does NOT — see the survey follow-up
+    below). This closes skillet's deferred "envelope → climax", which was blocked on
+    climax shipping an `outcome` surface.
 - [x] Global `--yes`/`--dry-run`: bound once on `root.Config` (the same unification
   pass as `--jsonl`), long-only to avoid subcommand short-flag collisions; `approve`
   dropped its local copies and reads the inherited fields, so its safety invariant is
@@ -908,3 +909,25 @@ Keep hand-rolled (not offload candidates): the typed manifest/registry decoders
   `AGENTIC_DEV_HARNESS_` override rule). Follow-up (deferred): richer per-command
   `LongHelp` prose (only root's placeholder was fixed) and a `--man` global flag /
   markdown reference are out of scope.
+
+## Cross-repo alignment (2026-08-05 survey)
+
+Surfaced by a survey across the skillet-family repos (skillet, exegesis, skillsaw,
+canonizer, toerr). adh is the only CLI in the family that fails the base-scaffold
+check its siblings pass.
+
+- [ ] **`climax lint` base-scaffold: add the unmatched-subcommand guard.** A mistyped
+  subcommand on a group parent (`Exec == nil` with a leftover positional after Parse)
+  falls through to `Run`, returns `ff.ErrNoExec`, and exits 0 — indistinguishable from
+  a bare invocation, so `climax lint` reports 1 error. exegesis and skillsaw both fixed
+  this: detect the selected group parent with a leftover positional and return
+  `"<cmd>: unknown subcommand \"x\""` (exit 1), while a bare invocation still returns
+  `ff.ErrNoExec` (exit 0). Adopt the same guard in `cmd/cmd.go`. (This corrects the
+  now-stale "reports clean" note under the `--jsonl` envelope item above: the `outcome`
+  surface is clean, but the overall lint is not.)
+- [ ] **Bump skillet v0.3.0 → v0.5.0.** adh trails the shared kernel by two minor
+  versions. v0.5.0 brings `ruleset/synthesize`, `ruleset.SourceAnchor`, and the
+  `toerr.WrapWithMessage`/`wrapcheck` integration. Because adh re-exports
+  `skillet/errs.Error` as `adh.Error`, a later skillet errs→toerr consolidation would
+  reach adh's 157 `adh.Error` sites for free once this bump lands. Keeping current also
+  restores the single-kernel guarantee skillet exists to provide.
