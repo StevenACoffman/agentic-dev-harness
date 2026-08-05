@@ -84,6 +84,17 @@ func Run(
 	// diagnostic stream kept separate from the stdout data plane (SPEC §8).
 	r.Log = root.NewLogger(stderr, r.JSONL, root.LogLevel(r.Verbose, r.Quiet))
 
+	// An unmatched token leaves the selected command a group parent (Exec == nil)
+	// with a leftover positional; without this guard it falls through to Run,
+	// returns ff.ErrNoExec, and exits 0 — indistinguishable from a bare invocation.
+	// A bare invocation leaves no leftover arg and is left to the ErrNoExec path.
+	if sel := r.Command.GetSelected(); sel.Exec == nil {
+		if rest := sel.Flags.GetArgs(); len(rest) > 0 {
+			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
+			return fmt.Errorf("%s: unknown subcommand %q", sel.Name, rest[0])
+		}
+	}
+
 	if runErr := runSelected(ctx, r, stderr); runErr != nil {
 		return runErr
 	}
