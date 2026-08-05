@@ -106,7 +106,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "adopt":
 		return cfg.adopt(args[1:])
 	case "status":
-		return cfg.status()
+		return cfg.status(ctx)
 	case "schedule":
 		return cfg.schedule(ctx, args[1:])
 	default:
@@ -297,14 +297,27 @@ func (cfg *Config) adopt(args []string) error {
 	return nil
 }
 
-func (cfg *Config) status() error {
+func (cfg *Config) status(ctx context.Context) error {
+	staged, err := cfg.printStagedProposals()
+	if err != nil {
+		return err
+	}
+	if staged == 0 {
+		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
+	}
+	cfg.printCalibration(ctx)
+	return nil
+}
+
+// printStagedProposals lists each staged proposal and returns the count; an absent
+// staging directory is zero, not an error.
+func (cfg *Config) printStagedProposals() (int, error) {
 	entries, err := os.ReadDir(stagingRoot)
 	if os.IsNotExist(err) {
-		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
-		return nil
+		return 0, nil
 	}
 	if err != nil {
-		return fmt.Errorf("sleep: %w", err)
+		return 0, fmt.Errorf("sleep: %w", err)
 	}
 	staged := 0
 	for _, entry := range entries {
@@ -313,16 +326,38 @@ func (cfg *Config) status() error {
 		}
 		man, manErr := readManifest(entry.Name())
 		if manErr != nil {
-			return manErr
+			return 0, manErr
 		}
 		staged++
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s  %s  %.3f -> %.3f\n",
 			man.StagingID, man.Decision.Action, man.Baseline, man.Candidate)
 	}
-	if staged == 0 {
-		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
+	return staged, nil
+}
+
+// printCalibration reports how well past cycles' projected scores predicted what was
+// actually kept (consolidate.Calibration over the evidence log) — the reliability of
+// the optimizer's own judgment. It is a diagnostic add-on to status: silent when
+// there is no evidence log yet or no proposed-candidate cycles in it. The cycle count
+// is shown so a sparse (low-N) calibration is visible rather than over-read.
+func (cfg *Config) printCalibration(ctx context.Context) {
+	f, err := os.Open(evidenceFile)
+	if err != nil {
+		return // no evidence log yet — nothing to report
 	}
-	return nil
+	defer func() { _ = f.Close() }()
+	records, err := evidence.Read(f)
+	if err != nil {
+		cfg.Log.WarnContext(ctx, "sleep status: unreadable evidence log", "err", err)
+		return
+	}
+	rep := consolidate.Calibration(records)
+	if rep.Samples == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout,
+		"calibration: %d cycles  ECE %.3f  MCE %.3f  Brier %.3f\n",
+		rep.Samples, rep.ECE, rep.MCE, rep.Brier)
 }
 
 func writeStaging(livePath string, cycle *consolidate.Cycle) error {
