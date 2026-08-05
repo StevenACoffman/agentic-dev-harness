@@ -545,9 +545,21 @@ around them is partial.
     dispatcher makes `climax lint` drift-check the surface (reports clean). This
     closes skillet's deferred "envelope → climax", which was blocked on climax
     shipping an `outcome` surface.
-- [ ] Deferred — global `--yes`/`--dry-run`: local today (approve owns them for the
-  safety gate). Binding globally needs the same unification pass; lower priority
-  than machine output.
+- [x] Global `--yes`/`--dry-run`: bound once on `root.Config` (the same unification
+  pass as `--jsonl`), long-only to avoid subcommand short-flag collisions; `approve`
+  dropped its local copies and reads the inherited fields, so its safety invariant is
+  unchanged — `GateSatisfied(required, phrase, dryRun)` still returns false under
+  `--dry-run`, and neither flag can satisfy a human gate. `--dry-run` now previews the
+  other two gate/ship mutations without persisting: `reject` reports "would reject"
+  without reverting or saving, `close` runs every gate (ready/proof/`CanClose`) then
+  reports "would close as <res>" without shipping, saving, or recording a metric. Every
+  other mutation command (`run`/`step`/`eval`/`arc`/`worker`/`proof create`/stage
+  relays) refuses `--dry-run` via `root.DryRunUnsupportedError` so the global flag never
+  silently mutates state. `--yes` is a documented reserved convention (adh has no
+  interactive prompt today) with the hard guarantee that it never satisfies a gate.
+  - [ ] Deferred — full `--dry-run` for the `run`/`step`/`sleep` relay loops: previewing
+    a whole multi-stage drive (not just the single gate/ship mutations) is a larger
+    change; those commands refuse the flag today rather than fake a partial preview.
 - [ ] Deferred — `registry audit`: no artifact-registry model exists; auditing only
   proof packets would be a partial interpretation of "orphans/missing-manifests/SHA
   mismatches". Needs the registry concept first.

@@ -58,6 +58,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if arc.Status != adh.StatusBlocked {
 		return fmt.Errorf("reject: arc %s is not waiting at a gate (status %s)", id, arc.Status)
 	}
+	if cfg.DryRun {
+		return cfg.reportDryRun(id, len(arc.Paths))
+	}
 	reverted := cfg.revert(ctx, arc.Paths)
 	returnToExecution(&arc)
 	arc.History = append(arc.History, cfg.rejectNote(reverted))
@@ -76,6 +79,26 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "rejected %s; returned to execution\n", id)
+	return nil
+}
+
+// reportDryRun previews the reject without mutating: the working tree is not
+// reverted and the arc is not saved. It reports how many paths would be reverted.
+func (cfg *Config) reportDryRun(id string, npaths int) error {
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"arc": id, "status": "would_reject", "dry_run": true, "revert_paths": npaths,
+		}); err != nil {
+			return fmt.Errorf("reject: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(
+		cfg.Stdout,
+		"would reject %s; return to execution (revert %d path(s))\n",
+		id,
+		npaths,
+	)
 	return nil
 }
 

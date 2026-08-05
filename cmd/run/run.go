@@ -85,6 +85,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("run: requires an arc id")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("run")
+	}
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
 		return fmt.Errorf("run: %w", err)

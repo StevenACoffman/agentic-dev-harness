@@ -21,8 +21,6 @@ import (
 type Config struct {
 	*root.Config
 	Phrase  string
-	Yes     bool
-	DryRun  bool
 	Flags   *ff.FlagSet
 	Command *ff.Command
 }
@@ -39,13 +37,6 @@ func New(parent *root.Config) *Config {
 		"",
 		"the approval phrase (the arc ID), typed by a human",
 	)
-	cfg.Flags.BoolVar(
-		&cfg.Yes,
-		0,
-		"yes",
-		"pre-answer non-gate prompts; never satisfies a safety gate",
-	)
-	cfg.Flags.BoolVar(&cfg.DryRun, 0, "dry-run", "print the decision without mutating state")
 	cfg.Command = &ff.Command{
 		Name:      "approve",
 		Usage:     "agentic-dev-harness approve <arc-id> --phrase <arc-id>",

@@ -97,6 +97,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("sleep: expected a verb: run, adopt, status, or schedule")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("sleep")
+	}
 	switch args[0] {
 	case "run":
 		return cfg.run()

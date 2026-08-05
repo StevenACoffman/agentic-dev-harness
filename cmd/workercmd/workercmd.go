@@ -43,6 +43,9 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("worker: expected a verb: show or requalify")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("worker")
+	}
 	switch args[0] {
 	case "show":
 		return cfg.show()

@@ -94,6 +94,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("step: requires an arc id")
 	}
+	if cfg.DryRun {
+		return root.DryRunUnsupportedError("step")
+	}
 	store := state.Default()
 	arc, err := store.Get(args[0])
 	if err != nil {

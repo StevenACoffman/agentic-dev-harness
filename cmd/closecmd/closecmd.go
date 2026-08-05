@@ -84,6 +84,11 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		}
 		return fmt.Errorf("close: %w", err)
 	}
+	// Under --dry-run the gates have all been checked (they can still fail above,
+	// the correct dry-run answer); report the close without the irreversible ship.
+	if cfg.DryRun {
+		return cfg.reportDryRun(&arc)
+	}
 	// The gates have passed (approved at ops + verified proof), so the ship is the
 	// irreversible VCS mutation — commit the change (§SPEC 5.2, §12).
 	hash, branch := cfg.ship(ctx, &arc)
@@ -98,6 +103,23 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		cfg.Log.WarnContext(ctx, "metrics not recorded", "op", "close", "arc", arc.ID, "err", err)
 	}
 	return cfg.reportClosed(&arc, hash, branch)
+}
+
+// reportDryRun previews the close without mutating: no commit, no save, no
+// metrics. It is reached only after every gate (ready, proof, CanClose) passed,
+// so it reports the resolution the arc would ship as.
+func (cfg *Config) reportDryRun(arc *adh.Arc) error {
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"arc": arc.ID, "status": "would_close", "dry_run": true,
+			"resolution": string(arc.Resolution),
+		}); err != nil {
+			return fmt.Errorf("close: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "would close %s as %s\n", arc.ID, arc.Resolution)
+	return nil
 }
 
 // reportClosed emits the close outcome: a success outcome carrying the resolution

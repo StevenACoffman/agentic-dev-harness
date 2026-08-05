@@ -15,6 +15,15 @@ import (
 // default "error: ..." printer.
 type ExitError int
 
+// DryRunUnsupportedError is the error a command returns when --dry-run is set but the
+// command does not honor it — only approve, reject, and close do — so a global
+// --dry-run never silently mutates state on a command that would otherwise ignore
+// the flag. Its string value is the command name, so the message reads
+// "<cmd>: --dry-run not supported ...". Like ExitError, it is a defined type, so
+// callers return it by conversion (root.DryRunUnsupportedError("run")) rather than a
+// cross-package call; the dispatcher envelopes it like any other command error.
+type DryRunUnsupportedError string
+
 // Config holds shared I/O writers, the injected environment accessor, the global
 // flags (SPEC §2, bound once), and the root ff.Command. All subcommand configs
 // embed *Config to inherit these.
@@ -31,6 +40,8 @@ type Config struct {
 	Quiet      bool   // --quiet: suppress non-error stdout (wired in cmd.Run)
 	NoColor    bool   // --no-color: disable ANSI color (no color output yet)
 	JSONL      bool   // --jsonl: emit machine output as JSON Lines (SPEC §8)
+	Yes        bool   // --yes: pre-answer non-gate prompts; never satisfies a safety gate (§5.2)
+	DryRun     bool   // --dry-run: preview a mutation without persisting (approve/reject/close)
 	// Log is the diagnostic stream on stderr, separate from the stdout data plane
 	// (SPEC §8). New seeds a default; Run rebuilds it once the flags are parsed, so
 	// --verbose/--quiet set the level and --jsonl selects the JSON handler.
@@ -42,6 +53,11 @@ type Config struct {
 // Error reports the exit status. ExitError satisfies the error interface so a
 // command can request a specific exit code without printing an "error: ..." line.
 func (e ExitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// Error renders the refusal in the standard "<cmd>: <reason>" form (SPEC §8).
+func (c DryRunUnsupportedError) Error() string {
+	return string(c) + ": --dry-run not supported (honored by approve, reject, close)"
+}
 
 // New returns a new root Config with the given I/O writers and environment
 // accessor. getenv is injected (not os.Getenv) so config precedence is testable.
@@ -64,6 +80,14 @@ func New(getenv func(string) string, stdin io.Reader, stdout, stderr io.Writer) 
 	cfg.Flags.BoolVar(&cfg.Quiet, 'q', "quiet", "suppress non-error output")
 	cfg.Flags.BoolVar(&cfg.NoColor, 0, "no-color", "disable ANSI color")
 	cfg.Flags.BoolVar(&cfg.JSONL, 0, "jsonl", "emit machine output as JSON Lines")
+	cfg.Flags.BoolVar(
+		&cfg.Yes,
+		0,
+		"yes",
+		"pre-answer non-gate prompts; never satisfies a safety gate",
+	)
+	cfg.Flags.BoolVar(&cfg.DryRun, 0, "dry-run",
+		"preview a mutation without persisting (honored by approve, reject, close)")
 	cfg.Command = &ff.Command{
 		Name:      "agentic-dev-harness",
 		Usage:     "agentic-dev-harness [global flags] <SUBCOMMAND> ...",
