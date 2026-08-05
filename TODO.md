@@ -936,3 +936,44 @@ check its siblings pass.
   nothing that reaches `ruleset/synthesize`. Because adh re-exports `skillet/errs.Error`
   as `adh.Error`, a later skillet errs→toerr consolidation would still reach adh's 157
   `adh.Error` sites for free. Restores the single-kernel guarantee skillet exists to provide.
+
+## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
+
+Source: a survey of `~/Documents/git/unified-thinking` (a deterministic Go reasoning
+toolkit) for reusable techniques. adh is the biggest beneficiary — it emits confidences
+everywhere and mines arc history, both of which have deterministic rigor to gain.
+
+- [x] **Confidence calibration — scoped to the sleep optimizer.** DONE (2026-08-05), rescoped
+  after verifying the premise was false: the *literal* item (critic/judge/evaluation confidence)
+  has **no data** — `confidence` appears once in the whole codebase (a test fixture), Findings are
+  categorical, and the judge/evaluation are deterministic pass/fail. adh emits no probabilistic
+  confidence *by design* (it relays to a model and applies deterministic gates), so calibrating
+  those stages would be an inert feature. The one genuine predicted→actual signal adh has is the
+  **sleep optimizer**: `consolidate.Calibration(records)` runs `skillet/calibration` over the
+  evidence log — each proposed-candidate cycle's projected score `NewScore` (already [0,1] from
+  `gate.SelectScore`, so no invented mapping) is the prediction and `Status==keep` the outcome;
+  no-candidate baselines (`NewScore==OldScore`) are skipped. `sleep status` now prints
+  `calibration: <n> cycles  ECE … MCE … Brier …`, the cycle count shown so sparse (low-N)
+  calibration is visible. Bumped adh to skillet **v0.7.0** for the package. This is the reliability
+  axis complementing the significance `verdict` gets from `stats`. (The critic/judge instrumentation
+  path — self-reported confidences persisted per stage — was considered and rejected as a large
+  subsystem against adh's deterministic-relay grain.)
+- [ ] **FPR-based suppression for critic precision.** adh already tracks critic *coverage*
+  (`critic.UnderCovered`); the mirror is *precision*. Track which finding kinds get rejected
+  at the human gate (false positives) and down-weight the chronically noisy ones once enough
+  confirmed feedback accrues — the per-type false-positive-rate auto-suppression loop in
+  unified-thinking's `metacognition/bias_calibration.go` (≥N confirmations, severity-gated
+  thresholds). A natural extension of lessons/consolidation.
+- [ ] **Deterministic trajectory mining in the `sleep` consolidation stage.** The sleep
+  loop harvests closed arcs; add model-free pattern-mining over their stage/tool
+  trajectories — a frequency "common-approach" miner (tools/strategies appearing in >50% of
+  *successful* arcs) and failure root-cause heuristics — modeled on unified-thinking's
+  `internal/memory` (`findCommonApproach`, `analyzeFailureRootCause`, tool-sequence hashing,
+  Reciprocal Rank Fusion). Feeds richer, evidence-backed lessons without a model call.
+- Lower-value / deferred: a *seeded* Thompson-Sampling strategy selector (gated on a
+  `skillet/bandit` — see skillet's TODO; weigh the seeded stochasticity against adh's
+  determinism preference); weighted-sum MCDA for multi-criteria evaluation scoring; and
+  inequality-SAT conflict detection (`validation/symbolic.go`) for NFR constraints.
+- Deliberately NOT adopted: unified-thinking's keyword bias/fallacy/blind-spot detectors —
+  brittle, uncalibrated heuristics that adh would either enforce deterministically or relay
+  to a model, never split the difference.
