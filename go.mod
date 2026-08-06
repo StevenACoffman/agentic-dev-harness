@@ -19,13 +19,15 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 )
 
+require github.com/StevenACoffman/toerr v0.1.0 // indirect
+
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
-	github.com/StevenACoffman/skillet v0.5.0
+	github.com/StevenACoffman/skillet v0.7.0
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/bodgit/plumbing v1.3.0 // indirect
 	github.com/bodgit/sevenzip v1.6.2 // indirect

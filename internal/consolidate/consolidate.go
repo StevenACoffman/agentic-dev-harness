@@ -27,6 +27,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
+	"github.com/StevenACoffman/skillet/calibration"
 	"github.com/StevenACoffman/skillet/identity"
 	gate "github.com/StevenACoffman/skillet/ratchet"
 	"github.com/StevenACoffman/skillet/stats"
@@ -760,6 +761,28 @@ func record(
 		Status:     status,
 		Note:       note,
 	}}
+}
+
+// Calibration measures how well the sleep optimizer's projected candidate score
+// (NewScore) predicts whether the candidate was actually kept — the reliability of
+// the loop's own judgment, the complement to the significance its verdict already
+// gets from stats. Each cycle that proposed a candidate is one sample: the projected
+// score is the prediction (already in [0,1] from gate.SelectScore) and "kept" is the
+// realized outcome. A no-candidate baseline cycle records the same variable in both
+// OldScore and NewScore, so NewScore == OldScore is a same-variable equality (not a
+// float tolerance) that skips it. Pure.
+func Calibration(records []evidence.Record) calibration.Report {
+	samples := make([]calibration.Sample, 0, len(records))
+	for _, r := range records {
+		if r.NewScore == r.OldScore {
+			continue // no candidate proposed this cycle
+		}
+		samples = append(samples, calibration.Sample{
+			Confidence: r.NewScore,
+			Correct:    r.Status == evidence.StatusKeep,
+		})
+	}
+	return calibration.Compute(samples)
 }
 
 func collectFailures(signals []Signal) []string {
