@@ -236,6 +236,9 @@ func Apply(
 	if err := recordStrata(arc, verdict, stratum); err != nil {
 		return &adh.Error{Op: op, Err: err}
 	}
+	if err := recordPrecision(arc, verdict); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
 	if recordLessons {
 		if err := failures.Append(failures.CandidatesFile, verdict.LessonNotes()...); err != nil {
 			return &adh.Error{Op: op, Err: err}
@@ -295,6 +298,20 @@ func recordStrata(arc *adh.Arc, verdict *critic.Verdict, stratum string) error {
 		}
 	}
 	if err := failures.AppendRecords(failures.RecordsFile, recs...); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	return nil
+}
+
+// recordPrecision stamps the adjudication's confirmed and unconfirmed finding kinds
+// into the critic precision log (§19) — the false-positive-rate evidence NoisyKinds
+// reads to hold over-flagging kinds to a higher bar. A clean review adjudicates
+// nothing, so AppendPrecision skips it and the log does not grow.
+func recordPrecision(arc *adh.Arc, verdict *critic.Verdict) error {
+	const op = "evaluation.recordPrecision"
+	confirmed, unconfirmed := critic.VerdictKinds(verdict)
+	entry := critic.PrecisionEntry{Arc: arc.ID, Confirmed: confirmed, Unconfirmed: unconfirmed}
+	if err := critic.AppendPrecision(critic.PrecisionFile, &entry); err != nil {
 		return &adh.Error{Op: op, Err: err}
 	}
 	return nil
