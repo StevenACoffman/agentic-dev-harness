@@ -12,6 +12,9 @@ Proof artifacts the builder left:
 {{end}}{{end}}{{template "context" .}}{{template "tools" .}}{{if .Coverage}}
 Recent reviews under-covered these check kinds — probe them here if the change
 warrants it: {{range $i, $k := .Coverage}}{{if $i}}, {{end}}{{$k}}{{end}}
+{{end}}{{if .Noisy}}
+These check kinds have frequently not reproduced under adjudication — hold them to a
+higher bar and flag them only with strong evidence: {{range $i, $k := .Noisy}}{{if $i}}, {{end}}{{$k}}{{end}}
 {{end}}{{if not .HasGrounding}}
 No repository grounding was routed for this review.
 {{end}}{{else}}

@@ -204,6 +204,27 @@ func (cfg *Config) underCovered(ctx context.Context) []string {
 	return names
 }
 
+// noisyKinds returns the finding kinds recent adjudications flagged as too noisy to
+// trust (§19) — kinds the critic over-flags (high false-positive rate) — read from the
+// precision log so the critic prompt can hold them to a higher bar. Best-effort: a
+// load error yields no hint, never a failure. The path is cwd-relative to match
+// evaluation.recordPrecision's write, alongside the failures log.
+func (cfg *Config) noisyKinds(ctx context.Context) []string {
+	entries, err := critic.LoadPrecision(critic.PrecisionFile)
+	if err != nil {
+		cfg.Log.WarnContext(ctx, "load critic precision", "err", err)
+		return nil
+	}
+	kinds := critic.NoisyKinds(
+		entries, critic.DefaultMinAdjudications, critic.DefaultMaxFalsePositiveRate,
+	)
+	names := make([]string, len(kinds))
+	for i := range kinds {
+		names[i] = string(kinds[i])
+	}
+	return names
+}
+
 // recordCoverage appends the arc's surfaced finding kinds to the coverage log after a
 // critic turn (§19), steering the next critic to under-covered kinds. Best-effort.
 func (cfg *Config) recordCoverage(ctx context.Context, arc *adh.Arc) {
@@ -233,6 +254,7 @@ func (cfg *Config) emitRelay(
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)
+		in.Noisy = cfg.noisyKinds(ctx)
 	}
 	out, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,

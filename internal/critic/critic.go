@@ -29,6 +29,7 @@ type Grounding struct {
 	Context       []contextstore.Unit // units routed for the arc's labels/paths (§10)
 	Tools         []toolreg.Tool      // capabilities available to the stage (§13)
 	Coverage      []string            // finding kinds recent critics under-covered (§19)
+	Noisy         []string            // finding kinds recent critics over-flagged (§19)
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -41,6 +42,7 @@ type Inputs struct {
 	Diff          string
 	Tools         []toolreg.Tool
 	Coverage      []string
+	Noisy         []string
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -60,6 +62,7 @@ func Ground(
 		Context:       contextstore.Route(units, arc.Labels, arc.Paths, MaxContextUnits),
 		Tools:         in.Tools,
 		Coverage:      in.Coverage,
+		Noisy:         in.Noisy,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts
