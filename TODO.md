@@ -958,18 +958,32 @@ everywhere and mines arc history, both of which have deterministic rigor to gain
   axis complementing the significance `verdict` gets from `stats`. (The critic/judge instrumentation
   path — self-reported confidences persisted per stage — was considered and rejected as a large
   subsystem against adh's deterministic-relay grain.)
-- [ ] **FPR-based suppression for critic precision.** adh already tracks critic *coverage*
-  (`critic.UnderCovered`); the mirror is *precision*. Track which finding kinds get rejected
-  at the human gate (false positives) and down-weight the chronically noisy ones once enough
-  confirmed feedback accrues — the per-type false-positive-rate auto-suppression loop in
-  unified-thinking's `metacognition/bias_calibration.go` (≥N confirmations, severity-gated
-  thresholds). A natural extension of lessons/consolidation.
-- [ ] **Deterministic trajectory mining in the `sleep` consolidation stage.** The sleep
-  loop harvests closed arcs; add model-free pattern-mining over their stage/tool
-  trajectories — a frequency "common-approach" miner (tools/strategies appearing in >50% of
-  *successful* arcs) and failure root-cause heuristics — modeled on unified-thinking's
-  `internal/memory` (`findCommonApproach`, `analyzeFailureRootCause`, tool-sequence hashing,
-  Reciprocal Rank Fusion). Feeds richer, evidence-backed lessons without a model call.
+- [x] **FPR-based suppression for critic precision.** DONE (2026-08-05): built as the precision
+  mirror of the coverage subsystem. The false-positive signal is **deterministic**, not a human-gate
+  reject: `evaluation` adjudicates every finding (runs its named artifact) and `Dispose` splits them
+  into `Confirmed` (ran and failed) vs `Unconfirmed` (surfaced but not reproduced = a false positive).
+  New `critic/precision.go`: a `.adh/critic-precision.jsonl` log (`PrecisionEntry{Arc, Confirmed,
+  Unconfirmed}` kinds, with multiplicity), `AppendPrecision`/`LoadPrecision`, and pure
+  `NoisyKinds(entries, minSamples, maxFPR)` (a kind adjudicated ≥`DefaultMinAdjudications` with an
+  unconfirmed share > `DefaultMaxFalsePositiveRate` is noisy). `evaluation.Apply` records a precision
+  entry next to `recordStrata` (one shared site, both entry points); `cmd/run` reads it and feeds the
+  noisy kinds into the critic prompt (`Inputs.Noisy` → `critic.tmpl`), holding over-flagged kinds to a
+  higher bar — the relay-driven analog of "suppress." **Safety:** it is a prompt hint, never a hard
+  gate — a confirmed finding (ran and failed) is a real defect regardless of its kind's history, so it
+  is never skipped. Refactored the coverage/precision JSONL boilerplate into shared `appendJSONL`/
+  `loadJSONL` helpers. (Severity-gating and a config knob for the thresholds are deferred — the hint is
+  safe for all kinds, so gating isn't needed for correctness.)
+- [x] **Deterministic trajectory mining in the `sleep` consolidation stage.** DONE (2026-08-05),
+  scoped after verifying overlap: `consolidate.Reflect` **already** mines recurring failure/success
+  modes (via `lesson.Distill`), and `toolrun.Record` has no `Arc`, so per-arc *tool* sequences don't
+  exist. The genuine, non-redundant increment shipped is **arc-coverage**: `consolidate.CommonClasses`
+  counts, per lesson class, the fraction of harvested arcs whose failure/success signals distill to it,
+  and returns those in >`DefaultCommonCoverage` (50%) of arcs — "what most arcs consistently do,"
+  distinct from `Reflect`'s raw `Mode.Count` (which one noisy arc can inflate). `sleep status` surfaces
+  them (`common <kind>: <class> (<pct>% of arcs)`) as evidence for the operator's lessons, mirroring the
+  calibration line. Pure miner; model-free. Deferred (no data / redundant): tool-sequence hashing + RRF
+  (no per-arc tool log), and richer root-cause heuristics (the grounded/ungrounded `failures.RootCause`
+  and failure-mode mining already exist). This closes the reasoning-toolkit survey items for adh.
 - Lower-value / deferred: a *seeded* Thompson-Sampling strategy selector (gated on a
   `skillet/bandit` — see skillet's TODO; weigh the seeded stochasticity against adh's
   determinism preference); weighted-sum MCDA for multi-criteria evaluation scoring; and
