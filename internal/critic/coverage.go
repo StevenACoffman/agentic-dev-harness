@@ -1,9 +1,6 @@
 package critic
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -72,64 +69,14 @@ func UnderCovered(entries []CoverageEntry, all []adh.FindingKind) []adh.FindingK
 // creating the parent directory. Recording nothing (no kinds) is a no-op, so an arc
 // with no findings does not pollute the history.
 func AppendCoverage(path string, entry *CoverageEntry) error {
-	const op = "critic.AppendCoverage"
 	if len(entry.Kinds) == 0 {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return &adh.Error{Op: op, Err: err}
-	}
-	line, err := json.Marshal(entry)
-	if err != nil {
-		return &adh.Error{Op: op, Err: err}
-	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return &adh.Error{Op: op, Err: err}
-	}
-	defer func() { _ = file.Close() }()
-	if _, err := file.Write(append(line, '\n')); err != nil {
-		return &adh.Error{Op: op, Err: err}
-	}
-	return nil
+	return appendJSONL("critic.AppendCoverage", path, entry)
 }
 
 // LoadCoverage reads the coverage log at path. An absent file is no entries, not an
 // error. A corrupt line is a hard error — the log's integrity is its value.
 func LoadCoverage(path string) ([]CoverageEntry, error) {
-	const op = "critic.LoadCoverage"
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return []CoverageEntry{}, nil
-	}
-	if err != nil {
-		return nil, &adh.Error{Op: op, Err: err}
-	}
-	entries := make([]CoverageEntry, 0)
-	for _, line := range splitJSONLines(data) {
-		var entry CoverageEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			return nil, &adh.Error{Op: op, Err: err}
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
-}
-
-// splitJSONLines splits a JSONL byte slice into its non-empty lines.
-func splitJSONLines(data []byte) [][]byte {
-	lines := make([][]byte, 0)
-	start := 0
-	for i, b := range data {
-		if b == '\n' {
-			if i > start {
-				lines = append(lines, data[start:i])
-			}
-			start = i + 1
-		}
-	}
-	if start < len(data) {
-		lines = append(lines, data[start:])
-	}
-	return lines
+	return loadJSONL[CoverageEntry]("critic.LoadCoverage", path)
 }
