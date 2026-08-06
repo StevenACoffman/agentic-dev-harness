@@ -306,6 +306,7 @@ func (cfg *Config) status(ctx context.Context) error {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
 	}
 	cfg.printCalibration(ctx)
+	cfg.printCommonPatterns(ctx)
 	return nil
 }
 
@@ -358,6 +359,26 @@ func (cfg *Config) printCalibration(ctx context.Context) {
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"calibration: %d cycles  ECE %.3f  MCE %.3f  Brier %.3f\n",
 		rep.Samples, rep.ECE, rep.MCE, rep.Brier)
+}
+
+// printCommonPatterns reports the lesson classes that recur across more than half the
+// harvested arcs (consolidate.CommonClasses) — systemic failures and consistent
+// winning approaches, the evidence an operator's lessons draw on. Best-effort: a load
+// error is a diagnostic, not a status failure; silent when nothing is common.
+func (cfg *Config) printCommonPatterns(ctx context.Context) {
+	arcs, err := state.Default().List()
+	if err != nil {
+		cfg.Log.WarnContext(ctx, "sleep status: list arcs", "err", err)
+		return
+	}
+	common := consolidate.CommonClasses(
+		consolidate.Harvest(arcs),
+		consolidate.DefaultCommonCoverage,
+	)
+	for i := range common {
+		_, _ = fmt.Fprintf(cfg.Stdout, "common %s: %s (%.0f%% of arcs)\n",
+			common[i].Kind, common[i].Class, common[i].Coverage*100)
+	}
 }
 
 func writeStaging(livePath string, cycle *consolidate.Cycle) error {
