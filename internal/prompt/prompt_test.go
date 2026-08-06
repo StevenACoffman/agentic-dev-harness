@@ -117,6 +117,32 @@ func TestRenderCriticGrounded(t *testing.T) {
 	}
 }
 
+// TestRenderCriticNoisyHint: when the grounding names over-flagged (noisy) finding
+// kinds, the critic prompt renders the higher-bar hint and the kinds.
+func TestRenderCriticNoisyHint(t *testing.T) {
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	arc := &adh.Arc{ID: "arc-0007", Stage: adh.StageCritic, Resolution: adh.ResolutionChange}
+	ground := &critic.Grounding{
+		AcceptanceBar: adh.ResolutionChange.ProofKind(),
+		Noisy:         []string{"oracle", "nfr"},
+	}
+	out, err := r.Render(arc, ground)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(out, "higher bar") {
+		t.Errorf("noisy critic prompt missing the higher-bar hint:\n%s", out)
+	}
+	for _, kind := range []string{"oracle", "nfr"} {
+		if !strings.Contains(out, kind) {
+			t.Errorf("noisy critic prompt missing kind %q:\n%s", kind, out)
+		}
+	}
+}
+
 func TestRenderExecutionCarriesHistory(t *testing.T) {
 	r, err := prompt.New()
 	if err != nil {
