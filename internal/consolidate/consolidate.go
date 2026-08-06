@@ -58,6 +58,10 @@ const longitudinalLineCap = 8
 // passing runs to earn an ELEVATE.
 const DefaultReplicationRuns = 3
 
+// DefaultCommonCoverage is the arc-fraction floor for CommonClasses: a class must
+// recur in more than half the harvested arcs to count as a common approach.
+const DefaultCommonCoverage = 0.5
+
 // Split is the held-out partition a mined task belongs to.
 type Split string
 
@@ -78,6 +82,16 @@ type Mode struct {
 type Reflection struct {
 	Failure []Mode `json:"failure"`
 	Success []Mode `json:"success"`
+}
+
+// CommonClass is a lesson class that recurs across a fraction of the harvested arcs —
+// a systemic pattern, not a one-arc quirk. Kind is whether it shows up in the arcs'
+// failure or success signals; Coverage is the fraction of arcs exhibiting it. It is
+// the arc-coverage complement to Mode, which ranks classes by raw recurrence count.
+type CommonClass struct {
+	Class    string   `json:"class"`
+	Kind     ModeKind `json:"kind"`
+	Coverage float64  `json:"coverage"`
 }
 
 // Longitudinal compares a task's outcome under the previous artifact against the
@@ -361,6 +375,72 @@ func modesFrom(items []string, kind ModeKind) []Mode {
 	})
 	return modes
 }
+
+// CommonClasses mines the lesson classes that recur across more than minCoverage of
+// the harvested arcs — the systemic patterns the arcs consistently hit — separately
+// for their failure and success signals. Unlike Reflect's Mode.Count (raw instances,
+// which one noisy arc can inflate), coverage counts each class once per arc, so it
+// surfaces what most arcs do, not what one arc did loudly. Sorted by descending
+// coverage, then kind, then class. Pure.
+func CommonClasses(signals []Signal, minCoverage float64) []CommonClass {
+	total := len(signals)
+	if total == 0 {
+		return nil
+	}
+	var common []CommonClass
+	common = appendCommon(
+		common,
+		arcClassCounts(signals, failuresOf),
+		KindFailure,
+		total,
+		minCoverage,
+	)
+	common = appendCommon(
+		common,
+		arcClassCounts(signals, successesOf),
+		KindSuccess,
+		total,
+		minCoverage,
+	)
+	sort.SliceStable(common, func(i, j int) bool {
+		if common[i].Coverage != common[j].Coverage {
+			return common[i].Coverage > common[j].Coverage
+		}
+		if common[i].Kind != common[j].Kind {
+			return common[i].Kind < common[j].Kind
+		}
+		return common[i].Class < common[j].Class
+	})
+	return common
+}
+
+// arcClassCounts counts, per lesson class, the arcs whose selected lines distill to it
+// — each arc contributes at most once per class (lesson.Distill returns distinct
+// classes).
+func arcClassCounts(signals []Signal, lines func(*Signal) []string) map[string]int {
+	counts := make(map[string]int)
+	for i := range signals {
+		for _, l := range lesson.Distill(lines(&signals[i])) {
+			counts[l.Class]++
+		}
+	}
+	return counts
+}
+
+// appendCommon adds the classes whose arc coverage exceeds minCoverage to out.
+func appendCommon(
+	out []CommonClass, counts map[string]int, kind ModeKind, total int, minCoverage float64,
+) []CommonClass {
+	for class, n := range counts {
+		if coverage := float64(n) / float64(total); coverage > minCoverage {
+			out = append(out, CommonClass{Class: class, Kind: kind, Coverage: coverage})
+		}
+	}
+	return out
+}
+
+func failuresOf(s *Signal) []string  { return s.Failures }
+func successesOf(s *Signal) []string { return s.Successes }
 
 // SplitFor maps a task id to its stable split by hashing the id, so a real
 // task's split never changes across cycles and no clock or randomness is used.
