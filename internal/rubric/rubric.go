@@ -1,12 +1,30 @@
-// Package rubric scores a harness guiding artifact against adh's own dimensions
-// (SPEC-ADDITIONS §18.2), adapting skillsaw's rubric pattern: a deterministic
-// floor (DetScore) that assumes a perfect base for judge-only dimensions and
-// docks only detectable defects, an explicit list of dimensions that still need
-// a model, and Diagnose naming the weakest deterministic dimension. It owns no
-// markdown parser and no runtime-neutrality scan — those are skillsaw-specific.
+// Package rubric scores a harness guiding artifact against adh's own five-dimension
+// rubric (SPEC-ADDITIONS §18.2) — distinct from the external skillsaw 9-dimension rubric
+// adh consumes at its gate. It adapts skillsaw's rubric *pattern*: a deterministic floor
+// (DetScore) that assumes a perfect base for judge-only dimensions and docks only
+// detectable defects, an explicit list of dimensions that still need a model, and
+// Diagnose naming the weakest deterministic dimension.
+//
+// Three of the five dimensions — failure-handling, actionable-specificity, and
+// boundary-section — are the microsoft/SkillLens quality dimensions (arXiv:2605.23899),
+// each with published tests and anti-examples. Their deterministic detectors are
+// skillet/skilllens (FailureMechanisms, BlacklistSections), which skillsaw scores too, so
+// the two tools cannot disagree about whether an artifact encodes a failure mode. adh's
+// weights, its 0..1 Deterministic factor, and its five-dimension set stay here: they grade
+// a harness artifact, not a SKILL.md, which is why these three are worth 60 here and 35 in
+// skillsaw. actionable-specificity is NeedsJudge, so its base is a model's to supply,
+// against SkillLens's stated definition.
+//
+// Consuming skilllens means this package now parses Markdown (via skillet/markdown); it
+// still runs no runtime-neutrality scan, which stays skillsaw-specific.
 package rubric
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/StevenACoffman/skillet/markdown"
+	"github.com/StevenACoffman/skillet/skilllens"
+)
 
 // Dimension keys.
 const (
@@ -46,13 +64,14 @@ type Report struct {
 // deterministic dimensions dock detectable defects. DetScore is the weighted
 // total in [0, 100].
 func Evaluate(doc string) Report {
+	md := markdown.Parse(doc)
 	var rep Report
 	for _, dim := range dimensions() {
 		factor, reason := 1.0, "assumed perfect (needs a judge)"
 		if dim.NeedsJudge {
 			rep.NeedsJudge = append(rep.NeedsJudge, dim.Key)
 		} else {
-			factor, reason = deterministicScore(dim.Key, doc)
+			factor, reason = deterministicScore(dim.Key, md)
 		}
 		rep.Dims = append(rep.Dims, DimScore{Dimension: dim, Deterministic: factor, Reason: reason})
 		rep.DetScore += float64(dim.Weight) * factor
@@ -91,60 +110,21 @@ func dimensions() []Dimension {
 	}
 }
 
-func deterministicScore(key, doc string) (float64, string) {
+func deterministicScore(key string, md *markdown.Doc) (float64, string) {
 	switch key {
 	case KeyFailure:
-		if hasFailureHandling(doc) {
-			return 1.0, "failure branch or Failures/Boundary section present"
+		// skilllens.FailureMechanisms finds inline "if X fails" branches (KindProse) and
+		// failure/boundary sections (KindSection); either satisfies the dimension.
+		if len(skilllens.FailureMechanisms(md)) > 0 {
+			return 1.0, "failure branch or failure-mode section present"
 		}
-		return 0.0, "no failure branch and no Failures/Boundary section"
+		return 0.0, "no failure branch and no failure-mode section"
 	case KeyBoundary:
-		if hasHeading(
-			doc,
-			[]string{
-				"boundary",
-				"anti-pattern",
-				"do not use",
-				"quality red line",
-				"common failures",
-			},
-		) {
-			return 1.0, "boundary/anti-pattern section present"
+		if len(skilllens.BlacklistSections(md)) > 0 {
+			return 1.0, "boundary / counter-example section present"
 		}
-		return 0.0, "no Boundary/Anti-pattern/Do-Not-Use section"
+		return 0.0, "no boundary / counter-example section"
 	default:
 		return 1.0, "no deterministic check"
 	}
-}
-
-func hasFailureHandling(doc string) bool {
-	if hasHeading(doc, []string{"failure", "failures", "boundary", "common failures"}) {
-		return true
-	}
-	for _, line := range strings.Split(doc, "\n") {
-		low := strings.ToLower(line)
-		conditional := strings.Contains(low, "if ") || strings.Contains(low, "when ")
-		failure := strings.Contains(low, "fail") || strings.Contains(low, "error") ||
-			strings.Contains(low, "timeout") || strings.Contains(low, "missing")
-		if conditional && failure {
-			return true
-		}
-	}
-	return false
-}
-
-func hasHeading(doc string, wants []string) bool {
-	for _, line := range strings.Split(doc, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		low := strings.ToLower(trimmed)
-		for _, want := range wants {
-			if strings.Contains(low, want) {
-				return true
-			}
-		}
-	}
-	return false
 }

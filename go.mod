@@ -19,7 +19,10 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 )
 
-require github.com/StevenACoffman/toerr v0.1.0 // indirect
+require (
+	github.com/StevenACoffman/toerr v0.1.0 // indirect
+	github.com/yuin/goldmark v1.8.4 // indirect
+)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
