@@ -130,8 +130,11 @@ owner only after it recurs across **≥2 distinct time strata**, and the promote
 is tagged with the scope it was learned in and a root-cause triage (routing gap vs.
 insufficient guidance). A confirmed **structural** finding — one needing a design
 change — escalates to a human instead of burning rework cycles, while a fixable one
-loops back to Execution. The cold critic is steered toward the check kinds recent
-reviews under-covered, so its blind spots close over time. `adh kpi` proposes a change
+loops back to Execution. The cold critic is steered on two axes from its own recorded
+history: toward the check kinds recent reviews **under-covered** (closing blind spots),
+and held to a **higher bar on the kinds it has over-flagged** — a per-kind
+false-positive rate the deterministic adjudication tracks (surfaced-but-unconfirmed) —
+so both its coverage gaps and its noise close over time. `adh kpi` proposes a change
 to any context unit *or declared tool* whose performance indicator degrades and the
 degradation **replicates** across strata — a unit that keeps failing in its scope, a
 tool that keeps failing or running slow (its outcome and duration logged from every
@@ -145,6 +148,9 @@ artifact is optimized under a comparative ratchet with a calibrated judge
 (`adh loop {list,run,tick,retire}`), and the offline consolidation cycle
 (`adh sleep run`) harvests and gates candidate harness improvements against a held-out
 split with a replication verdict — and its own planted-regression self-test.
+`adh sleep status` surfaces the optimizer's own reliability — a calibration
+(Brier/ECE/MCE) of its projected scores against what it actually kept — and the lesson
+classes that recur across a majority of arcs, the evidence a next lesson draws on.
 
 > Scope note: the arc loop wires Strategy, Execution, the cold Critic, deterministic
 > Evaluation, the model-gate, effectiveness, and the human ship gate end to end, and
@@ -159,7 +165,9 @@ split with a replication verdict — and its own planted-regression self-test.
 ## Command reference
 
 Every command carries `--help`; global flags include `--jsonl` (one machine-readable
-outcome envelope per line), `--repo`, `--quiet`, and `--verbose`.
+outcome envelope per line), `--repo`, `--quiet`, `--verbose`, and `--dry-run` (preview a
+mutation without persisting; honored by `approve`, `reject`, and `close`). A mistyped
+subcommand fails with a non-zero exit, never a silent success.
 
 - **Arcs & loop** — `arc {new,list,show}`, `run`, `step`, `eval`, the manual
   single-stage commands `{strategy,execute,critic,ops}`, `status`, `close`.

@@ -937,6 +937,43 @@ check its siblings pass.
   as `adh.Error`, a later skillet errs→toerr consolidation would still reach adh's 157
   `adh.Error` sites for free. Restores the single-kernel guarantee skillet exists to provide.
 
+## SkillLens dimensions: adh reimplemented what skillsaw already had (2026-08-08)
+
+Source: `~/Documents/agent-orange/skillopt_changes_findings.md`. `internal/rubric` was
+built "adapting skillsaw's rubric pattern" — the DET.SCORE floor, NeedsJudge, Diagnose —
+"with adh's own dimensions." Three of those five dimensions turn out **not** to be adh's
+own: `failure-handling`, `actionable-specificity` and `boundary-section` are the three
+SkillLens quality dimensions (`microsoft/SkillLens`, arXiv:2605.23899), the same three
+skillsaw scores as its dims 3/5/9. adh weights them at **60 of 100**, the heaviest
+concentration anywhere in the family.
+
+- [ ] **Consume `skillet/skilllens` for `failure-handling` and `boundary-section`; delete
+      the local detectors.** Both are deterministic dims, so both carry a private detector
+      that skillsaw also has — but skillsaw's lives in `internal/rubric`, unimportable, so
+      the duplication was forced rather than chosen. The two implementations can already
+      disagree about whether a document encodes a failure mode, and nothing would catch it:
+      adh feeds skillsaw's score into its own ratchet via `internal/skillsaw`, so the two
+      rubrics meet at the gate while disagreeing about the dimension underneath. skillet's
+      TODO carries the package shape; adh is the second consumer that justifies it.
+      Note the boundary: only the *detectors* move. adh's weights, its 0..1 `Deterministic`
+      factor and its five-dimension set stay here — they grade a harness guiding artifact,
+      not a `SKILL.md`, which is why the same three dimensions are worth 60 here and 35
+      there.
+      Prerequisite: a skillet bump (adh is behind — see the version-skew history above).
+- [ ] **Give the three dimensions their provenance in the package doc.** `rubric.go` cites
+      `SPEC-ADDITIONS §18.2` and skillsaw as the pattern source, which is accurate for the
+      *machinery* and silent on where the dimensions came from. Worth a line: these three
+      have published tests and anti-examples, and `actionable-specificity` is a NeedsJudge
+      dim — whoever supplies its base is currently doing so with no stated definition.
+- [ ] **`internal/rubric` never states its own dimension count.** The prose says only
+      "judge-only dimensions" (`SPEC-ADDITIONS.md:473`, `internal/harness/harness.go:26`,
+      `cmd/harnesscmd/harnesscmd.go:3`), while `internal/toolreg/toolreg.go:98` describes
+      the *external* skillsaw rubric as "the 9-dimension rubric floor". So adh documents
+      someone else's count and not its own, and a reader moving between the two rubrics has
+      no cue that they are different instruments. Trivial doc fix; noticed while auditing
+      dimension counts across the family (no stale counts found anywhere — this is the only
+      loose end).
+
 ## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
 
 Source: a survey of `~/Documents/git/unified-thinking` (a deterministic Go reasoning
