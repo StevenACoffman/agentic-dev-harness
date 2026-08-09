@@ -947,32 +947,34 @@ SkillLens quality dimensions (`microsoft/SkillLens`, arXiv:2605.23899), the same
 skillsaw scores as its dims 3/5/9. adh weights them at **60 of 100**, the heaviest
 concentration anywhere in the family.
 
-- [ ] **Consume `skillet/skilllens` for `failure-handling` and `boundary-section`; delete
-      the local detectors.** Both are deterministic dims, so both carry a private detector
-      that skillsaw also has — but skillsaw's lives in `internal/rubric`, unimportable, so
-      the duplication was forced rather than chosen. The two implementations can already
-      disagree about whether a document encodes a failure mode, and nothing would catch it:
-      adh feeds skillsaw's score into its own ratchet via `internal/skillsaw`, so the two
-      rubrics meet at the gate while disagreeing about the dimension underneath. skillet's
-      TODO carries the package shape; adh is the second consumer that justifies it.
-      Note the boundary: only the *detectors* move. adh's weights, its 0..1 `Deterministic`
-      factor and its five-dimension set stay here — they grade a harness guiding artifact,
-      not a `SKILL.md`, which is why the same three dimensions are worth 60 here and 35
-      there.
-      Prerequisite: a skillet bump (adh is behind — see the version-skew history above).
-- [ ] **Give the three dimensions their provenance in the package doc.** `rubric.go` cites
-      `SPEC-ADDITIONS §18.2` and skillsaw as the pattern source, which is accurate for the
-      *machinery* and silent on where the dimensions came from. Worth a line: these three
-      have published tests and anti-examples, and `actionable-specificity` is a NeedsJudge
-      dim — whoever supplies its base is currently doing so with no stated definition.
-- [ ] **`internal/rubric` never states its own dimension count.** The prose says only
-      "judge-only dimensions" (`SPEC-ADDITIONS.md:473`, `internal/harness/harness.go:26`,
-      `cmd/harnesscmd/harnesscmd.go:3`), while `internal/toolreg/toolreg.go:98` describes
-      the *external* skillsaw rubric as "the 9-dimension rubric floor". So adh documents
-      someone else's count and not its own, and a reader moving between the two rubrics has
-      no cue that they are different instruments. Trivial doc fix; noticed while auditing
-      dimension counts across the family (no stale counts found anywhere — this is the only
-      loose end).
+- [x] **Consume `skillet/skilllens` for `failure-handling` and `boundary-section`; delete
+      the local detectors.** DONE (skillet bumped v0.7.0 → v0.14.0 first). `deterministicScore`
+      now reads `skilllens.FailureMechanisms` (KindProse inline branch or KindSection
+      failure-mode section) and `skilllens.BlacklistSections`; the private `hasFailureHandling`
+      and `hasHeading` and their inline vocab lists are deleted, and `Evaluate` parses the doc
+      once with `skillet/markdown`. Only the detectors moved — adh's weights, its 0..1
+      `Deterministic` factor, and its five-dimension set stay local.
+      **This was a convergence, not a 0-movement port** (adh's hand-rolled detectors were
+      narrower than skilllens's, unlike skillsaw's, which skilllens was derived from). Measured
+      on the repo's own docs: two moved 85 → 80, and reading the per-dimension reasons both
+      changes were accuracy gains — `failure-handling` dropped a false positive (a prose line
+      "a stage fails when …", which the old loose line-scan matched and skilllens's bounded
+      regex correctly rejects) while `boundary-section` gained a true section the old narrow
+      heading set missed. The shared-vocab fixtures (`## Boundary`, "if the build fails") still
+      score 100/65 unchanged; new tests pin the de-false-positive and the richer-vocab
+      recognition. `actionable-specificity` is NeedsJudge, so it has no deterministic detector
+      to move.
+- [x] **Give the three dimensions their provenance in the package doc.** DONE. `rubric.go`'s
+      package doc now names failure-handling, actionable-specificity, and boundary-section as
+      the microsoft/SkillLens dimensions (arXiv:2605.23899) with published tests/anti-examples,
+      and states that `actionable-specificity` is NeedsJudge, so its base is supplied against
+      SkillLens's stated definition.
+- [x] **`internal/rubric` never states its own dimension count.** DONE. `rubric.go`'s package
+      doc now calls it "adh's own five-dimension rubric ... distinct from the external
+      skillsaw 9-dimension rubric adh consumes at its gate," so a reader moving between the two
+      instruments has the cue. (`SPEC-ADDITIONS.md` and the harness/harnesscmd comments still
+      say "judge-only dimensions" without a count; the authoritative statement now lives in the
+      package doc where the rubric is defined.)
 
 ## Reasoning-toolkit survey (unified-thinking, 2026-08-05)
 
