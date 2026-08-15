@@ -221,7 +221,18 @@ verification, authority gates, effectiveness metrics, lessons — behind thin `c
 shells over [`ff/v4`](https://github.com/peterbourgon/ff). Effectful work (model,
 `adb` device, git) sits behind interfaces with deterministic mock backends, so the
 whole tool builds and tests without an API key or hardware. Errors carry a domain
-code (`adh.Error{Code,Op,Err}`) translated at each boundary. The design is
+code (`adh.Error{Code,Op,Err}`) translated at each boundary.
+
+Domain logic with a second consumer lives in the shared
+[`skillet`](https://github.com/StevenACoffman/skillet) module rather than here, so `adh`
+and `skillsaw` cannot drift on a definition they both score. `skilllens` is the clearest
+case: its three detectors back `adh`'s `failure-handling`, `actionable-specificity` and
+`boundary-section` dimensions and `skillsaw`'s rubric dims 3, 5 and 9, which are the same
+three SkillLens dimensions under different names. `markdown` is shared the same way, and
+its `HasCodeBlock` is what lets `failure-handling` tell an artifact that runs commands
+from one that has no runtime failure to encode.
+
+The design is
 specified in [`SPEC.md`](./SPEC.md) and [`SPEC-ADDITIONS.md`](./SPEC-ADDITIONS.md)
 and was built to the plan in [`PLAN.md`](./PLAN.md).
 
