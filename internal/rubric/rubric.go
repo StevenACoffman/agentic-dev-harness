@@ -22,6 +22,7 @@ package rubric
 import (
 	"strings"
 
+	"github.com/StevenACoffman/skillet/frontmatter"
 	"github.com/StevenACoffman/skillet/markdown"
 	"github.com/StevenACoffman/skillet/skilllens"
 )
@@ -63,8 +64,21 @@ type Report struct {
 // Evaluate scores doc. Judge dimensions assume a perfect base for the floor;
 // deterministic dimensions dock detectable defects. DetScore is the weighted
 // total in [0, 100].
+//
+// Requires: doc is a whole artifact, with or without a leading YAML header.
+// Ensures:  only the markdown body is scored; a "---" header is discarded, not
+//
+//	measured. It is pure.
+//
+// The split happens here rather than at the call sites so no caller can pass an
+// unsplit document: a description reading "...specifically when validation error..."
+// otherwise satisfies failure-handling, and a hedged one moves specificity, on the
+// strength of metadata that instructs nobody. None of the five dimensions is about
+// the header, so the block is dropped rather than returned.
 func Evaluate(doc string) Report {
-	md := markdown.Parse(doc)
+	// frontmatter.Split normalizes CRLF itself, so this must not normalize first.
+	_, body := frontmatter.Split(doc)
+	md := markdown.Parse(body)
 	var rep Report
 	for _, dim := range dimensions() {
 		factor, reason := 1.0, "assumed perfect (needs a judge)"
