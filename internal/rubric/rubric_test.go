@@ -125,3 +125,47 @@ func TestFailureAppliesOnlyToArtifactsThatExecute(t *testing.T) {
 		})
 	}
 }
+
+// TestEvaluateIgnoresFrontmatter pins that a YAML header is discarded rather than scored.
+// A description is metadata: it instructs nobody, so a failure word in it is not a failure
+// mechanism, and a hedge in it is not a softened instruction.
+func TestEvaluateIgnoresFrontmatter(t *testing.T) {
+	// The real case that motivated this: the branch regex matched the *description* of
+	// letsgo-form-validator, and the artifact kept full failure-handling credit while saying
+	// nothing about what to do when anything fails.
+	const withHeader = "---\n" +
+		"name: form-validator\n" +
+		"description: Use when validation errors need rendering, specifically when a field fails.\n" +
+		"---\n\n# Guide\n\nRender the form.\n\n```sh\nrun --it\n```\n"
+	if f := dimFactor(rubric.Evaluate(withHeader), rubric.KeyFailure); f != 0 {
+		t.Errorf("a failure phrase in frontmatter earned failure-handling credit; factor = %v", f)
+	}
+	// The same words in the body are a real branch and must still count, so the test cannot
+	// pass merely because the regex stopped matching.
+	const inBody = "# Guide\n\nIf a field fails, re-render the form.\n\n```sh\nrun --it\n```\n"
+	if f := dimFactor(rubric.Evaluate(inBody), rubric.KeyFailure); f != 1 {
+		t.Errorf("a branch in the body must still satisfy failure-handling; factor = %v", f)
+	}
+}
+
+func TestEvaluateWithoutFrontmatterIsUnchanged(t *testing.T) {
+	// Split returns the whole document as body when there is no leading "---", so an
+	// artifact without a header must score exactly as it did before.
+	const doc = "# Guide\n\nIf the check fails, roll back.\n\n## Boundary\n\nNot here.\n"
+	if got := rubric.Evaluate(doc).DetScore; got != 100 {
+		t.Errorf("DetScore = %v, want 100 for a header-less artifact", got)
+	}
+}
+
+func TestEvaluateFindsCRLFFrontmatter(t *testing.T) {
+	// frontmatter.Split normalizes CRLF itself. A caller that normalized first, or that
+	// hand-rolled the scan, would miss a Windows-written header and score it as body.
+	// The phrase must be one the branch regex actually matches ("if X fails", not "fails
+	// when X" -- skilllens rejects the latter as prose). Otherwise this passes whether or
+	// not the header is split off, and pins nothing.
+	const doc = "---\r\ndescription: if the input fails, re-render it\r\n---\r\n\r\n" +
+		"# Guide\r\n\r\nRender it.\r\n\r\n```sh\r\nrun --it\r\n```\r\n"
+	if f := dimFactor(rubric.Evaluate(doc), rubric.KeyFailure); f != 0 {
+		t.Errorf("a CRLF header was scored as body; factor = %v", f)
+	}
+}
