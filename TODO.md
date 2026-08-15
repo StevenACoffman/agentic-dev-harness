@@ -507,15 +507,27 @@ corrected ones.)
       Scored through `harness eval --jsonl` with binaries built from before and after the
       change and confirmed to differ. Two artifacts predicted to move did not, which
       surfaced the separate defect below.
-- [ ] **`Evaluate` scores YAML frontmatter as if it were body prose.** Found while
-      reconciling that re-score: `letsgo-form-validator` and
-      `test-helper-process-subprocess-mock` keep full `failure-handling` credit because their
-      *frontmatter description* contains "…specifically when validation error…", which the
-      branch regex matches. `Evaluate(doc string)` hands the whole file to `markdown.Parse`,
-      so metadata competes with instructions on every dimension.
-      Not fixed here: it is pre-existing, independent of the `Span.Kind` split, and fixing it
-      moves more scores, so it deserves its own before/after. `skillet/frontmatter.Split` is
-      the tool; skillsaw already splits before parsing.
+- [x] **`Evaluate` scores YAML frontmatter as if it were body prose.** DONE (2026-08-15).
+      `Evaluate` now splits with `skillet/frontmatter.Split` and parses only the body; the
+      header block is discarded, since none of the five dimensions is about metadata.
+      **The split lives inside `Evaluate`, not at the three call sites.** Putting it at the
+      callers would make each one know that a header must be stripped first, and a fourth
+      added later would silently get it wrong — it defines the failure mode out of existence
+      instead of documenting it. Signature is unchanged; `Split` returns the whole document
+      as body when there is no leading `---`, so it is inert for header-less artifacts.
+      **It was never confined to `failure-handling`.** The re-score moved 5 of 233 artifacts,
+      **all downward**: `letsgo-form-validator`, `test-helper-process-subprocess-mock` and
+      `lintme` by −20 (the branch regex was matching their *description*), and `crit-story`
+      and `unconventional-commits` by −15, where a boundary word in the header was earning
+      `boundary-section`. `SofteningPhrases` reads the same `Doc`, so specificity was exposed
+      the same way.
+      `GraderSelfTest` is untouched and still passes: its fixtures carry no header, so the
+      split is inert there.
+      One test in the first draft was **vacuous** and worth recording: the CRLF fixture used
+      "it fails when the input is bad", which skilllens correctly rejects as prose rather
+      than a branch, so it scored 0 whether or not the header was split off. Caught by
+      reverting the split and checking *which* tests failed — only one of the two did. Any
+      test of this kind must use a phrase the detector actually matches.
 - Note: **`KeyBoundary` is not the same shape, and was deliberately left alone.** An earlier
   draft of this section said it was. `skilllens.BlacklistSections` returns **only** headings
   — its doc says so — so there is no `KindProse` alternative and no Kind split to make; its
