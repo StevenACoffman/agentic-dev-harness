@@ -467,6 +467,64 @@ Remaining wiring for these:
 - [x] Use `edit.WithinSizeBudget`/`IsNoOp` and `evidence` inside the real
       `sleep` consolidate loop — now wired through `internal/consolidate.Plan`.
 
+## Rubric Applicability — Deterministic Dimensions a Heading Satisfies (2026-08-09)
+
+`deterministicScore` scores `KeyFailure` (weight 20) as
+`len(skilllens.FailureMechanisms(md)) > 0` — "either satisfies the dimension". But
+`FailureMechanisms` returns section spans as well as prose spans, and the section match is
+on the heading *title*: `"boundary"` is in `skilllens.FailureSectionTitles()`. So **a bare
+`## Boundary` heading earns the full 20 points** with nothing written under it.
+`KeyBoundary` (weight 15) has the same shape. That is **35 of adh's 100 points**, and
+unlike skillsaw neither dimension is `NeedsJudge`, so there is no human backstop to
+correct it.
+
+Measured in the skillsaw corpus (233 skills, re-measured 2026-08-14): 154 skills — 66% —
+have **zero** inline failure branches and pass this exact check on a heading alone.
+(An earlier pass said 144/62%; it parsed frontmatter as body. Figures below are the
+corrected ones.)
+
+- [x] **Split `KeyFailure`'s evidence by `Span.Kind` instead of taking `len()`.** DONE
+      (2026-08-15). Only `KindProse` — an actual "if X fails, do Y" branch — satisfies the
+      dimension now. `KindSection` is a heading whose *title* matched, and a heading with
+      nothing under it encodes nothing; counting the two alike is what let a bare
+      `## Boundary` earn all 20 points.
+- [x] **Gate the resulting deduction on `markdown.Doc.HasCodeBlock`.** DONE (2026-08-15, on
+      skillet v0.15.0). A prose branch always satisfies the dimension; its absence is a
+      defect only when the artifact runs something. An artifact that executes nothing has no
+      runtime failure to encode, so docking it would be a category error.
+      **The gate is what let this stay binary.** The obvious split — prose 1.0, section-only
+      0.5, neither 0.0 — invents a 0.5 nobody calibrated, inside 20% of the total. Making
+      the *deduction* conditional does the work grading would have done, with no
+      uncalibrated constant.
+      `DimScore.Reason` is always populated, so a suppressed deduction stays visible — the
+      "emit the flag even when the penalty is suppressed" requirement needed no new plumbing.
+      Read the field; do not write a local fence scan — a start-of-line fence regex misses a
+      fence indented inside a list item, which is exactly what made the first measurement
+      here wrong.
+- [x] **Re-score before and after.** DONE (2026-08-15). **38 of 233 artifacts moved, every
+      one by exactly −20** (the `KeyFailure` weight), and **nothing moved that was not
+      predicted**: the moved set is exactly "executes something, and has no prose branch".
+      Scored through `harness eval --jsonl` with binaries built from before and after the
+      change and confirmed to differ. Two artifacts predicted to move did not, which
+      surfaced the separate defect below.
+- [ ] **`Evaluate` scores YAML frontmatter as if it were body prose.** Found while
+      reconciling that re-score: `letsgo-form-validator` and
+      `test-helper-process-subprocess-mock` keep full `failure-handling` credit because their
+      *frontmatter description* contains "…specifically when validation error…", which the
+      branch regex matches. `Evaluate(doc string)` hands the whole file to `markdown.Parse`,
+      so metadata competes with instructions on every dimension.
+      Not fixed here: it is pre-existing, independent of the `Span.Kind` split, and fixing it
+      moves more scores, so it deserves its own before/after. `skillet/frontmatter.Split` is
+      the tool; skillsaw already splits before parsing.
+- Note: **`KeyBoundary` is not the same shape, and was deliberately left alone.** An earlier
+  draft of this section said it was. `skilllens.BlacklistSections` returns **only** headings
+  — its doc says so — so there is no `KindProse` alternative and no Kind split to make; its
+  analogous laundering is an empty heading, which is a `Span.Units` threshold, a different
+  instrument with no calibrated value. It must not be gated either: the gate exists for
+  *runtime* failure mechanisms, whereas a boundary is a conceptual claim that a document
+  executing nothing should still make. Gating it would excuse exactly the documents that
+  most need it.
+
 ## Disposition
 
 - [x] Branch `implement/adh-spec` merged to `main` via PR #1 (`6180963`); the whole
