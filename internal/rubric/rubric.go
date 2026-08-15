@@ -113,12 +113,27 @@ func dimensions() []Dimension {
 func deterministicScore(key string, md *markdown.Doc) (float64, string) {
 	switch key {
 	case KeyFailure:
-		// skilllens.FailureMechanisms finds inline "if X fails" branches (KindProse) and
-		// failure/boundary sections (KindSection); either satisfies the dimension.
-		if len(skilllens.FailureMechanisms(md)) > 0 {
-			return 1.0, "failure branch or failure-mode section present"
+		// Only KindProse -- an actual "if X fails, do Y" branch -- is evidence that a
+		// failure mechanism is encoded. KindSection is a heading whose *title* matched, and
+		// a heading with nothing under it encodes nothing; counting the two alike let a bare
+		// "## Boundary" earn this dimension in full.
+		for _, s := range skilllens.FailureMechanisms(md) {
+			if s.Kind == skilllens.KindProse {
+				return 1.0, "failure branch present"
+			}
 		}
-		return 0.0, "no failure branch and no failure-mode section"
+		// Absent branches, whether that is a defect depends on the artifact. One that runs
+		// commands and never says what to do when they fail is exactly what this dimension
+		// exists to catch. One that executes nothing -- a selection or judgement document --
+		// has no runtime failure to encode, and docking it would be a category error.
+		//
+		// This stays binary rather than scoring a section-only artifact somewhere in
+		// between: no partial credit has been calibrated, and inventing one would put a
+		// number nobody can defend into 20% of the total.
+		if !md.HasCodeBlock {
+			return 1.0, "no failure branch, and the artifact executes nothing to fail"
+		}
+		return 0.0, "the artifact executes commands but encodes no failure branch"
 	case KeyBoundary:
 		if len(skilllens.BlacklistSections(md)) > 0 {
 			return 1.0, "boundary / counter-example section present"
