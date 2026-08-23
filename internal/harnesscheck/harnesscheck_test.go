@@ -20,6 +20,13 @@ func cleanInputs() harnesscheck.Inputs {
 		Specs: []nfr.Spec{{
 			ID: "latency", Tag: "Performance.Latency", Scale: "ms",
 			Meter: "bench", Direction: nfr.Lower, Fail: 300, Goal: 200,
+		}, {
+			// A guard, so the clean fixture is a repository that protects something
+			// as well as measuring something. Adding the no-guards check found this
+			// fixture had objectives and nothing guarded, which is the gap the check
+			// exists to report.
+			ID: "footprint", Tag: "Performance.Memory", Scale: "MB",
+			Meter: "bench", Direction: nfr.Lower, Fail: 512, Goal: 256, Guard: true,
 		}},
 	}
 }
@@ -56,5 +63,47 @@ func TestCheckDuplicateUnitAndBadSpec(t *testing.T) {
 	}
 	if !kinds[harnesscheck.KindNFRSpec] {
 		t.Error("want an nfr_spec problem")
+	}
+}
+
+// TestNoGuardsIsReported. An NFR spec is either an objective or a guard, and a
+// repository with specs and no guards has thought about measurement and not about
+// protection — an objective without guards is hill-climbed by trading away everything
+// unmeasured.
+func TestNoGuardsIsReported(t *testing.T) {
+	t.Parallel()
+	objective := nfr.Spec{
+		ID: "latency", Tag: "Performance.Latency", Scale: "ms",
+		Meter: "bench", Direction: nfr.Lower, Fail: 300, Goal: 200,
+	}
+	guard := objective
+	guard.ID, guard.Guard = "footprint", true
+
+	cases := map[string]struct {
+		specs []nfr.Spec
+		want  bool
+	}{
+		"objectives and no guard": {[]nfr.Spec{objective}, true},
+		"one guard among them":    {[]nfr.Spec{objective, guard}, false},
+		// Derived applicability: having declared nothing is not the same as having
+		// declared only objectives. The first has not started; reporting it would fire
+		// on every fresh tree and teach a reader to ignore the check.
+		"no specs at all": {nil, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			in := cleanInputs()
+			in.Specs = tc.specs
+			var found bool
+			for _, p := range harnesscheck.Check(&in) {
+				if p.Kind == harnesscheck.KindNoGuards {
+					found = true
+				}
+			}
+			if found != tc.want {
+				t.Errorf("no_guards reported = %v, want %v", found, tc.want)
+			}
+		})
 	}
 }

@@ -30,6 +30,7 @@ const (
 	KindDanglingSource    = "dangling_source"    // a unit's provenance source path does not resolve
 	KindUnverifiedClaim   = "unverified_claim"   // a unit's claim quote is not found in its cited source
 	KindInvalidKPI        = "invalid_kpi"        // a unit declares a malformed KPI (§16/§18)
+	KindNoGuards          = "no_guards"          // NFR specs exist and none is a guard (§10.5)
 )
 
 // Inputs bundles the loaded harness state Check reasons over.
@@ -57,6 +58,7 @@ func Check(in *Inputs) []Problem {
 	problems = appendRegistryProblems(problems, in)
 	problems = appendUnitProblems(problems, in.Units)
 	problems = appendSpecProblems(problems, in.Specs)
+	problems = appendGuardProblems(problems, in.Specs)
 	problems = appendCrossRefProblems(problems, in.Units, in.Tools)
 	problems = appendLifecycleProblems(problems, in.Units)
 	sort.Slice(problems, func(i, j int) bool {
@@ -159,4 +161,31 @@ func appendLifecycleProblems(problems []Problem, units []contextstore.Unit) []Pr
 		})
 	}
 	return problems
+}
+
+// appendGuardProblems reports a repository that measures quality and protects none of
+// it (§10.5).
+//
+// An NFR spec is either an objective — something a change is trying to improve — or a
+// guard, something it must not breach. A repository with specs and no guards has
+// thought about measurement and not about protection, and **an objective without guards
+// is hill-climbed by trading away everything unmeasured.**
+//
+// **A repository with no specs at all is silent**, which is §12's derived-applicability
+// rule and the difference between a useful check and one that fires on every fresh
+// tree. Having declared nothing is not the same as having declared only objectives: the
+// first has not started, the second has started and left the gap.
+//
+// Advisory, like every other problem here. Declaring no guards is legitimate for a
+// repository that has not thought about it yet, and adh has no basis for a policy about
+// which qualities somebody else must protect.
+func appendGuardProblems(problems []Problem, specs []nfr.Spec) []Problem {
+	if len(specs) == 0 || len(nfr.Guards(specs)) > 0 {
+		return problems
+	}
+	return append(problems, Problem{
+		Kind: KindNoGuards,
+		Detail: "every NFR spec is an objective and none is a guard; nothing names what " +
+			"a change must not cost (§10.5)",
+	})
 }
