@@ -323,7 +323,7 @@ not an adh component.
       make explicitly is **whether `Unit` claims OKF conformance or borrows its
       vocabulary**, and to say which in the type comment — and if it is borrowing, to
       rename the field so it stops colliding.
-- [ ] **adh is one change away from being `skillet`'s second consumer, and should know
+- [x] **adh is one change away from being `skillet`'s second consumer, and should know
       it.** `skillet` revised its OKF trust-field trigger on 2026-08-22 from *the first repo
       that stores trust metadata* to **the second repo that classifies an actor or derives a
       trust tier**, because gnosis shipped an actor type rejecting two of OKF §7's three
@@ -1965,9 +1965,75 @@ not.
 - **Keys, not golden files.** Every value is environment-dependent — `arcs: 0` today,
   `3` on a machine with arcs — so a golden file freezes data rather than contract.
 
-- [ ] **Payloads reachable only with fixture state are unasserted.** The seven commands
+- [x] **Payloads reachable only with fixture state are unasserted.** *Partly — and the
+  gap turned out to be somewhere else. Deriving verbs from the usage line found eleven
+  violations the registry walk could not see, which mattered more than the fixture
+  payloads did. Three fixed, eight ratcheted. The fixture question is re-filed below
+  with what is actually left.* Original entry: The seven commands
   covered are the seven that answer from an empty tree. `arc show`, `eval`, `proof
   verify`, `context show` and the rest need a fixture each, and their payloads are the
   ones an agent is *most* likely to consume — a caller scripting adh reads `eval`'s
   verdict far more often than `version`'s build metadata. The envelope assertion already
   covers them; the key sets do not.
+
+## After the skillet v0.20.0 Bump (2026-08-23)
+
+- **The bump was API-clean and still carried a defect for adh.** v0.20.0 is
+  documentation, `holds.toml`, and a triggers script — nothing adh compiles against
+  changed. What it added was a **validity scope** on `skilllens` that adh was on the
+  wrong side of for 15% of the rubric. A dependency update that breaks nothing can still
+  tell you something is wrong.
+- **The grader self-test caught the fix, and it was right to.** Its fixtures were plain
+  prose, so they discriminated *only* through the boundary deduction — it was
+  calibrating the grader on inputs the deterministic dimensions are not valid for, and
+  passing for the wrong reason. Reading why it failed is what found that; treating the
+  failure as an obstacle would have produced a worse fix.
+- **The `--jsonl` table had a blind spot bigger than its coverage.** Twelve commands
+  dispatch verbs internally, invisible to the ff registry walk, and eleven of those
+  verbs were violating the contract. **A test's coverage is a claim, and this one was
+  overstating it** — the same failure the tests were written to catch, one level up.
+
+### The Trigger Report, Run
+
+`skillet` v0.20.0 shipped `bin/triggers.sh` and `holds.toml` — the mechanism its own
+backlog asked for after four criteria fired unnoticed. Run across the family:
+
+```text
+manual   okf-fold   decided by a person; no mechanical condition
+ met=0 not-met=3 manual=5  (8 holds)
+```
+
+**So adh cannot trip the OKF trigger by accident, because the trigger is manual.** The
+entry's worry — becoming a second consumer without noticing — was about a mechanical
+condition that does not exist. Nothing else is due either.
+
+Worth keeping as a method note: **the report cost one command and settled a question
+two repositories had been reasoning about in prose.** The other holds it lists are
+skillet's, so a family-wide run belongs in whatever periodically checks the family
+rather than in any one repo's habits.
+
+- [ ] **Eight commands do not honour `--jsonl`.** Recorded as `jsonlDebt` in
+  `cmd/jsonl_contract_test.go` and ratcheted so the set can only shrink: `autonomy show`,
+  `oracle diff|invariants|selftest`, `context lint|index`, `sleep run|status`. Each is a
+  multi-part human report, so the work per command is designing what its payload *is* —
+  `sleep status` alone prints staged proposals, calibration, and common patterns, and
+  the right JSON for that is three keys or three commands, which is a decision.
+- [ ] **Fixture-dependent payloads are still unasserted.** `arc show`, `eval`, `proof
+  verify` and the rest need state to reach. The verb sweep covered what answers from an
+  empty tree; these need one arc fixture, and it is worth doing once the eight above are
+  paid so the table is not asserting a contract half the surface does not keep.
+- [ ] **`Unit.Verified` — decide whether adh wants the evidence or the conclusion.**
+  Not built, and stating the shape of the decision is the point: OKF §5.2 stores
+  verification *events* (`{by, at}`) and derives the tier; adh stores the tier. Keeping
+  the tier costs *who confirmed it and when*, permanently and silently. Changing it is a
+  migration for a stored artifact plus a change to `Rank()`'s routing tie-break. **The
+  cheap middle — store the events and keep `Rank()` folding over them — is probably
+  right and is still a migration.** Nothing forces it today, which is why it is a
+  decision rather than a defect.
+- [ ] **The relay test: adh's case is not gnosis's, and that is worth knowing first.**
+  gnosis §18.6 enumerates three methods because gnosis *emits a prompt for a model*.
+  adh never invokes a model at all — the relay is a human or an agent, and "scripted
+  model" here means scripting whatever answers the relay, which is a different fixture
+  with a different seam. Copying gnosis's design across would build the wrong thing.
+  What transfers unchanged is the discipline: **assert on what the answerer sent**, not
+  only on what it received, or the fixture is a playback.
