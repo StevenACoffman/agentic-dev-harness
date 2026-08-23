@@ -2,6 +2,8 @@ package relay_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -98,5 +100,83 @@ func TestResumeRejectsMalformedCriticReplyWithoutAdvancing(t *testing.T) {
 	}
 	if arc.Stage != adh.StageCritic {
 		t.Errorf("a rejected reply advanced the arc to %s", arc.Stage)
+	}
+}
+
+// TestAnUngroundedCriticIsReported. critic.HasGrounding computed this and, outside the
+// Gap branch, its answer was dropped — so a review grounded in six routed units and one
+// grounded in nothing reached Ops as the same artifact. Third instance in this repo of
+// a distinction the code computes and discards.
+//
+// It is deliberately not a Gap. A Gap is an arc that declared a footprint against a
+// store with units and still routed nothing, which means routing failed and blocks with
+// exit 12. These are arcs with no footprint, or repositories with no store at all, and
+// refusing them would make adh unusable before a context store exists.
+// seedStore writes one context unit carrying the given labels, so an arc declaring
+// them routes something.
+func seedStore(t *testing.T, labels []string) string {
+	t.Helper()
+	dir := t.TempDir()
+	unit := map[string]any{
+		"id": "u1", "kind": "requirement", "labels": labels,
+		"body": "the cache is cleared on restart",
+	}
+	b, err := json.Marshal(unit)
+	if err != nil {
+		t.Fatalf("marshal unit: %v", err)
+	}
+	if wErr := os.WriteFile(filepath.Join(dir, "u1.json"), b, 0o600); wErr != nil {
+		t.Fatalf("write unit: %v", wErr)
+	}
+	return dir
+}
+
+func TestAnUngroundedCriticIsReported(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		stage      adh.Stage
+		labels     []string
+		seedUnit   bool
+		wantKind   relay.Kind
+		ungrounded bool
+	}{
+		"a critic with no footprint and no store": {
+			adh.StageCritic, nil, false, relay.Awaiting, true,
+		},
+		// A proof packet is grounding on its own: HasGrounding is proof OR context.
+		// A routed context unit is grounding, so the note must not fire.
+		"a critic the store taught": {
+			adh.StageCritic, []string{"cache"}, true, relay.Awaiting, false,
+		},
+		// Only the critic runs cold, so only the critic can be ungrounded in the
+		// sense §19.1 means.
+		"another stage with nothing routed": {
+			adh.StageExecution, nil, false, relay.Awaiting, false,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			arc := &adh.Arc{
+				ID: "a1", Title: "t", Stage: tc.stage, Status: adh.StatusOpen,
+				Resolution: adh.ResolutionChange, Labels: tc.labels,
+			}
+			dir := noStore(t)
+			if tc.seedUnit {
+				dir = seedStore(t, tc.labels)
+			}
+			in := critic.Inputs{AcceptanceBar: "bar", Diff: "d"}
+			out, err := relay.Emit(arc, dir, &in, fakePrompter{},
+				authority.ClassReasoning, nil)
+			if err != nil {
+				t.Fatalf("emit: %v", err)
+			}
+			if out.Kind != tc.wantKind {
+				t.Fatalf("kind = %v, want %v", out.Kind, tc.wantKind)
+			}
+			if out.Ungrounded != tc.ungrounded {
+				t.Errorf("ungrounded = %v, want %v", out.Ungrounded, tc.ungrounded)
+			}
+		})
 	}
 }

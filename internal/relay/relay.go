@@ -36,6 +36,28 @@ type Kind int
 type Outcome struct {
 	Kind   Kind
 	Prompt string
+
+	// Ungrounded reports that a critic prompt was emitted with nothing from the
+	// repository behind it — no routed context unit and no proof packet — so the
+	// review will run on the model's own priors.
+	//
+	// It is not a Gap and must not become one. A Gap is an arc that *declared* a
+	// footprint against a store that has units and still routed nothing, which means
+	// the routing failed; that blocks with exit 12. This is an arc with no footprint,
+	// or a repository with no context store, and refusing those would make adh
+	// unusable on a repository that has not adopted the store. The decision to allow
+	// it is right and documented in critic.ForStage.
+	//
+	// **What was missing is the record, not the refusal.** critic.HasGrounding
+	// computes this and, outside the Gap branch, its answer was dropped — so a review
+	// grounded in six routed units and one grounded in nothing reached Ops as the
+	// same artifact. That is the third instance in this repo of a distinction the
+	// code computes and discards; the other two were Critic.Deny and Dispose.
+	//
+	// Reported at emit rather than at eval because emit is when it is actionable: the
+	// operator receiving the prompt can still add a context unit or declare a label.
+	// By eval the review has happened.
+	Ungrounded bool
 }
 
 // Emit renders the arc's current stage prompt and parks it as a pending turn,
@@ -67,7 +89,11 @@ func Emit(
 	}
 	arc.Pending = &adh.Pending{Stage: arc.Stage, Prompt: req.Prompt}
 	arc.Context = contextIDs(ground.Context) // record the loaded working set (§10.3)
-	return Outcome{Kind: Awaiting, Prompt: req.Prompt}, nil
+	return Outcome{
+		Kind:       Awaiting,
+		Prompt:     req.Prompt,
+		Ungrounded: arc.Stage == adh.StageCritic && !ground.HasGrounding(),
+	}, nil
 }
 
 // contextIDs is the IDs of the routed units, the working set recorded on the arc.
@@ -117,6 +143,7 @@ func Resume(
 	}
 	if wasCritic {
 		arc.Findings = reply.Findings
+		arc.Unexamined = reply.Unexamined
 	}
 	arc.Pending = nil
 	return Outcome{Kind: Advanced}, nil

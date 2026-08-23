@@ -254,6 +254,10 @@ func (cfg *Config) emitRelay(
 		AcceptanceBar: conf.ProofContract(arc.Resolution),
 		Tools:         reg.Tools,
 		Denied:        conf.DeniedInputs(),
+		// The previous review's declared gaps, so this critic starts where that one
+		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
+		// gap is only ever offered to the review that immediately follows it.
+		PriorGaps: arc.Unexamined,
 	}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
@@ -271,6 +275,14 @@ func (cfg *Config) emitRelay(
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("run: %w", err)
+	}
+	if out.Ungrounded {
+		// Same note step emits, for the same reason: the review is about to run on
+		// the model's own priors and whoever answers can still change that. Never a
+		// failure — critic.ForStage allows this state deliberately.
+		_, _ = fmt.Fprintln(cfg.Stderr,
+			"run: the critic is ungrounded — no routed context and no proof packet; "+
+				"this review runs on the model's own priors (§19.1)")
 	}
 	return cfg.reportAwaiting(arc, out.Prompt)
 }

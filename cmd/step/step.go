@@ -237,6 +237,10 @@ func (cfg *Config) emit(
 		AcceptanceBar: conf.ProofContract(arc.Resolution),
 		Tools:         reg.Tools,
 		Denied:        conf.DeniedInputs(),
+		// The previous review's declared gaps, so this critic starts where that one
+		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
+		// gap is only ever offered to the review that immediately follows it.
+		PriorGaps: arc.Unexamined,
 	}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
@@ -254,7 +258,27 @@ func (cfg *Config) emit(
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
+	cfg.warnUngrounded(&outcome)
 	return cfg.report(arc, statusAwaiting, outcome.Prompt)
+}
+
+// warnUngrounded notes a critic prompt built with nothing from the repository behind
+// it (§19.1).
+//
+// To stderr, and never a failure: this is the state critic.ForStage deliberately
+// allows — an arc with no declared footprint, or a repository with no context store —
+// and refusing it would make adh unusable before a store exists. What it is not is
+// something a reader should have to infer from an empty Context field afterwards.
+//
+// Emitted here rather than at eval because here it is actionable: whoever is about to
+// answer this prompt can still declare a label or add a context unit.
+func (cfg *Config) warnUngrounded(outcome *relay.Outcome) {
+	if !outcome.Ungrounded {
+		return
+	}
+	_, _ = fmt.Fprintln(cfg.Stderr,
+		"step: the critic is ungrounded — no routed context and no proof packet; "+
+			"this review runs on the model's own priors (§19.1)")
 }
 
 // reportOpsGate reports an arc that has reached the ops ship gate (§5.2): a
