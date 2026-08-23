@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/skillet/finding"
 )
 
 // resolutionPrefix marks the optional leading line by which a strategy reply
@@ -18,6 +19,11 @@ type Reply struct {
 	Findings   []adh.Finding
 	Resolution adh.Resolution
 	Text       string
+
+	// Unexamined is what a critic declared it did not look at (§19.2). Advisory by
+	// construction: finding.Result.HasBlocking iterates diagnostics only, so a
+	// declared gap cannot change a verdict however Dispose is written.
+	Unexamined []finding.Unexamined
 }
 
 // ParseReply validates a relayed reply for the arc's current stage and extracts
@@ -32,11 +38,11 @@ func ParseReply(stg adh.Stage, text string) (Reply, error) {
 	}
 	switch stg {
 	case adh.StageCritic:
-		findings, err := ParseFindings(text)
+		findings, unexamined, err := ParseFindings(text)
 		if err != nil {
 			return Reply{}, err
 		}
-		return Reply{Findings: findings, Text: text}, nil
+		return Reply{Findings: findings, Unexamined: unexamined, Text: text}, nil
 	case adh.StageStrategy:
 		return parseStrategyReply(text)
 	default:

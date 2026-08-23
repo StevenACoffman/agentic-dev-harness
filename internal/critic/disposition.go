@@ -3,9 +3,11 @@ package critic
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/skillet/finding"
 )
 
 // ConvergenceConstraint records SPEC-ADDITIONS §19.3: the critic runs once per
@@ -14,9 +16,11 @@ import (
 const ConvergenceConstraint = "critic runs once per arc (§19.3); no revision loop"
 
 // criticReply is the structured reply an operator returns for a critic turn: the
-// findings it raises, each naming the artifact that would confirm it (§19.2).
+// findings it raises, each naming the artifact that would confirm it (§19.2), and the
+// aspects it declares it did not examine.
 type criticReply struct {
-	Findings []adh.Finding `json:"findings"`
+	Findings   []adh.Finding        `json:"findings"`
+	Unexamined []finding.Unexamined `json:"unexamined,omitempty"`
 }
 
 // Adjudicated is a finding paired with the outcome of running its named artifact
@@ -59,17 +63,33 @@ type Verdict struct {
 	Unchecked []adh.Finding
 }
 
-// ParseFindings decodes a critic turn's reply into findings (§19.2). The reply is
-// a JSON object {"findings":[{summary,kind,ref}...]}; an empty or absent list is a
-// clean review. It validates each finding — a non-empty summary and a known kind
-// — and rejects a malformed reply with EINVALID, so an unparseable critic answer
-// never advances an arc on trust.
-func ParseFindings(reply string) ([]adh.Finding, error) {
+// ParseFindings decodes a critic turn's reply (§19.2): the findings it raises and the
+// aspects it declares it did not examine.
+//
+// Requires: nothing; any string is a valid input and an invalid one is an error.
+// Ensures: EINVALID for a reply that does not parse, a finding with no summary or an
+// unknown kind or class, or an unexamined entry missing either field. Pure.
+//
+// **An empty findings list used to be "a clean review" and could equally be a critic
+// that looked at nothing** — `evaluation` disposes of the arc on that silence, so the
+// two reached Ops identically. `unexamined` is how a critic says which it was.
+//
+// It is **testimony, not a derived fact**: a critic claiming it did not examine
+// something is a statement about its own behaviour, unverifiable from outside, and
+// worth what the critic is worth. That is why an ungrounded review — which the harness
+// knows mechanically — is reported through relay.Outcome instead of being written here
+// on the critic's behalf. skillet keeps the two as separate types deliberately, and
+// collapsing them would let a mechanical skip read as a critic's own admission.
+//
+// An invalid entry rejects the whole reply rather than being dropped. Dropping it is
+// how a reply that says nothing passes for a reply that found nothing, which is the
+// failure this field exists to end.
+func ParseFindings(reply string) ([]adh.Finding, []finding.Unexamined, error) {
 	var parsed criticReply
 	dec := json.NewDecoder(strings.NewReader(reply))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&parsed); err != nil {
-		return nil, &adh.Error{
+		return nil, nil, &adh.Error{
 			Code:    adh.EINVALID,
 			Message: "critic reply is not findings JSON: " + err.Error(),
 		}
@@ -77,22 +97,32 @@ func ParseFindings(reply string) ([]adh.Finding, error) {
 	for i := range parsed.Findings {
 		f := parsed.Findings[i]
 		if strings.TrimSpace(f.Summary) == "" {
-			return nil, &adh.Error{Code: adh.EINVALID, Message: "finding is missing a summary"}
+			return nil, nil, &adh.Error{Code: adh.EINVALID, Message: "finding is missing a summary"}
 		}
 		if !f.Kind.Valid() {
-			return nil, &adh.Error{
+			return nil, nil, &adh.Error{
 				Code:    adh.EINVALID,
 				Message: "finding names an unknown kind: " + string(f.Kind),
 			}
 		}
 		if !f.Class.Valid() {
-			return nil, &adh.Error{
+			return nil, nil, &adh.Error{
 				Code:    adh.EINVALID,
 				Message: "finding names an unknown class: " + string(f.Class),
 			}
 		}
 	}
-	return parsed.Findings, nil
+	for i := range parsed.Unexamined {
+		u := parsed.Unexamined[i]
+		if !u.Valid() {
+			return nil, nil, &adh.Error{
+				Code: adh.EINVALID,
+				Message: "unexamined entry needs both an aspect and a reason; got aspect=" +
+					strconv.Quote(u.Aspect) + " reason=" + strconv.Quote(u.Reason),
+			}
+		}
+	}
+	return parsed.Findings, parsed.Unexamined, nil
 }
 
 // Dispose classifies each adjudicated finding (§19.2).

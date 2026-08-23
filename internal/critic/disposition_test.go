@@ -1,11 +1,15 @@
 package critic_test
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
+	"github.com/StevenACoffman/skillet/finding"
 )
 
 func TestParseFindingsValid(t *testing.T) {
@@ -13,7 +17,7 @@ func TestParseFindingsValid(t *testing.T) {
 		{"summary":"clears differ from the reference","kind":"oracle","ref":"board-corpus"},
 		{"summary":"proof misses the new path","kind":"contract","class":"structural"}
 	]}`
-	findings, err := critic.ParseFindings(reply)
+	findings, _, err := critic.ParseFindings(reply)
 	if err != nil {
 		t.Fatalf("ParseFindings: %v", err)
 	}
@@ -72,7 +76,7 @@ func TestVerdictHasStructural(t *testing.T) {
 
 func TestParseFindingsEmptyIsCleanReview(t *testing.T) {
 	for _, reply := range []string{`{"findings":[]}`, `{}`} {
-		findings, err := critic.ParseFindings(reply)
+		findings, _, err := critic.ParseFindings(reply)
 		if err != nil {
 			t.Fatalf("ParseFindings(%q): %v", reply, err)
 		}
@@ -94,7 +98,7 @@ func TestParseFindingsRejectsMalformed(t *testing.T) {
 	}
 	for name, reply := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := critic.ParseFindings(reply); adh.ErrorCode(err) != adh.EINVALID {
+			if _, _, err := critic.ParseFindings(reply); adh.ErrorCode(err) != adh.EINVALID {
 				t.Errorf("ParseFindings(%q) = %v, want EINVALID", reply, err)
 			}
 		})
@@ -197,5 +201,117 @@ func TestDisposeCleanReviewDoesNotBlock(t *testing.T) {
 	}
 	if v.BlockingKind() != "" {
 		t.Errorf("blocking kind = %q, want empty", v.BlockingKind())
+	}
+}
+
+// wantGaps asserts a parse outcome: a rejection naming the missing field, or the
+// expected number of declared gaps.
+func wantGaps(t *testing.T, got []finding.Unexamined, err error, want int, bad bool) {
+	t.Helper()
+	if bad {
+		if err == nil {
+			t.Fatal("an invalid unexamined entry was accepted")
+		}
+		if !strings.Contains(err.Error(), "aspect and a reason") {
+			t.Errorf("the error does not say what is missing: %v", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(got) != want {
+		t.Errorf("got %d unexamined, want %d", len(got), want)
+	}
+}
+
+// TestParseUnexamined. An empty findings list used to be "a clean review" and could
+// equally be a critic that looked at nothing; evaluation disposes of the arc on that
+// silence, so the two reached Ops identically.
+func TestParseUnexamined(t *testing.T) {
+	t.Parallel()
+	const ok = `{"findings":[],"unexamined":[{"aspect":"concurrency","reason":"no repro harness"}]}`
+	cases := map[string]struct {
+		reply string
+		want  int
+		bad   bool
+	}{
+		"a declared gap":    {ok, 1, false},
+		"no unexamined key": {`{"findings":[]}`, 0, false},
+		"an empty list":     {`{"findings":[],"unexamined":[]}`, 0, false},
+		// An invalid entry rejects the whole reply. Dropping it silently is how a
+		// reply that says nothing passes for a reply that found nothing.
+		"a gap with no reason": {`{"unexamined":[{"aspect":"a","reason":""}]}`, 0, true},
+		"a gap with no aspect": {`{"unexamined":[{"aspect":"","reason":"r"}]}`, 0, true},
+		"a whitespace reason":  {`{"unexamined":[{"aspect":"a","reason":"  "}]}`, 0, true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, got, err := critic.ParseFindings(tc.reply)
+			wantGaps(t, got, err, tc.want, tc.bad)
+		})
+	}
+}
+
+// TestADeclaredGapCannotChangeAVerdict is the advisory guarantee, checked here because
+// this is where it would be broken. skillet keeps it structural — Result.HasBlocking
+// iterates diagnostics only — but nothing stops adh from reading Unexamined in Dispose,
+// and a critic that can block by declaring a gap learns to declare none.
+func TestADeclaredGapCannotChangeAVerdict(t *testing.T) {
+	t.Parallel()
+	const reply = `{"findings":[{"summary":"s","kind":"oracle","class":"fixable"}],
+		"unexamined":[{"aspect":"concurrency","reason":"no repro harness"}]}`
+	withGap, gaps, err := critic.ParseFindings(reply)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(gaps) != 1 {
+		t.Fatalf("got %d gaps, want 1", len(gaps))
+	}
+	without, _, err := critic.ParseFindings(
+		`{"findings":[{"summary":"s","kind":"oracle","class":"fixable"}]}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	adjudicate := func(fs []adh.Finding) critic.Verdict {
+		results := make([]critic.Adjudicated, 0, len(fs))
+		for _, f := range fs {
+			results = append(results, critic.Adjudicated{Finding: f, Ran: true, Failed: true})
+		}
+		return critic.Dispose(results)
+	}
+	a, b := adjudicate(withGap), adjudicate(without)
+	if a.ReturnsToExecution() != b.ReturnsToExecution() ||
+		len(a.Confirmed) != len(b.Confirmed) {
+		t.Error("a declared gap changed the verdict")
+	}
+}
+
+// TestClearingFindingsClearsGaps guards both sites at once, by asserting the property
+// rather than visiting each. A gap declared by the review just disposed of must not be
+// read as a gap in the next one, and there are two places findings are cleared —
+// evaluation.Apply and `adh reject` — so the risk is doing one and not the other.
+func TestClearingFindingsClearsGaps(t *testing.T) {
+	t.Parallel()
+	// Derived from the source rather than asserted as a list: a third clear site added
+	// later shows up here instead of silently leaking a stale gap.
+	roots := []string{
+		filepath.Join("..", "evaluation", "evaluation.go"),
+		filepath.Join("..", "..", "cmd", "reject", "reject.go"),
+	}
+	for _, path := range roots {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(src)
+		if !strings.Contains(text, "arc.Findings = nil") {
+			continue // this file no longer clears findings
+		}
+		if !strings.Contains(text, "arc.Unexamined = nil") {
+			t.Errorf("%s clears Findings and leaves Unexamined; a stale gap survives", path)
+		}
 	}
 }

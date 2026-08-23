@@ -272,6 +272,9 @@ func Apply(
 		))
 	}
 	arc.Findings = nil
+	// Cleared with the findings: a gap declared by the review just disposed of must
+	// not be read as a gap in the next one.
+	arc.Unexamined = nil
 	return nil
 }
 

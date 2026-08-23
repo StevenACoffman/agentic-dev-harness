@@ -129,6 +129,7 @@ func returnToExecution(arc *adh.Arc) {
 	arc.Status = adh.StatusOpen
 	arc.Pending = nil
 	arc.Findings = nil
+	arc.Unexamined = nil
 	arc.Paths = nil
 	arc.Labels = nil
 }

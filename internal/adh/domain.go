@@ -1,5 +1,7 @@
 package adh
 
+import "github.com/StevenACoffman/skillet/finding"
+
 // Stage values in canonical pipeline order (SPEC §1).
 const (
 	StageStrategy   Stage = "strategy"
@@ -120,6 +122,16 @@ type Arc struct {
 	// Evaluation stage (§19.2). Set when the critic turn resumes; cleared once
 	// Evaluation has disposed of them.
 	Findings []Finding `json:"findings,omitempty"`
+	// Unexamined is what the critic declared it did not look at (§19.2). It is the
+	// critic's own testimony, never a derived fact — a mechanically-known gap, such
+	// as a review that ran with no routed context, is reported by the harness and
+	// deliberately not written here.
+	//
+	// Advisory always: nothing may block because an entry is present, or a critic
+	// learns to declare none and the corpus loses both the gap and the finding.
+	// Cleared wherever Findings is cleared; a stale gap would be declared against a
+	// review that never made it.
+	Unexamined []finding.Unexamined `json:"unexamined,omitempty"`
 	// Reworks counts the times Evaluation confirmed a finding and returned this arc
 	// to Execution (SPEC §4.1). It bounds the rework loop: once it reaches the
 	// evaluation budget the arc fails terminally (StatusFailed) rather than looping.
