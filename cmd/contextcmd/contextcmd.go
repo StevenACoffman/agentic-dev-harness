@@ -19,6 +19,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
@@ -124,6 +125,12 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "eval":
 		return cfg.eval(units)
 	case "index":
+		if cfg.JSONL {
+			// Index renders a Markdown document; under --jsonl the answer is the
+			// units it was built from, not the rendering. A caller wanting the
+			// document has the human form.
+			return cfg.emitIndex(units)
+		}
 		_, _ = fmt.Fprint(cfg.Stdout, contextstore.Index(units))
 		return nil
 	default:
@@ -202,67 +209,119 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 // promised content resolves, and ids are unique across the store (a duplicate id
 // makes routing ambiguous, §10.4). It exits lintCode when any check fails.
 func (cfg *Config) lint(storeDir string, units []contextstore.Unit) error {
-	bad := 0
-	for i := range units {
-		unit := &units[i]
-		if unit.ID == "" || unit.Kind == "" {
-			bad++
-			_, _ = fmt.Fprintf(cfg.Stderr, "unit missing id or kind: %+v\n", unit)
-			continue
+	problems := cfg.lintProblems(storeDir, units)
+	if cfg.JSONL {
+		// The defects are the answer, so they travel as data. They went to stderr
+		// one at a time before, which left --jsonl with a count and no content.
+		if err := cfg.EmitOK(map[string]any{
+			"units": len(units), "problems": problems,
+		}); err != nil {
+			return fmt.Errorf("context: %w", err)
 		}
-		// The content the routing preview promises must exist and stay in the store.
-		if _, err := contextstore.Content(storeDir, unit); err != nil {
-			bad++
-			_, _ = fmt.Fprintf(
-				cfg.Stderr,
-				"unit %s: content_path does not resolve: %v\n",
-				unit.ID,
-				err,
-			)
+		if len(problems) > 0 {
+			return root.ExitError(lintCode)
 		}
+		return nil
 	}
-	for _, id := range contextstore.DuplicateIDs(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "duplicate unit id: %s\n", id)
+	for i := range problems {
+		_, _ = fmt.Fprintf(cfg.Stderr, "%s\n", problems[i].Detail)
 	}
-	bad += cfg.wikiLint(units)
-	if bad > 0 {
+	if len(problems) > 0 {
 		return root.ExitError(lintCode)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d context units, all valid\n", len(units))
 	return nil
 }
 
-// wikiLint reports the compounding-wiki defects (§10.4) — orphan units that can
-// never route, dangling supersession references, and unknown trust tiers — and
-// returns how many it found.
-func (cfg *Config) wikiLint(units []contextstore.Unit) int {
-	bad := 0
+// lintProblems collects every defect in the store (§10.4).
+//
+// Requires: storeDir is the context store; units are its loaded contents.
+// Ensures: one Problem per defect, in a stable order — structural defects per unit
+// first, then the wiki-level ones. Empty means checked and clean, never "did not
+// check". Pure with respect to units; it reads content paths and provenance sources
+// through cfg's filesystem helpers.
+//
+// **Collecting rather than printing is the change, and JSON was only what forced it.**
+// Each defect used to go to stderr as it was found and a count to stdout at the end, so
+// the two came from different code paths and could disagree — and --jsonl could report
+// only the count. One slice renders both.
+//
+// It reuses harnesscheck.Problem rather than a local type, because `doctor` already
+// renders that shape and a context-unit defect is the same kind of thing. A second
+// vocabulary for "what is wrong with a unit" is the drift this family keeps refusing.
+func (cfg *Config) lintProblems(
+	storeDir string, units []contextstore.Unit,
+) []harnesscheck.Problem {
+	problems := make([]harnesscheck.Problem, 0)
+	for i := range units {
+		unit := &units[i]
+		if unit.ID == "" || unit.Kind == "" {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindUnitFields, Ref: unit.ContentPath,
+				Detail: fmt.Sprintf("unit missing id or kind: %+v", unit),
+			})
+			continue
+		}
+		// The content the routing preview promises must exist and stay in the store.
+		if _, err := contextstore.Content(storeDir, unit); err != nil {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindDanglingSource, Ref: unit.ID,
+				Detail: "unit " + unit.ID + ": content_path does not resolve: " + err.Error(),
+			})
+		}
+	}
+	for _, id := range contextstore.DuplicateIDs(units) {
+		problems = append(problems, harnesscheck.Problem{
+			Kind: harnesscheck.KindDuplicateUnit, Ref: id,
+			Detail: "duplicate unit id: " + id,
+		})
+	}
+	return append(problems, cfg.wikiProblems(units)...)
+}
+
+// wikiProblems reports the compounding-wiki defects (§10.4) — orphan units that can
+// never route, dangling supersession references, unknown trust tiers, and provenance
+// that does not resolve.
+func (cfg *Config) wikiProblems(units []contextstore.Unit) []harnesscheck.Problem {
+	problems := make([]harnesscheck.Problem, 0)
+	add := func(kind, ref, detail string) {
+		problems = append(problems, harnesscheck.Problem{Kind: kind, Ref: ref, Detail: detail})
+	}
 	for _, id := range contextstore.Orphans(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "orphan unit %s: no labels or paths, never routes\n", id)
+		add(harnesscheck.KindUnitFields, id,
+			"orphan unit "+id+": no labels or paths, never routes")
 	}
 	for _, id := range contextstore.DanglingSupersessions(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: superseded_by names a nonexistent unit\n", id)
+		add(harnesscheck.KindDanglingSupersede, id,
+			"unit "+id+": superseded_by names a nonexistent unit")
 	}
 	for _, id := range contextstore.InvalidTrust(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: unknown trust tier\n", id)
+		add(harnesscheck.KindInvalidTrust, id, "unit "+id+": unknown trust tier")
 	}
 	for _, dangling := range contextstore.DanglingSources(units, cfg.sourceExists) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s (provenance source not found)\n", dangling)
+		add(harnesscheck.KindDanglingSource, dangling,
+			"unit "+dangling+" (provenance source not found)")
 	}
 	for _, unverified := range contextstore.UnverifiedClaims(units, cfg.sourceRead) {
-		bad++
-		_, _ = fmt.Fprintf(
-			cfg.Stderr,
-			"unit %s (claim quote not found in cited source)\n",
-			unverified,
-		)
+		add(harnesscheck.KindUnverifiedClaim, unverified,
+			"unit "+unverified+" (claim quote not found in cited source)")
 	}
-	return bad
+	return problems
+}
+
+// emitIndex reports the units the index lists — those not superseded, which is the
+// same selection Index renders.
+func (cfg *Config) emitIndex(units []contextstore.Unit) error {
+	live := make([]contextstore.Unit, 0, len(units))
+	for i := range units {
+		if units[i].SupersededBy == "" {
+			live = append(live, units[i])
+		}
+	}
+	if err := cfg.EmitOK(map[string]any{"units": live}); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	return nil
 }
 
 // sourceExists reports whether a repo-relative provenance source resolves under the
