@@ -128,7 +128,14 @@ func (cfg *Config) driveRelay(
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	maxReworks := conf.MaxReworks()
 	if cfg.Response != "" {
-		if err := cfg.resumeRelay(ctx, store, arc, renderer, judgment); err != nil {
+		if err := cfg.resumeRelay(
+			ctx,
+			store,
+			arc,
+			renderer,
+			judgment,
+			conf.ProofContract,
+		); err != nil {
 			return err
 		}
 	}
@@ -163,6 +170,7 @@ func (cfg *Config) resumeRelay(
 	arc *adh.Arc,
 	renderer stage.Prompter,
 	judgment authority.JudgmentRoles,
+	barFor func(adh.Resolution) string,
 ) error {
 	if arc.Pending == nil || arc.Pending.Stage != arc.Stage {
 		return fmt.Errorf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage)
@@ -173,8 +181,14 @@ func (cfg *Config) resumeRelay(
 	}
 	wasExecution := arc.Stage == adh.StageExecution
 	wasCritic := arc.Stage == adh.StageCritic
+	wasStrategy := arc.Stage == adh.StageStrategy
 	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("run: %w", err)
+	}
+	if wasStrategy {
+		// Pre-register the bar the plan was made against, after Resume so the
+		// resolution the strategy reply chose is the one it selects (§19.2).
+		arc.Bar = evaluation.BarHash(barFor(arc.Resolution))
 	}
 	if wasExecution {
 		worktree.CaptureFootprint(cfg.repoDir(), arc)

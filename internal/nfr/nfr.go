@@ -47,6 +47,25 @@ type Spec struct {
 	Fail      float64   `json:"fail"`
 	Goal      float64   `json:"goal"`
 	Stretch   float64   `json:"stretch,omitempty"`
+
+	// Guard marks a spec the change must not breach, as opposed to one it is trying
+	// to improve (§10.5, §19.2).
+	//
+	// An arc's acceptance bar names what the change is *for*. Nothing named what it
+	// must not cost, and **an objective without guards is hill-climbed by trading
+	// away everything unmeasured** — `ruflo`'s loop raised a harness score 40 → 55 by
+	// adding files a presence-counting metric rewarded, with no capability change,
+	// and doubled a promotion rate by relaxing the predicate from AND to OR.
+	//
+	// It is a property of the **repository**, not of an arc, and that is the point of
+	// putting it here rather than on the arc. A per-arc guard list would be more
+	// expressive and would let the author of a change choose which guards apply to
+	// it, which is the configurability that invites exactly the failure above: both
+	// of ruflo's were a loop editing its own criteria.
+	//
+	// False is an ordinary objective, so a spec nobody marked does not silently
+	// become a blocker.
+	Guard bool `json:"guard,omitempty"`
 }
 
 // Valid reports whether the spec is a well-formed Planguage requirement: a
@@ -107,6 +126,21 @@ func knownCategory(head string) bool {
 	default:
 		return false
 	}
+}
+
+// Guards returns the specs a change must not breach, in the order declared.
+//
+// Requires: nothing.
+// Ensures: empty rather than nil when none is marked, so a caller need not
+// distinguish "no guards declared" from "did not look". Pure.
+func Guards(specs []Spec) []Spec {
+	out := make([]Spec, 0, len(specs))
+	for i := range specs {
+		if specs[i].Guard {
+			out = append(out, specs[i])
+		}
+	}
+	return out
 }
 
 // ByID returns the spec with the given id, so a caller that already knows an NFR by

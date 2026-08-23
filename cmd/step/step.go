@@ -139,7 +139,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case !cfg.Relay:
 		return cfg.advance(ctx, store, model.Mock{}, renderer, &arc, judgment)
 	case cfg.Response != "":
-		return cfg.resume(ctx, store, renderer, &arc, judgment)
+		return cfg.resume(ctx, store, renderer, &arc, judgment, conf.ProofContract)
 	default:
 		return cfg.emit(ctx, store, &conf, renderer, &arc, judgment)
 	}
@@ -324,6 +324,7 @@ func (cfg *Config) resume(
 	renderer stage.Prompter,
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
+	barFor func(adh.Resolution) string,
 ) error {
 	switch {
 	case arc.Pending == nil:
@@ -341,8 +342,14 @@ func (cfg *Config) resume(
 	// because that needs the worktree.
 	wasExecution := arc.Stage == adh.StageExecution
 	wasCritic := arc.Stage == adh.StageCritic
+	wasStrategy := arc.Stage == adh.StageStrategy
 	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("step: %w", err)
+	}
+	if wasStrategy {
+		// Pre-register the bar the plan was made against, after Resume so the
+		// resolution the strategy reply chose is the one it selects (§19.2).
+		arc.Bar = evaluation.BarHash(barFor(arc.Resolution))
 	}
 	if wasExecution {
 		worktree.CaptureFootprint(cfg.repoDir(), arc)

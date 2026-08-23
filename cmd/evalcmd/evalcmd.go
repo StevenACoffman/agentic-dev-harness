@@ -21,6 +21,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
@@ -112,9 +113,29 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		cfg.adjudicator = &adj
 	}
 
-	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, arc.Findings)
+	// Guards are adjudicated alongside the critic's findings, whether or not the
+	// critic mentioned them (§10.5). The critic says what it thought to look at; a
+	// guard says what the repository will not trade away regardless, and an objective
+	// without guards is hill-climbed by trading away everything unmeasured.
+	specs, err := nfr.Load(nfr.DefaultDir)
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
+	}
+	toAdjudicate := append(evaluation.GuardFindings(specs), arc.Findings...)
+
+	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, toAdjudicate)
+	if err != nil {
+		return fmt.Errorf("eval: %w", err)
+	}
+	// Before applying anything: the bar this arc was planned against, against the bar
+	// in force now. Reported and never blocking — a bar sometimes moves for a good
+	// reason, and refusing the legitimate case would make the check a wall. What it
+	// ends is the bar moving *deniably*.
+	if evaluation.BarMoved(&arc, conf.ProofContract(arc.Resolution)) {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: the acceptance bar changed since arc %s was planned; "+
+				"this verdict is not against the bar the plan was made under (§19.2)\n",
+			arc.ID)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	stratum := contextstore.Stratum(time.Now())

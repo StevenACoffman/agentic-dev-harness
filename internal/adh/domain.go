@@ -132,6 +132,24 @@ type Arc struct {
 	// Cleared wherever Findings is cleared; a stale gap would be declared against a
 	// review that never made it.
 	Unexamined []finding.Unexamined `json:"unexamined,omitempty"`
+	// Bar is identity.Hash of the acceptance bar the arc was planned against,
+	// recorded when Strategy completes (§19.2).
+	//
+	// **It is a pre-registration, not a copy.** The bar itself is derived from config
+	// by resolution and is recoverable at any time; what is not recoverable is what it
+	// said when the plan was made. Two things can move it between Strategy and
+	// Evaluation — an edit to the config, and a change to the arc's Resolution, which
+	// selects the contract — and neither leaves a trace today.
+	//
+	// The discipline it buys is `ruflo`'s: it rejected changes carrying large
+	// favourable metrics because a *named* guard moved, under a hypothesis marked
+	// "frozen before evaluation began; not modified after seeing results." A bar that
+	// can move after the numbers arrive is a note, not a pre-registration.
+	//
+	// Empty means an arc planned before this shipped, or one that never reached
+	// Strategy. It must read as **unknown**, never as changed — reporting drift on
+	// every pre-existing arc would teach a reader to ignore the report.
+	Bar string `json:"bar,omitempty"`
 	// Reworks counts the times Evaluation confirmed a finding and returned this arc
 	// to Execution (SPEC §4.1). It bounds the rework loop: once it reaches the
 	// evaluation budget the arc fails terminally (StatusFailed) rather than looping.
