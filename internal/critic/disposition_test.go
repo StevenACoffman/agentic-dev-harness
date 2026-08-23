@@ -1,6 +1,7 @@
 package critic_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -101,33 +102,91 @@ func TestParseFindingsRejectsMalformed(t *testing.T) {
 }
 
 func TestDispose(t *testing.T) {
-	results := []critic.Adjudicated{
+	t.Parallel()
+	// One finding of each outcome. TestDisposePartitions covers the bucketing
+	// exhaustively; this covers what the buckets are then reported as, which is where
+	// the collapse actually did its damage.
+	v := critic.Dispose([]critic.Adjudicated{
 		{Finding: adh.Finding{Summary: "real", Kind: adh.FindingContract}, Ran: true, Failed: true},
-		{
-			Finding: adh.Finding{Summary: "passed", Kind: adh.FindingOracle},
-			Ran:     true,
-			Failed:  false,
-		},
+		{Finding: adh.Finding{Summary: "passed", Kind: adh.FindingOracle}, Ran: true},
 		{Finding: adh.Finding{Summary: "unrunnable", Kind: adh.FindingNFR}, Ran: false},
+	})
+
+	if got := v.FailureNotes(); !slices.Equal(got, []string{"contract: real"}) {
+		t.Errorf("failure notes = %v, want the confirmed finding", got)
 	}
-	v := critic.Dispose(results)
-	if len(v.Confirmed) != 1 || v.Confirmed[0].Summary != "real" {
-		t.Fatalf("confirmed = %+v, want just the ran+failed finding", v.Confirmed)
+	// A lesson is drawn from a finding that was checked and did not reproduce; one
+	// nobody could check has taught nothing yet.
+	if got := v.LessonNotes(); !slices.Equal(got, []string{"oracle: passed"}) {
+		t.Errorf("lesson notes = %v, want just the checked-and-passed finding", got)
 	}
-	if len(v.Unconfirmed) != 2 {
-		t.Errorf("unconfirmed = %d, want 2 (passed + unrunnable)", len(v.Unconfirmed))
+	if got := v.UncheckedNotes(); !slices.Equal(got, []string{"nfr: unrunnable"}) {
+		t.Errorf("unchecked notes = %v, want the unrunnable finding", got)
 	}
-	if !v.ReturnsToExecution() {
-		t.Error("a confirmed finding must return the arc to execution")
+	// Recurrence is the question Classes feeds, and "this kind keeps naming an
+	// artifact we cannot run" is a recurrence worth surfacing.
+	if got := v.Classes(); !slices.Equal(got, []string{"contract", "nfr", "oracle"}) {
+		t.Errorf("classes = %v, want all three kinds", got)
 	}
 	if v.BlockingKind() != adh.FindingContract {
 		t.Errorf("blocking kind = %q, want contract", v.BlockingKind())
 	}
-	if got := v.FailureNotes(); len(got) != 1 || got[0] != "contract: real" {
-		t.Errorf("failure notes = %v, want [contract: real]", got)
+}
+
+// TestDisposePartitions. Every finding lands in exactly one bucket, whatever the
+// combination -- including Ran:false with Failed:true, which an adjudicator should
+// never produce and which must not be read as a confirmation if it does.
+func TestDisposePartitions(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		in   critic.Adjudicated
+		want string
+	}{
+		"ran and failed": {critic.Adjudicated{Ran: true, Failed: true}, "confirmed"},
+		"ran and passed": {critic.Adjudicated{Ran: true, Failed: false}, "unconfirmed"},
+		"did not run":    {critic.Adjudicated{Ran: false, Failed: false}, "unchecked"},
+		"the zero value": {critic.Adjudicated{}, "unchecked"},
+		"did not run, but reported failed": {
+			critic.Adjudicated{Ran: false, Failed: true}, "unchecked",
+		},
 	}
-	if got := v.LessonNotes(); len(got) != 2 {
-		t.Errorf("lesson notes = %v, want 2", got)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			tc.in.Finding = adh.Finding{Summary: "s", Kind: adh.FindingOracle}
+			v := critic.Dispose([]critic.Adjudicated{tc.in})
+			got := map[string]int{
+				"confirmed":   len(v.Confirmed),
+				"unconfirmed": len(v.Unconfirmed),
+				"unchecked":   len(v.Unchecked),
+			}
+			for bucket, n := range got {
+				want := 0
+				if bucket == tc.want {
+					want = 1
+				}
+				if n != want {
+					t.Errorf("%s = %d, want %d (all: %+v)", bucket, n, want, got)
+				}
+			}
+		})
+	}
+}
+
+// TestAnUncheckedFindingDoesNotBlock pins the decision rather than the accident.
+// vac-gate argues the honest refusal should fail the gate, and it is not adopted here
+// because Ran:false cannot yet distinguish a broken tool from a critic naming a tool
+// that never existed -- see ReturnsToExecution for the trigger that would change it.
+func TestAnUncheckedFindingDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: adh.Finding{Summary: "s", Kind: adh.FindingNFR}, Ran: false},
+	})
+	if v.ReturnsToExecution() {
+		t.Error("an unchecked finding blocked the arc")
+	}
+	if v.BlockingKind() != "" {
+		t.Errorf("blocking kind = %q, want empty", v.BlockingKind())
 	}
 }
 

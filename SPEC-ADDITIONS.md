@@ -694,8 +694,31 @@ the critic (§SPEC 1) runs that artifact.
 
 | Finding                                           | Adjudication                       | Effect                                                                                           |
 | ------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| confirmed — the named artifact fails              | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
-| unconfirmed — no artifact fails, or none is named | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+| confirmed — the named artifact ran and failed     | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
+| unconfirmed — the artifact ran and passed         | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+| **unchecked — the artifact could not run**        | neither                            | does not block; reported separately, and excluded from the precision ledger                      |
+
+**Unchecked is a third outcome and was previously folded into unconfirmed.** The
+collapse was not merely imprecise. Unconfirmed feeds the precision ledger, where it
+means *a false positive*, and `NoisyKinds` condemns any finding kind whose
+false-positive rate is too high — holding the next critic to a higher bar for it. So a
+missing or unbuilt artifact taught the harness to distrust an entire category of real
+defect, and the more broken the environment the more it distrusted. A finding nobody
+could check is evidence about its kind in neither direction, so it appears in neither
+slice of the ledger; dropping it from the numerator alone would leave it in the
+denominator and understate the rate instead.
+
+**It does not block, and that is a decision rather than a default.** `vac-gate`'s rule
+— *"'cannot regrade' is not 'regraded'"* — argues the honest refusal should fail the
+gate, and it is right wherever the refusal is trustworthy. It is not yet here: a
+finding's artifact is named in a model's reply, so "could not run" covers both *the
+tool is broken* and *the critic named a tool that never existed*, and blocking on the
+second would let one bad critic wedge every arc. **The trigger for revisiting is the
+§13 tool registry** — once adjudication resolves a finding's ref against it, a
+registered-but-unrunnable artifact is a refusal worth blocking on and an unregistered
+one stays noise. Until then the state is reported rather than acted on, which is the
+part that was missing: `eval` now names the count and the findings instead of folding
+them into the lesson-candidate total.
 
 A finding never blocks on the critic's text alone. This is §9's non-goal applied
 to review: the harness does not grade a change with an LLM-as-judge where a

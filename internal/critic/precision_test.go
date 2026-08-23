@@ -3,6 +3,7 @@ package critic_test
 import (
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -89,5 +90,46 @@ func TestPrecisionRoundTrip(t *testing.T) {
 	}
 	if want := []critic.PrecisionEntry{*entry}; !reflect.DeepEqual(got, want) {
 		t.Errorf("round-trip = %v, want %v (empty entry skipped)", got, want)
+	}
+}
+
+// TestAnUncheckedFindingIsNotAFalsePositive is the fix for the damage that made this
+// Tier 1. Unconfirmed feeds PrecisionEntry, whose doc calls it a false positive, and
+// NoisyKinds then condemns any kind whose rate is too high — so a missing or unbuilt
+// artifact used to teach the harness to distrust an entire category of real defect,
+// and the more broken the environment the more it distrusted.
+func TestAnUncheckedFindingIsNotAFalsePositive(t *testing.T) {
+	t.Parallel()
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: adh.Finding{Summary: "s", Kind: adh.FindingNFR}, Ran: false},
+	})
+
+	confirmed, unconfirmed := critic.VerdictKinds(&v)
+	// Neither slice, deliberately. Dropping it from the numerator alone would leave
+	// it in the denominator and understate the rate instead of correcting it.
+	if len(confirmed) != 0 || len(unconfirmed) != 0 {
+		t.Fatalf("confirmed=%v unconfirmed=%v, want an unchecked finding in neither",
+			confirmed, unconfirmed)
+	}
+}
+
+// TestAnUnrunnableArtifactCannotCondemnItsKind is the same property at the level a
+// person would notice: enough unchecked findings of one kind must not make NoisyKinds
+// hold the next critic to a higher bar for it.
+func TestAnUnrunnableArtifactCannotCondemnItsKind(t *testing.T) {
+	t.Parallel()
+	entries := make([]critic.PrecisionEntry, 0, 20)
+	for i := range 20 {
+		v := critic.Dispose([]critic.Adjudicated{
+			{Finding: adh.Finding{Summary: "s", Kind: adh.FindingNFR}, Ran: false},
+		})
+		confirmed, unconfirmed := critic.VerdictKinds(&v)
+		entries = append(entries, critic.PrecisionEntry{
+			Arc: "a" + strconv.Itoa(i), Confirmed: confirmed, Unconfirmed: unconfirmed,
+		})
+	}
+
+	if got := critic.NoisyKinds(entries, 5, 0.5); len(got) != 0 {
+		t.Errorf("NoisyKinds = %v; twenty unrunnable artifacts condemned the kind", got)
 	}
 }

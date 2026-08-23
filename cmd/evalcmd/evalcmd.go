@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/peterbourgon/ff/v4"
@@ -46,7 +47,13 @@ type Config struct {
 type result struct {
 	Arc         string `json:"arc"`
 	Unconfirmed int    `json:"unconfirmed"`
-	Stage       string `json:"stage"`
+
+	// Unchecked is how many findings named an artifact that could not run. Reported
+	// beside Unconfirmed rather than added to it: an agent branching on a clean
+	// review needs to know the review was incomplete, and the two used to be one
+	// number (§19.2).
+	Unchecked int    `json:"unchecked"`
+	Stage     string `json:"stage"`
 }
 
 // New creates and registers the eval command with the given parent config.
@@ -149,6 +156,7 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 		if err := cfg.EmitOK(result{
 			Arc:         arc.ID,
 			Unconfirmed: len(verdict.Unconfirmed),
+			Unchecked:   len(verdict.Unchecked),
 			Stage:       string(arc.Stage),
 		}); err != nil {
 			return fmt.Errorf("eval: %w", err)
@@ -158,6 +166,15 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
 		arc.ID, len(verdict.Unconfirmed))
+	// Reported separately and to stderr, because it is not part of the result: the
+	// arc advanced, and it advanced with findings nobody could check. Folding this
+	// into the lesson-candidate count is what let a broken tool read as a clean
+	// review for as long as it did.
+	if n := len(verdict.Unchecked); n > 0 {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: %d finding(s) could not be checked; their artifacts did not run: %s\n",
+			n, strings.Join(verdict.UncheckedNotes(), "; "))
+	}
 	return nil
 }
 

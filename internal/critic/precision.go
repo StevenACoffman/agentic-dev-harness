@@ -27,6 +27,16 @@ const (
 // (the named artifact ran and failed — a real defect) and the kinds unconfirmed
 // (surfaced but not reproduced — a false positive). Kinds are recorded with
 // multiplicity, one per finding, so the false-positive rate counts findings.
+//
+// **A finding whose artifact could not run appears in neither**, and that omission is
+// the point rather than an oversight. It used to be recorded as unconfirmed — as a
+// false positive — so a missing or unbuilt tool drove up its kind's rate and NoisyKinds
+// condemned the kind, holding the next critic to a higher bar for it. A broken
+// environment taught the harness to distrust real defects, and it compounded.
+//
+// Leaving it out of *both* slices is deliberate: dropping it from the numerator alone
+// would leave it in the denominator and understate the rate instead. A finding nobody
+// checked is evidence about that kind in neither direction.
 type PrecisionEntry struct {
 	Arc         string   `json:"arc"`
 	Confirmed   []string `json:"confirmed,omitempty"`
@@ -35,6 +45,8 @@ type PrecisionEntry struct {
 
 // VerdictKinds splits a disposed verdict into the confirmed and unconfirmed finding
 // kinds, one entry per finding (with multiplicity). Pure.
+//
+// Verdict.Unchecked contributes to neither, per PrecisionEntry's doc.
 func VerdictKinds(v *Verdict) (confirmed, unconfirmed []string) {
 	confirmed = make([]string, 0, len(v.Confirmed))
 	for i := range v.Confirmed {

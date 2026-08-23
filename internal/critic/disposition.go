@@ -28,12 +28,35 @@ type Adjudicated struct {
 	Failed  bool
 }
 
-// Verdict is the disposition of a critic's findings after adjudication (§19.2):
-// confirmed findings (a named artifact that ran and failed) and unconfirmed ones
-// (no artifact ran, or it passed).
+// Verdict is the disposition of a critic's findings after adjudication (§19.2).
+//
+// Three buckets, because the input carries three states and collapsing two of them
+// corrupted the harness's own calibration. Ran:false and Ran:true,Failed:false used to
+// land together in Unconfirmed — "nobody checked this" and "this was checked and did
+// not reproduce" reported as one answer.
+//
+// That was not merely imprecise. Unconfirmed feeds PrecisionEntry, whose own doc calls
+// it "surfaced but not reproduced — a false positive", and NoisyKinds then condemns any
+// kind whose false-positive rate is too high: "the next critic holds these to a higher
+// bar." So a missing or unbuilt artifact taught the harness to distrust an entire
+// category of real defect, and the more broken the environment the more it distrusted.
+//
+// A finding nobody could check is evidence about that kind in neither direction, which
+// is the rule quotecheck.Unchecked and gate.VerdictUnchecked follow one repo over.
 type Verdict struct {
-	Confirmed   []adh.Finding
+	// Confirmed: the named artifact ran and failed. A real defect; blocks.
+	Confirmed []adh.Finding
+
+	// Unconfirmed: the artifact ran and passed. A lesson candidate (§11), and the
+	// only bucket that is evidence of a false positive.
 	Unconfirmed []adh.Finding
+
+	// Unchecked: the artifact could not run — missing, unbuilt, wrong commit.
+	//
+	// It does not block, and that is a decision rather than an oversight; see
+	// ReturnsToExecution. It is also not a lesson candidate: a lesson is drawn from a
+	// finding that was checked and did not reproduce, and this one was not checked.
+	Unchecked []adh.Finding
 }
 
 // ParseFindings decodes a critic turn's reply into findings (§19.2). The reply is
@@ -72,19 +95,29 @@ func ParseFindings(reply string) ([]adh.Finding, error) {
 	return parsed.Findings, nil
 }
 
-// Dispose classifies each adjudicated finding (§19.2): a finding is confirmed
-// only when its artifact ran and failed; every other case — it passed, or no
-// artifact ran — is unconfirmed. It is pure; the caller runs the artifacts and
-// records the effects.
+// Dispose classifies each adjudicated finding (§19.2).
+//
+// Requires: nothing; an empty result set is a clean review.
+// Ensures: the three buckets partition results — every finding lands in exactly one —
+// and order within each is the order adjudicated. Pure; the caller runs the artifacts
+// and records the effects.
+//
+// The artifact not running is tested first because it is the only case where Failed
+// carries no information: an adjudicator that could not run a check has nothing to
+// report about whether it passed, and reading Failed there would be reading a zero
+// value as an answer.
 func Dispose(results []Adjudicated) Verdict {
 	var v Verdict
 	for i := range results {
 		r := results[i]
-		if r.Ran && r.Failed {
+		switch {
+		case !r.Ran:
+			v.Unchecked = append(v.Unchecked, r.Finding)
+		case r.Failed:
 			v.Confirmed = append(v.Confirmed, r.Finding)
-			continue
+		default:
+			v.Unconfirmed = append(v.Unconfirmed, r.Finding)
 		}
-		v.Unconfirmed = append(v.Unconfirmed, r.Finding)
 	}
 	return v
 }
@@ -92,6 +125,20 @@ func Dispose(results []Adjudicated) Verdict {
 // ReturnsToExecution reports whether the verdict blocks the arc: any confirmed
 // finding is a deterministic Evaluation failure that returns the arc to Execution
 // (§19.2).
+//
+// **An unchecked finding does not block, and the decision is recorded rather than
+// emergent.** `vac-gate`'s rule — "'cannot regrade' is not 'regraded'" — argues the
+// honest refusal should fail the gate, and it is the right rule where the refusal is
+// trustworthy. Here it is not yet: a finding's artifact comes from a model's reply, so
+// Ran:false covers both "the tool is broken" and "the critic named a tool that never
+// existed", and blocking on the second would let one bad critic wedge every arc.
+//
+// The trigger for revisiting: the §13 tool registry can distinguish the two, so once
+// adjudication resolves a finding's ref against it, a registered-but-unrunnable
+// artifact becomes a refusal worth blocking on and an unregistered one stays noise.
+// Until then the state is reported rather than acted on — visible, which is the part
+// that was missing, since it used to be folded into Unconfirmed and counted as a false
+// positive.
 func (v *Verdict) ReturnsToExecution() bool { return len(v.Confirmed) > 0 }
 
 // HasStructural reports whether any confirmed finding is structural (§19.2) — one
@@ -127,6 +174,13 @@ func (v *Verdict) Classes() []string {
 	for i := range v.Unconfirmed {
 		seen[string(v.Unconfirmed[i].Kind)] = true
 	}
+	// Unchecked counts here and deliberately not in the precision ledger. Recurrence
+	// is the question this feeds, and "this kind keeps naming an artifact we cannot
+	// run" is exactly a recurrence worth surfacing — where the false-positive rate it
+	// would corrupt is a different question with a different answer.
+	for i := range v.Unchecked {
+		seen[string(v.Unchecked[i].Kind)] = true
+	}
 	classes := make([]string, 0, len(seen))
 	for c := range seen {
 		classes = append(classes, c)
@@ -141,7 +195,15 @@ func (v *Verdict) FailureNotes() []string { return notesFor(v.Confirmed) }
 
 // LessonNotes renders the unconfirmed findings as lesson candidates (§11): kept to
 // detect a recurring class, never a blocker (§19.2).
+//
+// Unchecked findings are not candidates. A lesson is drawn from a finding that was
+// checked and did not reproduce; one nobody could check has taught nothing yet.
 func (v *Verdict) LessonNotes() []string { return notesFor(v.Unconfirmed) }
+
+// UncheckedNotes renders the findings whose artifact could not run, so a caller can
+// report them. Same shape as the other two, because a reader comparing the three lists
+// should not have to notice a formatting difference.
+func (v *Verdict) UncheckedNotes() []string { return notesFor(v.Unchecked) }
 
 func notesFor(findings []adh.Finding) []string {
 	if len(findings) == 0 {
