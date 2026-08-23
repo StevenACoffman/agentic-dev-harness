@@ -2,6 +2,8 @@ package cmd_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
 // payloadKeys is the `data` key set each command emits when it succeeds against an
@@ -25,10 +28,11 @@ import (
 // consumers reading it; if it fails because a command is missing, the question is what
 // that command now promises.
 //
-// Only the commands reachable from nothing appear. The rest refuse for want of an arc
-// or a verb, and a refusal is not a violation — the envelope assertion still covers
-// them. Payloads that need a fixture (arc show, eval, proof verify) are not covered
-// here and that gap is deliberate rather than overlooked.
+// Both trees are covered: the bare one for the commands that answer from nothing, and
+// the seeded one for those needing an arc, a registry, or a git repository. What is
+// still uncovered is the payloads reachable only with an *argument* — `arc show <id>`,
+// `context show <id>`, `proof verify <path>` — because the registry walk enumerates
+// invocations, not their operands.
 var payloadKeys = map[string][]string{
 	"version": {
 		"buildDate", "builtBy", "compiler", "gitCommit", "gitTreeState",
@@ -59,6 +63,15 @@ var payloadKeys = map[string][]string{
 	"sleep status":      {"common_patterns", "staged"},
 	"tool doctor":       {"tools", "valid"},
 	"worker show":       {"epoch", "models"},
+
+	// Reachable only with state, and unasserted until the seeded run existed. Five of
+	// these were printing prose under --jsonl at the same time.
+	"arc list":         {"id", "stage", "status", "title"},
+	"context list":     {"freshness", "id", "kind", "labels", "verified"},
+	"loop list":        {"goal", "id"},
+	"tool list":        {"id", "verifies"},
+	"vcs status":       {"branch", "changed", "clean"},
+	"worker requalify": {"epoch", "roles"},
 }
 
 // jsonlDebt names invocations that do not yet honour --jsonl.
@@ -157,18 +170,15 @@ func wantEnvelope(t *testing.T, line string, args []string) map[string]json.RawM
 	return env.Data
 }
 
-// wantPayloadKeys asserts a command's data payload has exactly the recorded keys, in
-// both directions.
-func wantPayloadKeys(t *testing.T, name string, data map[string]json.RawMessage) {
+// wantRecordedKeys asserts that a payload a command actually emitted is recorded, with
+// exactly these keys. Runs against every tree, because a payload is a contract wherever
+// it appears.
+func wantRecordedKeys(t *testing.T, name string, data map[string]json.RawMessage) {
 	t.Helper()
-	want, recorded := payloadKeys[name]
 	if len(data) == 0 {
-		if recorded {
-			t.Errorf("adh %s: recorded a payload and emitted none; "+
-				"either the command stopped answering or the entry is stale", name)
-		}
 		return
 	}
+	want, recorded := payloadKeys[name]
 	if !recorded {
 		t.Errorf("adh %s emits a data payload and payloadKeys does not record it; "+
 			"a machine-readable contract nothing asserts is one a rename can break "+
@@ -182,6 +192,21 @@ func wantPayloadKeys(t *testing.T, name string, data map[string]json.RawMessage)
 	sort.Strings(got)
 	if !slices.Equal(got, want) {
 		t.Errorf("adh %s payload keys = %v, recorded %v", name, got, want)
+	}
+}
+
+// wantPayloadReached asserts the converse — a recorded payload is actually produced —
+// and runs only against the seeded tree.
+//
+// The split is not tidiness. Against a bare tree most commands refuse for want of an
+// arc, so "recorded but emitted nothing" is the normal case there and asserting it
+// would forbid recording any payload that needs state. The seeded tree is the only
+// place this direction can be true, so it is the only place it is checked.
+func wantPayloadReached(t *testing.T, name string, data map[string]json.RawMessage) {
+	t.Helper()
+	if _, recorded := payloadKeys[name]; recorded && len(data) == 0 {
+		t.Errorf("adh %s: recorded a payload and emitted none even with state; "+
+			"either the command stopped answering or the entry is stale", name)
 	}
 }
 
@@ -205,11 +230,7 @@ func wantStillViolating(t *testing.T, out string, args []string) {
 		"contract is enforced rather than exempted", strings.Join(args, " "))
 }
 
-// checkInvocation runs one invocation with --jsonl and applies the contract to it.
-//
-// Extracted from the table so the loop reads as what it is — every registered
-// invocation, checked — and so the three assertions it composes stay separable.
-func checkInvocation(t *testing.T, args []string) {
+func checkInvocation(t *testing.T, args []string, seeded bool) {
 	t.Helper()
 	out, _ := run(t, append([]string{"--jsonl"}, args...)...)
 	if jsonlDebt[strings.Join(args, " ")] {
@@ -225,9 +246,12 @@ func checkInvocation(t *testing.T, args []string) {
 		// Keyed by the whole invocation, verb included. It was once keyed by the
 		// top-level command on the reasoning that a verb's payload needs a fixture --
 		// true when written, and false as soon as eight verbs learned to answer from
-		// an empty tree. A verb that still needs state emits no payload here and so
-		// is not forced into the table.
-		wantPayloadKeys(t, strings.Join(args, " "), data)
+		// an empty tree.
+		name := strings.Join(args, " ")
+		wantRecordedKeys(t, name, data)
+		if seeded {
+			wantPayloadReached(t, name, data)
+		}
 	}
 }
 
@@ -248,7 +272,7 @@ func TestJSONLStdoutIsAlwaysJSON(t *testing.T) {
 	for _, args := range registeredInvocations(t) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Chdir(t.TempDir())
-			checkInvocation(t, args)
+			checkInvocation(t, args, false)
 		})
 	}
 }
@@ -276,6 +300,32 @@ func registeredInvocations(t *testing.T) [][]string {
 	return out
 }
 
+// verbGroup finds the alternation group in a usage line — the first <a|b|c>.
+//
+// It scans every angle-bracket group rather than only the first, because a command
+// that declares a flag ahead of its verb puts a placeholder there first: `arc
+// [--label <l>]... <new|list|show>` reads <l>, which has no alternation. Taking only
+// the first group silently skipped every arc verb, so the walk never reached the
+// payloads `arc list` and `arc show` produce — the exact payloads the item asking for
+// this coverage named.
+func verbGroup(usage string) string {
+	for rest := usage; ; {
+		open := strings.Index(rest, "<")
+		if open < 0 {
+			return ""
+		}
+		rest = rest[open+1:]
+		shut := strings.Index(rest, ">")
+		if shut < 0 {
+			return ""
+		}
+		if group := rest[:shut]; strings.Contains(group, "|") {
+			return group
+		}
+		rest = rest[shut+1:]
+	}
+}
+
 // verbsFromUsage extracts the verbs a command dispatches internally, from the
 // `<a|b|c>` group in its usage line.
 //
@@ -289,17 +339,9 @@ func registeredInvocations(t *testing.T) [][]string {
 // assertion still applies to it. What this buys is that the verbs which *do* answer are
 // covered.
 func verbsFromUsage(usage string) []string {
-	open := strings.Index(usage, "<")
-	if open < 0 {
+	group := verbGroup(usage)
+	if group == "" {
 		return nil
-	}
-	shut := strings.Index(usage[open:], ">")
-	if shut < 0 {
-		return nil
-	}
-	group := usage[open+1 : open+shut]
-	if !strings.Contains(group, "|") {
-		return nil // a placeholder like <arc-id>, not a verb list
 	}
 	var verbs []string
 	for _, alt := range strings.Split(group, "|") {
@@ -309,4 +351,45 @@ func verbsFromUsage(usage string) []string {
 		}
 	}
 	return verbs
+}
+
+// seedFixture builds the minimum state that makes the state-dependent commands answer:
+// a git repository, an initialised harness, one arc, and one context unit.
+//
+// One fixture, not one per command. The point is not to exercise each command's logic —
+// the packages have their own tests for that — but to get past the "no arc" refusal so
+// the --jsonl contract is checked on the surface an agent actually consumes.
+func seedFixture(t *testing.T) {
+	t.Helper()
+	if _, err := vcs.Init("."); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+	mustRun(t, "init")
+	mustRun(t, "arc", "--label", "sec", "new", "fixture arc")
+	dir := filepath.Join(".adh", "context")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	unit := `{"id":"u1","kind":"note","labels":["sec"],"verified":"machine-confirmed"}`
+	if err := os.WriteFile(filepath.Join(dir, "u1.json"), []byte(unit), 0o600); err != nil {
+		t.Fatalf("write unit: %v", err)
+	}
+}
+
+// TestJSONLStdoutIsAlwaysJSONWithState is the same contract over a seeded tree, and it
+// is the half that was missing.
+//
+// Against a bare temp directory every state-dependent command refuses, prints nothing,
+// and trivially satisfies "empty or JSON" — so the contract went unenforced across the
+// whole surface an agent actually consumes, and three commands were printing prose
+// there unobserved. A test that cannot fail for the interesting inputs is not covering
+// them.
+func TestJSONLStdoutIsAlwaysJSONWithState(t *testing.T) {
+	for _, args := range registeredInvocations(t) {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			seedFixture(t)
+			checkInvocation(t, args, true)
+		})
+	}
 }
