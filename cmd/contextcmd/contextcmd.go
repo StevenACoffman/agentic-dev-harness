@@ -99,7 +99,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		)
 	}
 	storeDir := cfg.storeDir()
-	units, err := contextstore.Load(storeDir)
+	units, err := contextstore.LoadFresh(storeDir)
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
@@ -400,7 +400,33 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 		}
 		results = append(results, result)
 	}
+	if err := cfg.recordIntegrity(results); err != nil {
+		return err
+	}
 	return cfg.reportVerify(results, drift)
+}
+
+// recordIntegrity persists what verify observed, so routing can stop trusting a unit
+// the tool just condemned.
+//
+// Without this the run's whole finding lives in one terminal's scrollback: a drifted
+// unit still outranked a clean one at the next route, because the authored trust tier
+// is immortal and nothing else spoke for the unit. The record is the event; the tier
+// suppression is derived from it at load time and the authored field is never touched.
+func (cfg *Config) recordIntegrity(results []integrityResult) error {
+	records := make([]contextstore.IntegrityRecord, 0, len(results))
+	for i := range results {
+		records = append(records, contextstore.IntegrityRecord{
+			Unit:   results[i].Unit,
+			Tool:   results[i].Tool,
+			Result: results[i].Status,
+		})
+	}
+	path := contextstore.IntegrityLogFor(cfg.storeDir())
+	if err := contextstore.AppendIntegrity(path, records...); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	return nil
 }
 
 // targets is the unit set verify acts on: the units routed to an arc when an arc id

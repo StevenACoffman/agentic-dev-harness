@@ -113,7 +113,7 @@ func (g *Grounding) HasGrounding() bool {
 // units (not an error); an unreadable proof manifest propagates.
 func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Packet, error) {
 	const op = "critic.loadInputs"
-	units, err := contextstore.Load(storeDir)
+	units, err := contextstore.LoadFresh(storeDir)
 	if err != nil {
 		return nil, nil, &adh.Error{Op: op, Err: err}
 	}
