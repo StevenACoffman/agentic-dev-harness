@@ -1226,7 +1226,12 @@ from). adh is the tool most of it lands on. Checked against the code.
   Scope note: harvesting foreign session stores is a read of someone else's on-disk format
   and will rot; keep each harvester behind one normalizing seam so a format change is one
   file, as SkillOpt does.
-- [ ] **Log why the deterministic path did not fire, every time judgment is relayed.**
+- [x] **Log why the deterministic path did not fire, every time judgment is relayed.**
+  *Reframed: adh has no fallback layer, so there is no relay miss to log. The real
+  distinction lives in adjudication, where `adh.Unrunnable` already computes why the
+  deterministic path missed and the durable log discarded it. `toolrun.Record` now
+  carries the reason — the `KeywordsNotFound` half, which is what makes a miss log
+  actionable rather than a tally.* Original entry:
   `agent-blue/virgil` runs a layered router — exact match → keyword index → category
   narrowing → AI fallback — and claims 80%+ of queries never reach a model, with the AI
   surface shrinking over time. The mechanism is one small file,
@@ -1265,7 +1270,7 @@ from). adh is the tool most of it lands on. Checked against the code.
   validation/verification pair (`agent-blue/nfrs-guide`: validation is "are we building the
   right thing — requirements examined for conflicts and assurance they meet need";
   verification is "are we building it right"). adh is currently all verification.
-- [ ] **"Every instruction the agent reads must be backed by a working command."** Principle
+- [x] **"Every instruction the agent reads must be backed by a working command."** Principle
   1 of `agent-blue/agentic-harness-bootstrap`, enforced by
   `templates/verify-harness.sh.tmpl`, whose first check **parses the module table out of
   `ARCHITECTURE.md` and verifies each path exists** — the document's claims about the repo
@@ -1451,7 +1456,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   bar names only what the change is *for*; nothing names what it must not cost. **An
   objective without guards is hill-climbed by trading away everything unmeasured.**
 
-- [ ] **`ACCEPT-scoped` is a fourth verdict and the concern travels as a number.** The same
+- [x] **`ACCEPT-scoped` is a fourth verdict and the concern travels as a number.** The same
   loop's admitted-with-reservations rows carry the reservation as a signed measurement
   rather than prose — *"low-bucket recovery −17.6% (t=7.00, held); med-bucket null (no
   generalization)"*, *"overall recall@10 +0.267; category B (pure-paraphrase) regresses
@@ -1856,9 +1861,88 @@ Two items: a contradiction between two entries, and a writer with no reader.
   is worse than an unsupported one, and the fix is refusing the trailing argument rather
   than out-parsing the framework.
 
-- [ ] **Every other verb in adh has the same trailing-argument exposure.** `nfr list`
+- [x] **Every other verb in adh has the same trailing-argument exposure.** `nfr list`
   and `lint` now refuse one; nothing checked whether `arc`, `context`, `oracle`, or the
   rest silently ignore a flag typed after their verb. It is one grep for `args[0]`
   switches that never validate `args[1:]`, and the failure is identical each time: the
   caller believes an option applied. Recorded rather than swept, because the sweep is
   the item and doing it inside this one would have hidden it.
+
+## The Trailing-Flag Sweep (2026-08-23)
+
+The item guessed "one grep, three lines each". The grep was right and the shape was
+not.
+
+- **Twelve commands dispatch on a verb and none validated what followed it**, but the
+  exposure that matters is not the four with their own flags — it is that **every one
+  of the twelve drops the root flags**. `--jsonl`, `--repo`, `--yes`, `--dry-run` are
+  what a person or an agent reaches for on any command.
+- **Measured rather than assumed, and the first case decides the severity.**
+  `adh arc list --jsonl` printed human prose to a caller that asked for JSON — and
+  "no arcs" is plausible enough to be parsed as an empty result rather than as
+  malformed output. `adh oracle selftest --seed 7` ran the default seed and reported
+  the planted-defect gate as passing, which is the answer to a question nobody asked.
+  `adh context verify --repo x` fed the flag to the verb as an arc id.
+- **One guard, not twelve.** Twelve per-command checks are twelve places to remember,
+  and the thirteenth command written next month has the defect on the day it is
+  written. The fifth time this repository has chosen a central mechanism over a
+  maintained list, and the first where the alternative was already written down in the
+  item.
+- **The narrowness is the design.** Flag-shaped leftovers, not trailing arguments:
+  `arc show a1` and `nfr show latency` are legitimate, and a rule that refused them
+  would have to be reverted immediately.
+- **Reconstructing the suggestion needed one more thought than it looked.** Moving the
+  flag alone turns `oracle selftest --seed 7` into `oracle --seed selftest 7`. Moving
+  the flag *and everything after it* gives `oracle --seed 7 selftest`, which is right
+  for the way the mistake is actually typed.
+- **`nfr`'s local check was deduplicated rather than left.** Its flag branch became
+  unreachable the moment the central guard landed, and a dead duplicate of a central
+  rule is how the two drift apart.
+
+- [x] **`--jsonl` after a verb was silently dropped, and no test would have caught it
+  in any command.** The guard closes the input, and nothing asserts the *output
+  contract* — that a command invoked with `--jsonl` emits JSON on stdout and nothing
+  else. Every command has that contract and it is checked ad hoc where it is checked at
+  all. One table over the registered commands, asserting stdout parses as JSON, would
+  cover the whole surface and would have caught this from the other side.
+
+## Tier 1 and Tier 2, Fifth Pass (2026-08-23)
+
+- **The JSONL contract test found three defects on its first run.** `init`, `metrics`,
+  and `selfeval` printed their human report under `--jsonl` — prose handed to a caller
+  that asked for JSON, from commands an agent would plausibly script. All three lacked
+  a JSONL branch entirely. The test was written to guard a defect already fixed from the
+  input side and it immediately found three more of the same kind, which is the best
+  argument for it.
+- **One exception, and the ratio is what makes it credible.** `docs` emits a man page;
+  roff *is* its product. Three violations to one exception is a defensible split; three
+  exceptions would have meant the contract was wrong.
+- **The relay-miss entry described a mechanism adh does not have.** `virgil` logs
+  `KeywordsNotFound` because it has a *fallback* — deterministic layers that can miss.
+  adh relays Strategy, Execution, and Critic by design, so logging "the model decided
+  this" would be a constant, and a constant is not a signal. The real distinction is in
+  adjudication, and `Unrunnable` already computed it two passes ago; what was missing
+  was that `toolrun.Record` recorded `Ran:false` with no reason. **A count is not a
+  signal** — the entry's own point, applied to the place adh actually has the
+  distinction.
+- **`ACCEPT-scoped` needed a number adh was throwing away.** `adjudicateSpec` measured
+  the meter and returned only `!spec.Meets(value)`, so a spec that cleared its Fail bar
+  while moving the wrong way from `Baseline` was invisible — the change was admissible
+  *and* cost something, and only the first survived. The measurement now travels.
+- **A disposition, not a field, and the reason is how callers branch.** A caller that
+  only ever sees `AdvanceToOps` will not think to look for a reservation field. It
+  advances: a regression inside the bar is information, and blocking on it would make
+  `Fail` and `Baseline` the same threshold.
+- **The commands check silently did nothing on its first run.** `contextstore.Content`
+  resolves a unit's path under the *store* directory and keeps it within it; passing the
+  repository root read nothing and reported nothing. Caught by a test, and the comment
+  now says which directory and why.
+- **`metrics --jsonl` was emitting Go field names.** `{"Arcs":0}` where every other
+  envelope in the family is snake_case. Free to fix in the same pass, because before it
+  the struct was never serialised — no consumer could be relying on the old shape.
+
+- [ ] **`--jsonl` output is unchecked for *shape*, only for parseability.** The contract
+  test asserts stdout parses as JSON; it does not assert that a command's payload keys
+  are stable. `metrics` shipped capitalised keys for as long as it shipped JSON at all,
+  and nothing would have caught a rename. A golden-file or key-set assertion per command
+  is the next increment, and it is worth having before an agent depends on a field name.
