@@ -212,3 +212,92 @@ func TestOverrideWins(t *testing.T) {
 		t.Errorf("override not applied:\n%s", out)
 	}
 }
+
+// TestTheCriticViewWithholdsTheTranscript is the guarantee itself, asserted at the
+// level that matters: the rendered prompt. A critic that could read the builder's
+// history is not cold, and independence is the whole basis for its findings counting.
+func TestTheCriticViewWithholdsTheTranscript(t *testing.T) {
+	t.Parallel()
+	const secret = "I already tried the obvious fix and it did not work"
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	arc := &adh.Arc{
+		ID: "a1", Title: "t", Stage: adh.StageCritic,
+		Resolution: adh.ResolutionChange, History: []string{secret},
+	}
+	got, err := r.Render(arc, &critic.Grounding{Diff: "d"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(got, secret) {
+		t.Fatalf("the critic prompt carries the builder's transcript:\n%s", got)
+	}
+}
+
+// wantRenderError asserts a render outcome: no error when says is empty, otherwise an
+// error mentioning it.
+func wantRenderError(t *testing.T, err error, says string) {
+	t.Helper()
+	if says == "" {
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		return
+	}
+	if err == nil {
+		t.Fatal("the render succeeded where it should have refused")
+	}
+	if !strings.Contains(err.Error(), says) {
+		t.Errorf("the error %q omits %q", err, says)
+	}
+}
+
+// TestDenyIsEnforced. The list used to be read by nothing, which is worse than an
+// ordinary unused field: it reads as the mechanism excluding the transcript, and as
+// configurable, so somebody hardening the critic would edit it and believe they had
+// succeeded.
+//
+// This checks the assertion, not the guarantee. The guarantee is that the view is
+// never populated for the critic; a check running afterwards can only notice.
+func TestDenyIsEnforced(t *testing.T) {
+	t.Parallel()
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	cases := map[string]struct {
+		stage  adh.Stage
+		denied []adh.CriticInput
+		says   string
+	}{
+		"the critic denying the transcript": {
+			adh.StageCritic, []adh.CriticInput{adh.InputTranscript}, "",
+		},
+		// A stage that legitimately sees its history, with a deny list that says it
+		// must not. The renderer reports rather than silently stripping: adh does not
+		// filter, and a config asking it to is a config error.
+		"a stage that carries what is denied": {
+			adh.StageExecution, []adh.CriticInput{adh.InputTranscript}, "which is denied",
+		},
+		// An input the renderer cannot check must fail loudly rather than pass. This
+		// is the default branch, and it is the whole reason the mapping is a switch
+		// rather than a reflection walk over field names.
+		"denying an input the renderer cannot enforce": {
+			adh.StageCritic, []adh.CriticInput{adh.InputContext}, "cannot enforce",
+		},
+		"no deny list": {adh.StageCritic, nil, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			arc := &adh.Arc{
+				ID: "a1", Title: "t", Stage: tc.stage,
+				Resolution: adh.ResolutionChange, History: []string{"prior turn"},
+			}
+			_, rErr := r.Render(arc, &critic.Grounding{Diff: "d", Denied: tc.denied})
+			wantRenderError(t, rErr, tc.says)
+		})
+	}
+}

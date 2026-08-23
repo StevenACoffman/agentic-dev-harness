@@ -96,11 +96,27 @@ type Proof struct {
 	Contract map[string]string `toml:"contract"`
 }
 
-// Critic is the cold-critic policy (SPEC-ADDITIONS §19.4). GroundFrom and Deny
-// declare the working set and the one denied input; both are enforced
-// structurally today (the grounding assembly and the renderer), so they are
-// recorded for documentation and future wiring. Unconfirmed is the disposition
-// of a finding no artifact confirmed and is acted on by the eval command.
+// Critic is the cold-critic policy (SPEC-ADDITIONS §19.4).
+//
+// **Deny is enforced and GroundFrom describes.** The difference used to be invisible
+// and both were read by nothing, which is worse in Deny than in an ordinary unused
+// field: a deny-list naming `transcript` beside GroundFrom reads as *the* mechanism
+// excluding the builder's history, and as configurable. Neither was true, so anyone
+// hardening the critic would have edited it and believed they had succeeded.
+//
+// Deny is now checked by the renderer against the view it built, so removing an entry
+// weakens something real and adding one adh cannot honour is a load error rather than
+// a decoration. The structural omission in prompt.Render remains the guarantee — an
+// after-the-fact assertion cannot stop a field being populated — and the check is
+// belt and braces on top of it.
+//
+// GroundFrom is descriptive: adh assembles the critic's grounding whole and does not
+// filter it, so this list records what the critic is grounded in and selects nothing.
+// The set it must match is built in critic.Ground. Both lists are validated against
+// adh.CriticInputs, so a typo in either is named at load.
+//
+// Unconfirmed is the disposition of a finding no artifact confirmed and is acted on
+// by the eval command.
 type Critic struct {
 	GroundFrom  []string `toml:"ground_from"`
 	Deny        []string `toml:"deny"`
@@ -143,7 +159,13 @@ func Defaults() Config {
 		},
 		Gates: Gates{ApprovalPhraseRequired: true},
 		Critic: Critic{
-			GroundFrom:  []string{"diff", "proof", "acceptance_bar", "context"},
+			// The set critic.Ground actually assembles. The previous four
+			// under-described it, which is a smaller version of the same lie the
+			// deny list told.
+			GroundFrom: []string{
+				"diff", "proof", "acceptance_bar", "context",
+				"paths", "tools", "coverage", "noisy",
+			},
 			Deny:        []string{"transcript"},
 			Unconfirmed: UnconfirmedLesson,
 		},
@@ -243,6 +265,12 @@ func resolve(docs [][]byte) (Config, error) {
 		if err := toml.Unmarshal(doc, &cfg); err != nil {
 			return Config{}, &adh.Error{Op: "config.resolve", Err: err}
 		}
+	}
+	// Validated after the overlay rather than per document: a lower layer may name an
+	// input a higher one replaces, and rejecting the intermediate state would refuse a
+	// config whose resolved value is fine.
+	if err := validateCritic(&cfg.Critic); err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
 }

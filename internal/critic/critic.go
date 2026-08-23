@@ -30,6 +30,12 @@ type Grounding struct {
 	Tools         []toolreg.Tool      // capabilities available to the stage (§13)
 	Coverage      []string            // finding kinds recent critics under-covered (§19)
 	Noisy         []string            // finding kinds recent critics over-flagged (§19)
+
+	// Denied is the inputs config says the critic must not receive (§19.4). It is
+	// not something the critic sees; it is what the renderer asserts about what it
+	// built. Carried here so the assertion reaches the renderer without a policy
+	// argument threaded through Emit and Request.
+	Denied []adh.CriticInput
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -43,6 +49,13 @@ type Inputs struct {
 	Tools         []toolreg.Tool
 	Coverage      []string
 	Noisy         []string
+
+	// Denied is `[critic] deny` (§19.4), carried through to the Grounding so the
+	// renderer can check the view it builds against it. Policy rather than a
+	// grounding fact, and it travels here for the reason the type exists: the
+	// alternative is a sixth parameter on Request and a seventh on Emit, threaded
+	// through two packages to reach one assertion.
+	Denied []adh.CriticInput
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -63,6 +76,7 @@ func Ground(
 		Tools:         in.Tools,
 		Coverage:      in.Coverage,
 		Noisy:         in.Noisy,
+		Denied:        in.Denied,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts

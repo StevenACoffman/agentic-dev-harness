@@ -721,10 +721,29 @@ not a runtime gate.
 
 ```toml
 [critic]
-ground_from = ["diff", "proof", "acceptance_bar", "context"]  # §10 routed set
+# Descriptive: the set critic.Ground assembles. adh does not filter a critic's
+# grounding, so this records what the critic is grounded in and selects nothing.
+ground_from = ["diff", "proof", "acceptance_bar", "context",
+               "paths", "tools", "coverage", "noisy"]
 deny        = ["transcript"]   # the one input cold review withholds
 unconfirmed = "lesson"         # a finding with no failing artifact is a §11 candidate, never a blocker
 ```
+
+**`deny` is enforced; `ground_from` describes.** Both were free-form strings read by
+nothing until 2026-08-23, which mattered more for `deny`: a list naming `transcript`
+beside `ground_from` reads as *the* mechanism withholding the builder's history, and as
+configurable. Neither was true, so anyone hardening the critic would have edited it and
+believed they had succeeded.
+
+The guarantee is still structural — `prompt.Render` never populates the critic view's
+history — and an assertion running after the fact cannot stop a field being set, only
+notice. What `deny` now buys is that removing an entry weakens a real check.
+
+Both lists are validated against a closed vocabulary at load, so a typo is refused by
+name rather than ignored. `deny` additionally refuses any input adh cannot withhold:
+the grounding is assembled whole, and accepting `deny = ["context"]` would be the same
+decoration in a new place. When filtering exists, that restriction is the one thing
+that changes.
 
 This section adds no exit code. A confirmed finding surfaces through the existing
 Evaluation gates (exit 5–7); an unconfirmed one is a §11 lesson candidate, and

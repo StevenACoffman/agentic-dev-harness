@@ -250,7 +250,11 @@ func (cfg *Config) emitRelay(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
+	in := critic.Inputs{
+		AcceptanceBar: conf.ProofContract(arc.Resolution),
+		Tools:         reg.Tools,
+		Denied:        conf.DeniedInputs(),
+	}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)

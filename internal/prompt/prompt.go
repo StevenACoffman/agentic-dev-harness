@@ -43,6 +43,52 @@ type view struct {
 	Ground     *critic.Grounding
 }
 
+// withholds reports why the view carries an input the caller denied, or nil.
+//
+// Requires: the view is fully built; denied comes from validated config, so every
+// entry is known and deniable.
+// Ensures: EINVALID naming the input when one is present. Pure.
+//
+// **This does not implement the guarantee and must not be mistaken for it.** The
+// transcript is withheld by the view never being populated for the critic, above —
+// a check running after the fact cannot stop a field being set, only notice. What it
+// buys is that `[critic] deny` now *does* something: an entry removed from it weakens
+// a real check, and the person hardening the critic edits the thing that matters and
+// hears about it when they are wrong. Before this it was a decoration that read like
+// the mechanism.
+//
+// The mapping is an explicit switch rather than a reflection walk over the view. One
+// input is deniable, so a walk would be machinery for a single case — and the
+// important property is the default: an input this build cannot check fails loudly
+// here, where reflection over a field name that does not match would find nothing and
+// report success.
+func (v *view) withholds(denied []adh.CriticInput) error {
+	for _, in := range denied {
+		var present bool
+		switch in {
+		case adh.InputTranscript:
+			present = len(v.History) > 0
+		default:
+			return &adh.Error{
+				Code: adh.EINVALID,
+				Message: "prompt: cannot enforce deny of " + string(in) +
+					"; the renderer withholds only " + string(adh.InputTranscript),
+			}
+		}
+		if present {
+			return &adh.Error{
+				Code: adh.EINVALID,
+				Message: "prompt: the " + string(
+					v.Stage,
+				) + " view carries " + string(
+					in,
+				) + ", which is denied",
+			}
+		}
+	}
+	return nil
+}
+
 // New builds a Renderer from the embedded default templates, then overlays each
 // override filesystem (a *.tmpl set, e.g. os.DirFS(".adh/prompts")). A nil or
 // template-free override is skipped; a malformed template is an EINVALID error.
@@ -81,6 +127,11 @@ func Default() (*Renderer, error) {
 // working set (§10, §19.1); it may be nil (an ungrounded stage). Ops has no prompt
 // (it ships via close, not a model step) and an unknown stage has no template; both
 // return EINVALID rather than a silent empty prompt.
+//
+// The view is checked against ground.Denied (`[critic] deny`, §19.4) once built. The
+// deny list rides on the grounding rather than arriving as a parameter because
+// `prompt` must not import `config`, and threading a policy argument through Emit and
+// Request to reach one assertion would widen two signatures in two packages for it.
 func (r *Renderer) Render(arc *adh.Arc, ground *critic.Grounding) (string, error) {
 	const op = "prompt.Renderer.Render"
 	name := string(arc.Stage) + ".tmpl"
@@ -103,6 +154,11 @@ func (r *Renderer) Render(arc *adh.Arc, ground *critic.Grounding) (string, error
 	v.Ground = ground
 	if arc.Stage != adh.StageCritic {
 		v.History = arc.History
+	}
+	if ground != nil {
+		if err := v.withholds(ground.Denied); err != nil {
+			return "", err
+		}
 	}
 	var b bytes.Buffer
 	if err := r.tmpl.ExecuteTemplate(&b, name, v); err != nil {

@@ -3,6 +3,8 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -278,5 +280,78 @@ func writeRepoConfig(t *testing.T, body string) {
 	}
 	if err := os.WriteFile(filepath.Join(".adh", "config.toml"), []byte(body), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
+	}
+}
+
+// TestCriticPolicyIsValidated. Both lists were free-form strings read by nothing, so a
+// typo was a line that silently did nothing — in the field a reader is most likely to
+// believe hardens the critic. TOML ignores unknown keys, so deleting the fields would
+// have moved that silence rather than ending it.
+func TestCriticPolicyIsValidated(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		doc  string
+		says string // "" when the document must load
+	}{
+		"the defaults": {"", ""},
+		"a typo in deny": {
+			"[critic]\ndeny = [\"transript\"]\n", "unknown input transript",
+		},
+		"a typo in ground_from": {
+			"[critic]\nground_from = [\"dif\"]\n", "unknown input dif",
+		},
+		// Known, and adh cannot honour it: the grounding is assembled whole, so a
+		// denial it cannot enforce must not read as one it can.
+		"denying an input adh cannot withhold": {
+			"[critic]\ndeny = [\"context\"]\n", "cannot withhold",
+		},
+		"a contradiction": {
+			"[critic]\nground_from = [\"diff\"]\ndeny = [\"diff\"]\n",
+			"in both ground_from and deny",
+		},
+		"denying the transcript": {"[critic]\ndeny = [\"transcript\"]\n", ""},
+		// Every problem at once, so one failed load tells an author everything.
+		"two typos": {
+			"[critic]\ndeny = [\"transript\"]\nground_from = [\"dif\"]\n", "dif",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := config.ValidateCriticForTest(tc.doc)
+			if tc.says == "" {
+				if err != nil {
+					t.Fatalf("a valid config was refused: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("an invalid critic policy loaded")
+			}
+			if !strings.Contains(err.Error(), tc.says) {
+				t.Errorf("the error %q omits %q", err, tc.says)
+			}
+		})
+	}
+}
+
+// TestGroundFromDescribesWhatGroundBuilds. The default under-described the real set,
+// which is a smaller version of the lie the deny list told: a config key that appears
+// to name the critic's inputs and names four of eight.
+func TestGroundFromDescribesWhatGroundBuilds(t *testing.T) {
+	t.Parallel()
+	got := config.Defaults().Critic.GroundFrom
+	want := []string{
+		"acceptance_bar", "context", "coverage", "diff",
+		"noisy", "paths", "proof", "tools",
+	}
+	sorted := append([]string(nil), got...)
+	sort.Strings(sorted)
+	if !slices.Equal(sorted, want) {
+		t.Errorf("ground_from = %v, want the set critic.Ground assembles: %v", sorted, want)
+	}
+	// And the transcript is not among them, since that is the one input withheld.
+	if slices.Contains(got, "transcript") {
+		t.Error("ground_from names the transcript, which cold review withholds")
 	}
 }
