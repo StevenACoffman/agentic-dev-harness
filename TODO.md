@@ -293,6 +293,50 @@ not an adh component.
       output becoming a routable unit — is served today by `lesson --to context promote`;
       an `arc close --as investigation` → unit writer is a separate proof-path loop. The
       append-only evidence trail already exists (`sleep` evidence, the miss log).
+- [ ] **`Unit.Verified` holds a conclusion where OKF holds the evidence for it, and the
+      field name makes that invisible.** Found 2026-08-22 while `skillet` re-reviewed its
+      OKF trust-fields decision. `contextstore.Unit.Verified` is a `TrustTier` *string* —
+      `unverified` / `machine-confirmed` / `human-reviewed` — with `Valid()` checking enum
+      membership and `Rank()` ordering it for routing tie-breaks, and its own comment calls
+      it "the OKF `verified` dimension". OKF §5.2's `verified` is a **list of verification
+      events**, each `{by, at}`, and §5.3 derives the tier by folding over the actor prefix.
+      Same field name, same three tier names, same JSON key, different type: adh stores the
+      answer where the spec stores what the answer was computed from. Three things go with
+      it, and the first two are why §5.2 separates the fields at all. **Who confirmed it and
+      when** — the tier says a human reviewed the unit and cannot say which human or on what
+      date, an omission that is local to this field rather than a considered position, since
+      the autonomy ladder treats actor identity as load-bearing everywhere else. **Two
+      independent checks collapse into one** — §5.2's list exists precisely so a human
+      sign-off *and* an automated nightly pass are distinct events, and `human-reviewed`
+      cannot represent "reviewed by a person **and** re-confirmed by a process", which is
+      the state a compounding knowledge base reaches most often. And **`verified`
+      independent of `generated.at`** — OKF keeps them separate so *content changed without
+      re-confirmation* and *re-confirmed without regeneration* are separately
+      representable, where a stored tier makes the first silent: an edited unit keeps
+      whatever tier it had. The entry above is honest about this and the honesty is easy to
+      miss — it says "DONE for the OKF *dimensions*", not for the format, and its deferred
+      list names packaging, per-claim citations, and freshness. It does not name the type
+      substitution, which is the one that will bite, because a `verified` field that is a
+      string where the spec says list is the kind of divergence that reads as conformance.
+      **Not necessarily a bug:** if adh never exchanges units with an OKF consumer, storing
+      the tier is cheaper and `Rank()` is a real need OKF does not serve. The decision to
+      make explicitly is **whether `Unit` claims OKF conformance or borrows its
+      vocabulary**, and to say which in the type comment — and if it is borrowing, to
+      rename the field so it stops colliding.
+- [ ] **adh is one change away from being `skillet`'s second consumer, and should know
+      it.** `skillet` revised its OKF trust-field trigger on 2026-08-22 from *the first repo
+      that stores trust metadata* to **the second repo that classifies an actor or derives a
+      trust tier**, because gnosis shipped an actor type rejecting two of OKF §7's three
+      forms without touching trust metadata at all — so a storage trigger could not have
+      fired. adh stores a tier and derives nothing, so it has **not** tripped the new
+      trigger. What it has done is implement OKF's tier vocabulary independently,
+      identically named and differently typed, which is the second independent
+      implementation in the family inside a week. If the deferred `{by, at}` half is ever
+      built here — that is, if adh folds a tier out of verification events rather than
+      storing it — that is the trigger, and the promotable unit is the **fold** and not the
+      record types, because gnosis's `okf` keeps frontmatter verbatim and a struct would be
+      decode-only. Keep any such fold a pure function over a list of actor strings so it
+      lifts unchanged.
 
 Not adopted: **leafwiki** (Go/MIT, single-binary wiki server, SQLite + markdown on
 disk) is a *human front-end* to browse/edit the OKF context store (the Obsidian role
@@ -1100,3 +1144,510 @@ everywhere and mines arc history, both of which have deterministic rigor to gain
 - Deliberately NOT adopted: unified-thinking's keyword bias/fallacy/blind-spot detectors —
   brittle, uncalibrated heuristics that adh would either enforce deterministically or relay
   to a model, never split the difference.
+
+## Agent-Red Survey (2026-08-15)
+
+Source: a survey of `~/Documents/agent-red` (26 agent-tooling projects). Most of what looked
+promising from READMEs turned out to be weaker than what adh already has; the two items
+below survived checking against the code, and the third is a retraction.
+
+- [ ] **Evidence records have no staleness state.** `internal/evidence` is an append-only
+  log with `Timestamp`, validate-on-write, malformed-line-is-a-hard-error — the right shape.
+  But a grep for `stale` across `internal/` returns nothing: when the artifact an evidence
+  record measured changes underneath it, the record stays exactly as authoritative as the
+  day it was written, and `NO-PROOF-NO-CLOSE` is satisfied by a proof of something that no
+  longer exists. `proof.Verify` catches this for *declared artifacts* by re-hashing; nothing
+  catches it for the evidence log. `goalx/cli/freshness_state.go` carries the vocabulary
+  worth taking: a four-state enum — `fresh`, `stale`, `unknown`, `not_applicable` — with
+  `LatestRevision` vs `CurrentRevision` and a `Reason` per item, split across cognition
+  facts and evidence items. **The four states are the point.** `unknown` (never evaluated)
+  and `not_applicable` (no revision to compare) are distinct from `stale`, exactly as
+  `skillet/timeseries` keeps `Verdict.Compared` distinct from a zero baseline — absence of
+  a comparison is not a passing comparison. Deterministic and model-free: it is a revision
+  comparison, not a judgment.
+  src: `agent-red/goalx` `cli/freshness_state.go`.
+- [ ] **Capability routing is a missing axis, not a missing feature.** The autonomy ladder
+  governs *how much* an agent may do; nothing expresses *which* agent should take a given
+  arc. `clu` declares agent capabilities in config and routes unassigned work by `cap:*`
+  label, with a well-defined shared pool (`assignee IS NULL` and no `cap:*` label) so
+  unlabelled work is never stranded, and it refuses at creation time to attach a `cap:` a
+  no declared agent could match — the failure mode that makes label routing rot. Relevant
+  because the harness is meant to serve a team with genuinely different skills, and today
+  arc assignment carries none of that. Not urgent; recorded because the shape is right and
+  the refuse-unmatchable-label detail is the part that is easy to omit and expensive to
+  retrofit.
+  src: `agent-red/clu` `internal/cli/{create,batch}.go`, `internal/config/config.go:247`.
+- **Retraction — adh's redaction is already the better design; do not adopt `pantry`'s.**
+  An earlier pass suggested lifting pantry's "3-layer redaction". Checked: `internal/redact`
+  offloads detection to `betterleaks`' maintained ruleset and is a thin wrapper, which is
+  exactly what skillet's *Preserve Mature Libraries* hard constraint asks for.
+  `pantry/internal/redaction/redaction.go` hardcodes ten regexes maintained by nobody,
+  including `password\s*[:=]\s*["']?.+`, which is greedy to end of line and will swallow
+  surrounding context — the opposite of adh's tested property that redaction preserves the
+  context around a secret. **One idea does survive:** pantry's first layer honours explicit
+  `<redacted>…</redacted>` tags, letting an author mark a secret no pattern would catch.
+  That is a genuine complement to pattern detection rather than a competitor to it, and it
+  is a few lines. Cheap to add to the wrapper; no ruleset change.
+- Note, for the same reason: `goalx`'s `objective-contract` / `obligation-model` /
+  `assurance-plan` looked like a richer NFR model from its README, and is not.
+  `internal/nfr` is **Planguage-quantified** — `Scale`, `Meter`, `Direction`, and ordered
+  `Fail`/`Goal`/`Stretch` against a validated taxonomy tag, rejecting a goal ordered worse
+  than its own fail threshold — which is strictly more rigorous than typed obligations with
+  prose bodies. goalx's contribution to adh is freshness and nothing else. Its
+  refuse-under-resource-pressure behaviour (never silently shrink fan-out to hide pressure)
+  is philosophically aligned with the no-self-granted-gates rule but has no adh consumer:
+  adh does not own a fan-out to shrink.
+- Deliberately NOT adopted: `beadwork`'s git-orphan-branch state store with intent replay
+  (genuinely good for multi-writer state, but adh's `contextstore` + worktrees already have
+  an owner and no observed contention); `4x`'s role isolation (adh's cold critic is the same
+  invariant, reached independently, and adh's is stronger — it withholds the builder's
+  transcript *and* requires a fresh sub-agent).
+
+## Agent-Blue Survey (2026-08-15)
+
+Source: a survey of `~/Documents/agent-blue` (22 projects — the sources the practice came
+from). adh is the tool most of it lands on. Checked against the code.
+
+- [ ] **`consolidate.Harvest` only learns from work adh itself drove.** `Harvest(arcs
+  []adh.Arc)` reduces *closed arcs* to signals — so a correction only accretes if the work
+  became an arc. The team's actual corrective interactions happen in Claude Code, Gemini,
+  and Qwen sessions that never entered the loop, and those are exactly the interactions the
+  practice claims to make accretive. `agent-blue/SkillOpt/skillopt_sleep` is the reference:
+  `harvest_codex.py`, `harvest_copilot.py`, `harvest_copilot_cli.py`, `harvest_cursor.py`,
+  `harvest_pi.py` normalize foreign session stores into one `SessionDigest`, and
+  **`mine.heuristic_mine` extracts training units from them deterministically** — its own
+  docstring: "detects retry chains (a prompt re-asked after negative feedback => the early
+  attempt failed), extracts the user's recurring intents, and labels outcomes from feedback
+  signals… what makes the whole cycle runnable offline and is the basis of the deterministic
+  experiment." An optional `llm_mine` produces richer records and **falls back to heuristic
+  on error**. That is precisely the split adh already enforces: mechanism in code, judgment
+  relayed — with the model as enrichment over a deterministic floor rather than the floor
+  itself. Retry-chain detection needs no model and no cooperation from one.
+  Scope note: harvesting foreign session stores is a read of someone else's on-disk format
+  and will rot; keep each harvester behind one normalizing seam so a format change is one
+  file, as SkillOpt does.
+- [ ] **Log why the deterministic path did not fire, every time judgment is relayed.**
+  `agent-blue/virgil` runs a layered router — exact match → keyword index → category
+  narrowing → AI fallback — and claims 80%+ of queries never reach a model, with the AI
+  surface shrinking over time. The mechanism is one small file,
+  `internal/router/misslog.go`: an append-only JSONL of
+  `MissEntry{Signal, KeywordsFound, KeywordsNotFound, FallbackPipe, AIPlan, AIConfidence,
+  Timestamp}`. **`KeywordsNotFound` is the load-bearing field** — it records *why* the
+  deterministic layers missed, so the miss is directly actionable rather than merely
+  counted. adh relays each stage's judgment by design, but nothing distinguishes "no
+  deterministic check could decide this" from "a check exists and did not fire". Without
+  that distinction, "minimize the model" is unmeasurable. Cheap: a record per relay,
+  alongside `evidence`.
+- [ ] **A critic that declares what it did *not* examine.**
+  `agent-blue/super-hermes/skills/prism-scan/SKILL.md:57` appends a **constraint footer** to
+  every findings table — "This analysis maximized X. It did not examine: [1-2 specific
+  alternative angles]" — and `prism-reflect` writes a fuller constraint report to
+  `.prism-history.md`, which **later `prism-scan` runs read to steer their lens away from
+  angles already exhausted**. Today a cold-critic reply with no finding in an area is
+  indistinguishable from that area not having been looked at, and `evaluation` disposes of
+  the arc on that silence.
+  **This does not compromise cold-context independence**, and that is the point worth
+  recording: a coverage history says *what was looked at*, never *what was concluded* or how
+  it was built. It is categorically different from the builder's transcript, which `adh`
+  withholds. Feeding prior coverage into a fresh critic biases it toward unexamined ground —
+  the opposite of the contamination the cold split exists to prevent.
+- [ ] **A gate before Strategy: make the arc earn the right to start.**
+  `agent-blue/mycellium-harness` opens with four questions — what is the problem, who has
+  it, what is the riskiest assumption, what is the smallest move that tests it — before an
+  editor opens, and its stated invariant is that "what the agent won't do is silently skip
+  past missing evidence and call the work done." Crucially, **depth is negotiable and
+  skipping is not**: a weekend hack draws lighter prompts than a team product, and a user
+  may decline depth at any step, but never silently. adh's arc begins at Strategy, which
+  plans *how*, and takes *whether* as given. This is the validation half of the
+  validation/verification pair (`agent-blue/nfrs-guide`: validation is "are we building the
+  right thing — requirements examined for conflicts and assurance they meet need";
+  verification is "are we building it right"). adh is currently all verification.
+- [ ] **"Every instruction the agent reads must be backed by a working command."** Principle
+  1 of `agent-blue/agentic-harness-bootstrap`, enforced by
+  `templates/verify-harness.sh.tmpl`, whose first check **parses the module table out of
+  `ARCHITECTURE.md` and verifies each path exists** — the document's claims about the repo
+  checked against the repo, on every CI run. `doctor` checks harness integrity and
+  `context verify` checks context drift; neither checks that an instruction's *commands*
+  resolve. Same class as the §13 tool registry, pointed at prose instead of at findings.
+- [ ] **An NFR evaluation set, and a taxonomy to reconcile against.** `internal/nfr` is
+  Planguage-quantified and grounded (`agent-blue/nfrs-guide` is the source of that
+  discipline), but we have no ground truth for whether a *document* was correctly mined for
+  NFRs. `agent-blue/NFRLocator` carries labeled corpora — iTrust, CCHIT ambulatory criteria,
+  OpenEMR, PromiseData, RFPs, CFRs, DUAs — plus ARFF exports of labeled sentences and a
+  category listing, alongside a `SPEC.md` for a Go reimplementation.
+  **Take the corpora and the taxonomy; do not take the classifier.** The pipeline is
+  Stanford dependencies + WordNet + Weka SVM/Naive Bayes over lemmatized sentences (~19K LOC
+  Java, a WordNet dictionary, a 4GB heap) — a statistical classifier with no per-decision
+  provenance, which is the uncalibrated shape this family rejects. Its one transferable
+  design detail is `classification_attributes.json` (§6.5): the classification config
+  externalized as data, the same move recorded for skillsaw's rubric.
+- [ ] **Invariants as a second, independent net beside the differential oracle.**
+  `agent-blue/evals-differential-oracle` is the source of `oracle`'s differential self-test,
+  and adh took the differential half. It has a second, separate net: `src/invariants.py` —
+  "the rules any correct implementation must obey, **checked against a board independently
+  of how the result was produced**". A differential comparison needs two implementations and
+  proves only that they agree; an invariant needs none and holds even when both are wrong
+  the same way. `oracle diff` covers the first; nothing covers the second.
+- Deliberately NOT adopted: `mycellium-io`'s peer-agent coordination layer (its
+  "fail to recognise disagreement" framing is apt, but it reports coordination paying off at
+  3+ concurrent agents and adh drives one arc at a time); `hermes-dojo`'s Telegram/report
+  delivery and learning-curve dashboards (the *signal* it mines is the valuable half and is
+  covered by the session-mining item above; the reporting surface is not adh's job);
+  `PolyBrain`'s multi-model synthesis (adh's model-gate is a convention, and cross-model
+  verification would need a model-invocation seam adh deliberately does not have).
+
+## Agent-Fuschia Survey (2026-08-18)
+
+Source: a survey of `~/Documents/agent-fuschia` (26 repositories). Three items, two of
+which sharpen invariants adh already holds rather than adding new ones.
+
+- [ ] **"Cannot verify" must not read as "verified" — and `eval` has the same seam.**
+  `agent-fuschia/vac-gate` enforces two rules worth copying verbatim, both about refusing to
+  let an absence pass as a success: `binding-unrecorded` ("unrecorded is not matching" — a
+  declared key the contract never recorded *fails*, rather than being skipped), and the
+  sharper one, **"'cannot regrade' is not 'regraded'"** — the issuer regrader's honest
+  stale-code refusal fails the gate.
+  Where this lands: `eval` disposes of an arc by running the artifact each critic finding
+  names — a proof manifest, a built-in check, or a §13 repo-declared tool. A tool that
+  cannot run (missing, unbuilt, wrong commit) is a third outcome, distinct from "ran and
+  passed" and "ran and failed", and the disposition rule for it should be stated rather
+  than emergent. This is the same not-applicable state now required of `quotecheck` and of
+  canonizer's `anchor-absent` — three consumers, which is why it is worth naming once.
+- [ ] **Grade the artifacts, not the account.** `agent-fuschia/agent-certlab` runs an agent
+  against tasks with **seeded, known defects** and grades "only the artifacts it leaves on
+  disk… **never the agent's own account of its success.**" adh's cold critic withholds the
+  builder's transcript, which is most of the way there — but the critic still reads a
+  *reply*, and `evaluation` adjudicates findings the critic asserted. The artifacts-only
+  rule is stricter: the ground truth is the working tree and the proof packet, never a
+  narration of either. Worth auditing which parts of the arc already meet it (proof
+  verification does; finding disposition partly does) and stating the rule where they do.
+  The seeded-known-defect technique is also the natural extension of `oracle selftest`
+  from "does the control discriminate" to "does the whole arc catch a planted defect".
+- [ ] **Name the refusals in `SPEC.md`.** `vac-protocol` §7 is titled "Explicitly refused
+  in v0.1" and opens: **"Named refusals, so their absence reads as a decision rather than
+  an oversight."** Its entries earn it — signatures are refused because "a signature proves
+  who spoke, not that they spoke the truth… signing an unreplayable bundle would launder
+  it"; Docker images because "shipping opaque filesystem images as 'reproducibility' hides
+  exactly the drift this protocol exists to surface."
+  adh has more of these than any tool in the family — no model invocation, no self-granted
+  gates, no `--yes` bypass, no environment-variable override, no envelope of its own — and
+  they are currently distributed through prose and inferable from tests. Collecting them
+  into one refusals section costs nothing and stops a future contributor from "fixing" an
+  absence that was a decision.
+- Corroboration, no work implied: `engineering-notebook` ingests **both** Claude Code and
+  Codex transcripts into daily summaries — a second reference implementation for the
+  session-mining item above, after `SkillOpt/skillopt_sleep`. Read both before writing the
+  adapters; two independent readers of the same on-disk formats are worth more than one.
+- Deliberately NOT adopted: `agent-graph`'s swappable `MockPolicy`/`LLMPolicy` seam (a good
+  answer to testing a nondeterministic policy, but adh's relay posture already achieves it
+  by never invoking a model — the mock is the human); `vac-protocol`'s bundle format (adh's
+  `proof` packet is the same idea scoped to one arc, and VAC's claims are about system
+  capability rather than about a change).
+
+## Deep Reads — `oh-my-agent`, `ruflo`, `superpowers` (2026-08-22)
+
+Three repositories from `~/Documents/agent-green` that the first survey pass had filed as
+read-shallowly, opened. Written up in gnosis's `manifesto.md`; these are adh's. They were
+recorded against gnosis first, which was the wrong home for a backlog belonging to this
+tool.
+
+Two of the three are about the arc loop's honesty — what it records when a stage runs in a
+degraded form, and what it may call an improvement. The third is about the seam between a
+skill's wording and a harness's tools, which `toolreg` already half-owns.
+
+### The Critic, and What It Records About Itself
+
+- [ ] **A critic that could not run cold must say so, and there is no state for that
+  today.** §19.1's grounding contract denies the builder's transcript, which is the
+  right mechanism and is the whole basis for calling the critic independent.
+  `oh-my-agent`'s judge protocol reaches the same design — a spawned subagent with fresh
+  context, briefed on the criteria and never on what the implementer claims it fixed,
+  and it says outright that *"independence is structural, not a prompt-level
+  role-play."*
+
+  What it has that adh does not is the degraded path. When the runtime cannot spawn a
+  fresh context it runs the protocol inline **and emits an event recording the
+  downgrade** (`ralph.judge-inline-fallback`). adh's critic is either cold or the arc
+  does not advance, which is stricter and therefore fine — until the first environment
+  where the cold path is unavailable, at which point the pressure is to relax the
+  contract silently. **Neither `checked` nor `unchecked` covers *checked under reduced
+  independence*.** Add the third disposition before it is needed, so the answer to that
+  pressure is a recorded downgrade rather than an edit to §19.1.
+  **CLOSED 2026-08-22: the state cannot occur, and the entry described the wrong risk.**
+  `oh-my-agent`'s downgrade event exists because its judge is a **spawned subagent** — a
+  runtime operation that can be unavailable, so it falls back to inline and records that it
+  did. adh spawns nothing. `critic.Ground` assembles labels, paths, proof and acceptance bar
+  and the package doc states it *"never carries the builder's transcript"*; there is no
+  branch where it could, and adh never invokes a model at all. So *the cold path is
+  unavailable* has no code path to reach, and a field for it could only ever be empty —
+  worse than absent, because an empty downgrade field reads as evidence of an isolation
+  nobody checked.
+  **The real limit is different and belongs where §19.1 states the guarantee:** the critic
+  is cold **by construction of the prompt, not by isolation of the reader.** adh emits a
+  prompt and something external runs it; if the session that built the code also runs the
+  critic prompt it holds the transcript in its own context even though the prompt does not
+  contain it, and adh cannot see that. `model.Relay` is `{Response, Class}` — the capability
+  tier and nothing about *who* answered or in what session, so there is no identity to
+  compare against the builder's.
+  The guarantee is that the transcript is not **supplied**. It is not that the critic did
+  not **have** it. Same narrowing this family already accepted for content-addressing
+  detecting accidents rather than tampering, and for checksums not being authentication: a
+  guarantee stated more broadly than it holds is worse than a narrow one, because a reader
+  stops looking.
+  **Rejected — a self-declared "this was a fresh context" field.** Testimony from the one
+  party that benefits from misreporting it, and unlike `finding.Unexamined`, where a critic
+  gains nothing by lying, the incentive here runs the wrong way. It would let a reader treat
+  an unverifiable claim as a check.
+  **The only real fix is session identity on the relay**, refusing a critic reply whose
+  session matches the builder's. That is a feature rather than a field — the relay has no
+  session concept, and the model-gate is convention-only, which is where it belongs.
+  Recorded against that item so this has a trigger that can fire instead of one that cannot.
+
+- [ ] **`Dispose` throws away a distinction its own input type already carries.**
+  `Adjudicated` has three fields — `Finding`, `Ran`, `Failed` — and
+  `disposition.go:79` collapses them to two buckets: `if r.Ran && r.Failed` is
+  confirmed, *"every other case — it passed, or no artifact ran — is unconfirmed."*
+  So **`Ran: false` and `Ran: true, Failed: false` land in the same bucket**, and both
+  flow to `LessonNotes()` and become §11 lesson candidates.
+
+  An artifact that could not run is not evidence the finding was wrong. It is the
+  `Unchecked` case, the family's most-derived discipline, and here it reads as *the
+  critic was mistaken* — which is the flattering direction, since it advances the arc.
+  A finding whose artifact was unrunnable is also the one most worth surfacing: it
+  means the critic named something the repository cannot check.
+
+  The information is already in hand, so this is a third `Verdict` slice and a decision
+  about what it gates — not a modelling change. It does change which findings become
+  lesson candidates, and `LessonNotes()` is currently drawing on a mixed population.
+
+### What the Arc May Call an Improvement
+
+- [ ] **Guard invariants belong in the acceptance bar, declared before the run.** `ruflo`'s
+  nightly loop is the negative control here and the positive one, four weeks apart. Its
+  earlier optimisation loop hill-climbed a single objective and produced two documented
+  failures: it raised a harness score 40 → 55 by adding files a presence-counting metric
+  rewarded, with no capability change, and it doubled a promotion rate by relaxing the
+  promotion predicate from `AND` to `OR` and logged it as `"BIG WIN"`.
+
+  Its later loop rejected two changes carrying large favourable primary metrics —
+  *"max-load −46.1%, CoV −44.4% **but density −13.7% breaches ±10% invariant**"* and
+  *"latency −55.9%/−57.5% **but recall@10 breaches 0.90 floor at N=8000**"* — because a
+  **named guard** moved, under a hypothesis marked *"Frozen before evaluation began; not
+  modified after seeing results."*
+
+  adh's arc carries an acceptance bar and `internal/nfr` is already Planguage-quantified
+  with Fail/Goal/Stretch, which is most of the machinery. What is missing is that the
+  bar names only what the change is *for*; nothing names what it must not cost. **An
+  objective without guards is hill-climbed by trading away everything unmeasured.**
+
+- [ ] **`ACCEPT-scoped` is a fourth verdict and the concern travels as a number.** The same
+  loop's admitted-with-reservations rows carry the reservation as a signed measurement
+  rather than prose — *"low-bucket recovery −17.6% (t=7.00, held); med-bucket null (no
+  generalization)"*, *"overall recall@10 +0.267; category B (pure-paraphrase) regresses
+  −0.133"*. `haft`'s `review_ready` is the same verdict from a different project. adh
+  advances or returns to Execution; there is no disposition for *advanced, with the
+  regression recorded*, and the honest cases exist.
+
+- [ ] **Freeze the hypothesis before the evaluation, mechanically.** The discipline above
+  only works if the bar cannot move after the numbers arrive. adh writes the arc's
+  acceptance criteria at Strategy and evaluates at Evaluation, with nothing preventing
+  an edit in between. Hash the bar at Strategy and record the hash with the verdict; a
+  changed bar is then visible rather than deniable. Small, and it is the difference
+  between a pre-registration and a note.
+
+### Actions, Tools, and What Degrades
+
+- [ ] **`toolreg` describes tools; nothing describes the *action* a stage needs.**
+  `superpowers` runs one skill corpus across nine harnesses on a rule worth taking
+  whole: **"Skills name actions, not tools."** A skill body says *dispatch a subagent*,
+  *create a todo*, *read a file* — never a tool name — and a per-harness mapping
+  resolves each action to the real tool. That is `lexicon`'s Keyword/Role split applied
+  to tool invocation, with the stable layer (actions) and the volatile layer (tool
+  names) the right way round, and it is why their skill bodies never fork per harness.
+
+  `toolreg.StarterRegistry` is the mapping half, already built — `Run`, `Verifies`,
+  `RepairHint` per capability. The missing half is the vocabulary the prompts are
+  written against: adh's emitted prompts name commands, so a stage's requirement and
+  the way it is satisfied are the same string, and porting to a harness with different
+  tooling means editing prompts. Name the actions, keep `toolreg` as the resolver.
+
+- [ ] **A capability that is absent needs authored fallback wording, not a repair hint.**
+  `RepairHint` carries the install line, which answers *how do I get this*. It does not
+  answer *what do I do without it*, and those are different questions — the second one
+  matters in an environment where the tool cannot be installed. `superpowers`' porting
+  checklist gives every capability an `If absent` column and defines **degradable** as
+  the skill already carrying fallback wording for the missing tool, with one prohibition
+  that is the whole point: *"never to invent a `Task` call."* An agent that cannot
+  dispatch a subagent must do the work inline or report the missing capability. It must
+  not synthesise a call to something that is not there.
+
+  Better than probing for capabilities in the runner, because the fallback is authored
+  by whoever wrote the stage and knows what the stage actually needs.
+
+- [ ] **`adh init` seeds `.adh/tools.json` — check it against the never-edit-the-user's-files
+  rule.** `superpowers` states it flatly: *"Everything ships through the harness's own
+  install mechanism. Never edit the user's files… The harness owns what it loads; your
+  install artifact is the only thing you get to write."* `init` writing into the
+  repository it was invoked in is fine by that rule, and the rule is worth writing down
+  before something reaches for a global config. It also contradicts `mdm`'s `rules link`,
+  which symlinks forty-five agent filenames into the user's tree; recorded as a contested
+  pair, with superpowers holding the better argument — an installer that edits user
+  config cannot be cleanly uninstalled or reasoned about.
+
+### Testing the Seam `adh` Does Not Test
+
+- [ ] **The relay posture makes most testing easy and one case impossible, and there are
+  three methods, not two.** The Agent-Fuschia entry above concludes that adh's relay
+  *"already achieves"* deterministic agent testing *"by never invoking a model — the mock
+  is the human."* That is right about determinism and it leaves the same gap gnosis has:
+  nothing establishes that an agent handed a **real emitted prompt** produces a reply the
+  next stage accepts. gnosis §18.6 now enumerates the three options and adh has the same
+  choice:
+
+  | Method                           | Runtime                  | Reasoning                  | Assertion                          | In CI                                    |
+  | -------------------------------- | ------------------------ | -------------------------- | ---------------------------------- | ---------------------------------------- |
+  | Hand-written replies (today)     | none                     | authored                   | direct                             | yes, and proves nothing about the prompt |
+  | Scripted model                   | real binary, real prompt | local server from a script | on the request *and* the reply     | yes                                      |
+  | Real model, mechanical predicate | real                     | real                       | pure predicate over the transcript | no                                       |
+
+  Two disciplines carry over. From the second: **assert on what the agent sent** — a
+  fixture that only dictates replies is a playback, and it must fail when the request
+  arrives without the fields the prompt was supposed to carry. From the third:
+  `superpowers/tests/explicit-skill-requests/` runs the real agent under an **isolated
+  `HOME`** and greps machine-readable transcript events, and its second assertion is the
+  instructive one — not only that the required step happened, but that **nothing else
+  happened first**, against an explicit allowlist of actions that do not count. Ordering
+  is not a property a prose reply can be trusted to report about itself.
+
+- [ ] **No map says what each suite covers that the others do not.** adh runs the
+  differential oracle, the invariant checker, and `gate.SelfTest`.
+  `superpowers/docs/testing.md` annotates every test with its coverage delta against the
+  other harness — *"drill covers the YAGNI subset; bash adds commit-count, task-tracking,
+  and token telemetry assertions"*, *"tests description-recall, not behavior"* — and
+  states plainly which suite is **not** in CI and why. Cheap, and it is what makes a
+  redundant-looking test defensible rather than deletable.
+
+- Note, not a work item: `superpowers` publishes *"This repo has a 94% PR rejection rate"*
+  and requires every contribution to disclose model, harness, harness version, and installed
+  plugins, on the reasoning that *"agent-generated content reasoned from documentation is
+  held to a different bar than work grounded in a real session."* That is a testimony
+  distinction — whether the witness was present — rather than an authorship one, and it is
+  the basis the family's still-missing `AI_POLICY.md` should use. Recorded against gnosis,
+  where the policy item lives.
+
+## Applicability Is a Rule, Not a Type (2026-08-22)
+
+`skillet` closed its open note about naming a general `Applicability` mechanism, and adh's
+`HasCodeBlock` use was one of the five sites counted. The answer is **no type**: the five
+sites each suppress a different thing — a deduction, a whole check, or nothing — because
+their output shapes differ, and each already carries a reason. Full reasoning in
+`skillet/TODO.md`.
+
+- Nothing to build. Recorded because adh's handling is cited as one of the conforming
+  cases and should not be flattened by someone who has not read the rule. `internal/rubric`
+  returns **full credit plus a reason** when the dimension cannot apply — *"no failure
+  branch, and the artifact executes nothing to fail"* — rather than docking or skipping
+  silently. That is the correct shape for a 0..1 factor, and it is a different correct
+  shape from skillsaw's flag and gnosis's skip record. The rule: *applicability is derived,
+  not declared, and a run states what it skipped. What gets suppressed is the consumer's
+  choice; the reason is never optional.*
+- [ ] **Worth one pass: is any other adh gate suppressed without a reason?** The rule is
+  cheap to check and adh has several places that decline to act — `toolreg` entries whose
+  capability is absent, `critic` when an arc routed no context, `eval` when a named
+  artifact could not run. The last of those is already filed above as `Dispose` discarding
+  `Adjudicated.Ran`, which is the same defect in a different wrapper: an artifact that
+  could not run is not evidence the finding was wrong. Sweep for the rest rather than
+  waiting to trip over them.
+
+## Adopt `finding.Unexamined` (2026-08-22)
+
+`skillet/finding` gained `Unexamined{Aspect, Reason}` and a `Result.Unexamined` field,
+promoted on adh's *"name the refusals"* entry plus canonizer's matching cold-critic one —
+two consumers with present defects. adh's defect is concrete: `critic.ParseFindings`
+documents that *"an empty or absent list is a clean review"*, and `evaluation` disposes of
+the arc on that silence, so a critic that looked at nothing and a critic that found nothing
+reach Ops identically. Design record in `skillet/TODO.md`.
+
+- [ ] **Parse `unexamined` in `critic.ParseFindings` and carry it on the arc.** The parse
+  is already the right shape — it validates each finding and rejects a malformed reply with
+  `EINVALID` rather than advancing on trust — so extend it: an entry failing `Valid()`
+  (either field empty or whitespace-only) rejects the reply the same way a finding with no
+  summary does. Do not drop invalid entries silently; that is how a reply saying nothing
+  passes for a reply that found nothing.
+  Advisory by construction: `Result.HasBlocking` iterates `Diagnostics` only, so a declared
+  gap cannot change a verdict however `Dispose` is written.
+- [ ] **`critic.Ground` should offer the prior run's gaps, and this is the one place it
+  helps rather than contaminates.** §19.1 withholds exactly one input, the builder's
+  transcript, and that is what makes the critic cold. A previous critic's *coverage* is not
+  the builder's reasoning and not a conclusion — it is a record of angles already taken —
+  so feeding it forward steers a fresh critic toward unexamined ground, which is the
+  opposite of the contamination the cold split prevents. Both source entries argued this
+  independently; worth stating in §19.1 so the exception is deliberate rather than
+  discovered.
+- Related, and **not** the same item: `vac-protocol` §7's *named refusals* belongs in
+  `SPEC.md` as prose — a section saying what adh deliberately does not do, so an absence
+  reads as a decision. It shares the discipline and shares no code, and it was previously
+  counted alongside the coverage record as though four entries described one mechanism.
+  Three of the four did; this one is a document.
+
+## Commissioned Gap Report, Round Two — One Idea, Not From the Report (2026-08-22)
+
+Source: `~/Documents/agent-green/FPF/agentic-dev-harness_todo.md`. Its verdict is *"no
+genuinely unimplemented, valuable, and relevant gaps found"*, and that verdict is correct.
+**Full reasoning for the family is in `skillet/TODO.md` under "Round Two, and What Asking
+for Code-Reality Verification Actually Bought"**; the short version is that round two's
+findings across all seven repositories are restatements of the backlogs its verification
+step read, and the four *no-gaps* verdicts are the honest output of that process.
+
+One thing in its addendum is genuinely absent here and is recorded on its own merits rather
+than as a finding, because the report supplies no evidence for it beyond a corpus reference:
+
+- [ ] **A Critic finding says who can close it and not what to run.** `finding.Action`
+  carries `automatic` / `guided` / `human`, which is *who*; `coherence` emits a
+  `recommended_next_command` alongside, which is *what*. For a five-stage harness whose
+  whole output is consumed by an agent deciding its next move, the difference is real: an
+  agent handed "guided" has to infer the command, and inferring it is the step most likely
+  to go wrong quietly.
+  **Two objections have to be answered before this is built, and the second is the hard
+  one.**
+  - `skillet`'s backlog already refused `FixClass` as a duplicate axis of `Action`. This is
+    not that — a command string is not a classification — but it must not become a third
+    way of saying `automatic`.
+  - **A generated command an agent then executes is an execution surface.** gnosis §15's
+    rule is that anything an agent can name which later selects a file, a command, or a
+    check must be validated against a closed set rather than used. A
+    `recommended_next_command` assembled from a finding's own fields — a path, a rule id —
+    is exactly the shape that rule exists for. The defensible version emits a **closed
+    enumeration of remediation kinds** plus their arguments, and lets the caller render the
+    command, rather than emitting a string for something else to run.
+  Filed as a design question, not as a gap. If it is built, the enumeration is the design.
+
+## `Critic.Deny` Is a Dead Knob That Looks Like the Guarantee (2026-08-22)
+
+Found while verifying that adh's critic has no code path carrying the builder's transcript.
+It does not — and the config says otherwise.
+
+- [ ] **`Critic.Deny: []string{"transcript"}` is declared in `config.go:147` and read by
+      nothing.** Zero non-test references anywhere in the repository. The actual guarantee
+      is structural and lives elsewhere: `prompt.view` omits `History` for the critic, and
+      the type comment states it plainly — *"the guarantee is enforced here in the data, so
+      a hand-edited critic template still cannot leak the transcript."*
+      **The defect is not the unused field, it is what a reader concludes from it.** A
+      deny-list named `transcript` sitting beside `GroundFrom` reads as the mechanism that
+      excludes it, and as configurable. Neither is true: removing `"transcript"` from
+      `Deny` changes nothing, and adding another name to it protects nothing. Someone
+      hardening the critic would edit the wrong thing and believe they had succeeded.
+      This repo already has the principle. §4.2's *"a finding nobody can act on is noise"*
+      and the `in_degree_cut` entry — *"declining to build a reader is a decision worth
+      writing down"* — are the same shape one level up: a value nobody reads is a claim
+      nobody checks.
+      **Three ways out, and the choice is a real one.** Delete the field, since the
+      guarantee does not need it. Or read it — have the renderer assert that every name in
+      `Deny` is absent from the view it builds, which turns a decorative list into a
+      belt-and-braces check and makes the config honest. Or keep it and document it as
+      declarative-only, naming where the enforcement actually is. The middle option is the
+      only one that makes the field earn its place, and it is small; the first is the
+      cheapest and loses nothing real.
+      Related: gnosis's `doctor` grew an unread-value check for exactly this class, and
+      distinguishes *consumed* / *pinned* / *unread* because two states were not enough.
+      `Deny` is `unread` today and reads as `consumed`.
