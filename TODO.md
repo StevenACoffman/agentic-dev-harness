@@ -1821,8 +1821,44 @@ planning, not after.
   a breached guard is a measured fact about the change, and a moved bar is a process
   observation that is often legitimate. Blocking the second would make the check a wall.
 
-- [ ] **Nothing tells an author which specs are guards.** `nfr.Spec.Guard` is set in
+- [x] **Nothing tells an author which specs are guards.** `nfr.Spec.Guard` is set in
   the repository's own NFR files and there is no command that lists them, so the answer
   to *"what will this change be held to?"* is a grep. `adh nfr list --guards`, or a line
   in `doctor`. Small, and it is the readable half of a feature whose whole value is that
   the guard set is known in advance.
+
+## Tier 1, Fourth Pass (2026-08-23)
+
+Two items: a contradiction between two entries, and a writer with no reader.
+
+- **The contradiction resolved by reading, and neither entry was wholly right.** The
+  transferred item's mechanism is a judge that *spawns* a subagent and falls back to
+  inline; adh spawns nothing and invokes no model, so the state cannot arise. adh's own
+  closure said that a day earlier. But the closure also surfaced a real limit and left
+  it in the backlog: **§19.1 claimed adh "denies exactly one input", which is true of
+  the prompt and reads as a claim about the reader.** The specification was making the
+  over-broad claim the closure warned against. That is now narrowed where the guarantee
+  is stated, along with the two decisions the closure had already made — a self-declared
+  fresh-context field is refused, and session identity is a feature rather than a field.
+- **A closed entry can still owe a document.** The lesson generalises past this case: a
+  backlog entry that resolves by *deciding* something has discharged half its work, and
+  the other half is wherever the system states what it guarantees. Three of this week's
+  closures were of that shape.
+- **The guard column is not a formatting choice.** A `--guards` filter reaches someone
+  who already suspects guards matter; the failure a guard exists to prevent is an author
+  who does not. So the role is in every listing and the filter is the secondary answer.
+- **The new check found the repository's own fixture.** `harnesscheck`'s clean-inputs
+  fixture had objectives and nothing guarded — the exact gap, in the test that asserts
+  a well-formed repository.
+- **Running it by hand found what no test would have**, for the sixth time. ff stops
+  parsing flags at the first positional, so `nfr list --guards` left the flag unset and
+  listed everything with the caller believing a filter applied. A silently-ignored flag
+  is worse than an unsupported one, and the fix is refusing the trailing argument rather
+  than out-parsing the framework.
+
+- [ ] **Every other verb in adh has the same trailing-argument exposure.** `nfr list`
+  and `lint` now refuse one; nothing checked whether `arc`, `context`, `oracle`, or the
+  rest silently ignore a flag typed after their verb. It is one grep for `args[0]`
+  switches that never validate `args[1:]`, and the failure is identical each time: the
+  caller believes an option applied. Recorded rather than swept, because the sweep is
+  the item and doing it inside this one would have hidden it.
