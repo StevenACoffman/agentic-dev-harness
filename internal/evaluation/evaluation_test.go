@@ -537,8 +537,12 @@ func TestAnArcAdvancesWithItsReservationRecorded(t *testing.T) {
 // TestAReservationDoesNotBlock. A regression inside the bar is information, not a
 // breach — blocking on it would make Fail and Baseline the same threshold and refuse
 // changes the repository declared acceptable.
+// It chdirs rather than running parallel: Apply writes the failure registry and the
+// failure-record log at paths relative to the working directory, so a test that does
+// not move first leaves them in the source tree. That is how this test created
+// internal/evaluation/.adh on its first run.
 func TestAReservationDoesNotBlock(t *testing.T) {
-	t.Parallel()
+	t.Chdir(t.TempDir())
 	f := adh.Finding{Summary: "latency", Kind: adh.FindingNFR, Class: adh.FixableFinding}
 	v := critic.Dispose([]critic.Adjudicated{
 		{Finding: f, Ran: true, Failed: false, HasMeasure: true, Measured: 150, Regressed: true},
