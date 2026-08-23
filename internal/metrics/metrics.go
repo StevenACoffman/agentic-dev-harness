@@ -25,12 +25,16 @@ type StepClass struct {
 }
 
 // Summary aggregates records over a period.
+// The json tags exist because Summary is now a payload: `metrics --jsonl` emits it
+// directly, and without them a consumer would read Go field names where every other
+// envelope in this family is snake_case. Free to add now — before this it was never
+// serialised, so no consumer can be relying on the capitalised form.
 type Summary struct {
-	Arcs               int
-	Accepted           int
-	AttentionMinutes   int
-	ComputeTokens      int
-	AttentionPerAccept float64
+	Arcs               int     `json:"arcs"`
+	Accepted           int     `json:"accepted"`
+	AttentionMinutes   int     `json:"attention_minutes"`
+	ComputeTokens      int     `json:"compute_tokens"`
+	AttentionPerAccept float64 `json:"attention_per_accept"`
 }
 
 // ClassifyHistory classifies each history line as a deterministic step or a relayed
