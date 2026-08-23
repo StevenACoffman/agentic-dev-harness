@@ -1238,7 +1238,10 @@ from). adh is the tool most of it lands on. Checked against the code.
   deterministic check could decide this" from "a check exists and did not fire". Without
   that distinction, "minimize the model" is unmeasurable. Cheap: a record per relay,
   alongside `evidence`.
-- [ ] **A critic that declares what it did *not* examine.**
+- [x] **A critic that declares what it did *not* examine.** *Built 2026-08-23 under
+  Adopt `finding.Unexamined` below, including the second half — prior coverage fed to
+  the next critic. This is the Agent-Blue original of that entry; both were open and
+  only one was checked.*
   `agent-blue/super-hermes/skills/prism-scan/SKILL.md:57` appends a **constraint footer** to
   every findings table — "This analysis maximized X. It did not examine: [1-2 specific
   alternative angles]" — and `prism-reflect` writes a fuller constraint report to
@@ -1281,7 +1284,14 @@ from). adh is the tool most of it lands on. Checked against the code.
   provenance, which is the uncalibrated shape this family rejects. Its one transferable
   design detail is `classification_attributes.json` (§6.5): the classification config
   externalized as data, the same move recorded for skillsaw's rubric.
-- [ ] **Invariants as a second, independent net beside the differential oracle.**
+- [x] **Invariants as a second, independent net beside the differential oracle.**
+  *Stale when written and confirmed so 2026-08-23: all three layers exist.*
+  `oracle.InvariantsHold` (`oracle.go:104`) recomputes the runs itself and applies the
+  rule independently of any resolver — an explicit port of `check_all`, and able to
+  convict a result both implementations agree on. `RepoAdjudicator.builtinInvariant`
+  is the adjudicator for `FindingInvariant`, and `adh oracle invariants` is a CLI verb
+  beside `diff` and `selftest`. The entry's *"nothing covers the second"* was false.
+  Original entry:
   `agent-blue/evals-differential-oracle` is the source of `oracle`'s differential self-test,
   and adh took the differential half. It has a second, separate net: `src/invariants.py` —
   "the rules any correct implementation must obey, **checked against a board independently
@@ -1323,7 +1333,8 @@ which sharpen invariants adh already holds rather than adding new ones.
   verification does; finding disposition partly does) and stating the rule where they do.
   The seeded-known-defect technique is also the natural extension of `oracle selftest`
   from "does the control discriminate" to "does the whole arc catch a planted defect".
-- [ ] **Name the refusals in `SPEC.md`.** `vac-protocol` §7 is titled "Explicitly refused
+- [x] **Name the refusals in `SPEC.md`.** *§9.1, extending the existing Non-Goals
+  section rather than creating a competing one.* `vac-protocol` §7 is titled "Explicitly refused
   in v0.1" and opens: **"Named refusals, so their absence reads as a decision rather than
   an oversight."** Its entries earn it — signatures are refused because "a signature proves
   who spoke, not that they spoke the truth… signing an unreplayable bundle would launder
@@ -1422,7 +1433,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
 
 ### What the Arc May Call an Improvement
 
-- [ ] **Guard invariants belong in the acceptance bar, declared before the run.** `ruflo`'s
+- [x] **Guard invariants belong in the acceptance bar, declared before the run.** `ruflo`'s
   nightly loop is the negative control here and the positive one, four weeks apart. Its
   earlier optimisation loop hill-climbed a single objective and produced two documented
   failures: it raised a harness score 40 → 55 by adding files a presence-counting metric
@@ -1448,7 +1459,11 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   advances or returns to Execution; there is no disposition for *advanced, with the
   regression recorded*, and the honest cases exist.
 
-- [ ] **Freeze the hypothesis before the evaluation, mechanically.** The discipline above
+- [x] **Freeze the hypothesis before the evaluation, mechanically.** *Built, and the
+  entry's premise was wrong in a way worth keeping: adh does not write the bar at
+  Strategy. It is derived from config by resolution and read fresh each time, so there
+  is no arc-local bar to edit. What can move is the config file and `arc.Resolution` —
+  the second more likely — and `Arc.Bar` now pre-registers the hash against both.* The discipline above
   only works if the bar cannot move after the numbers arrive. adh writes the arc's
   acceptance criteria at Strategy and evaluates at Evaluation, with nothing preventing
   an edit in between. Hash the bar at Strategy and record the hash with the verdict; a
@@ -1686,7 +1701,10 @@ one change: `Dispose` is the mechanism and `eval` the consequence.
   assertion. `Inputs` exists to let the shell hand facts to the pure core *"without
   churning every Ground/Load/ForStage signature"* — this is that case.
 
-- [ ] **Resolve a finding's artifact against the §13 tool registry.** The prerequisite
+- [x] **Resolve a finding's artifact against the §13 tool registry.** *Built, and
+  narrower than filed: `runDeclaredTool`'s `found` already distinguished the two cases
+  and the answer was discarded one call up. §19.2's blocker was true only for the
+  empty-ref path in two of five kinds.* The prerequisite
   for revisiting whether an unchecked finding blocks. Today `Ran:false` conflates *the
   registered tool is broken* with *the critic named something that was never a tool*,
   and only the first is a refusal worth failing an arc on. Once adjudication resolves
@@ -1728,8 +1746,68 @@ one change: `Dispose` is the mechanism and `eval` the consequence.
 - **The anti-checklist wording has a test on it**, because it is the part a later edit
   smooths away: offering last run's gaps invites a critic to treat them as the scope.
 
-- [ ] **`SPEC.md` §19.1 should state the prior-gaps exception.** The code and the
+- [x] **`SPEC.md` §19.1 should state the prior-gaps exception.** The code and the
   template both carry the reasoning — a previous critic's coverage is not the builder's
   reasoning and not a conclusion — but the spec still says the cold split withholds one
   input without saying what it deliberately lets through. An exception documented only
   at the call site is one a future reader will read as a leak.
+
+## One Item Transferred From gnosis's Backlog (2026-08-23)
+
+A re-read of gnosis's `TODO.md` on 2026-08-23 found fourteen entries filed against
+sibling repositories. The guard-invariants item is already above, in a better form
+than gnosis's copy. This one was nowhere: `canonizer` carries it and adh does not,
+although the survey filed it against both.
+
+Also worth recording: gnosis was still carrying five `skillsaw` items as open that
+`skillsaw` had already closed. **A backlog that mirrors another repository's work goes
+stale in the direction that flatters** — one home, and a pointer from everywhere else.
+
+- [ ] **A critic that ran with reduced independence must say so.** The surveyed judge
+  spawns a fresh-context subagent and, when it cannot, runs inline **and emits an event
+  recording the downgrade**. The disposition vocabulary here has no state for that:
+  `checked` and `unchecked` between them cover *examined* and *not examined*, and
+  neither covers **examined under reduced independence**.
+  The reason it matters is the same reason the cold-context split exists at all. A
+  critic's value is that it did not see the builder's reasoning; a critic that fell back
+  to running inline saw it, produced a verdict, and reported that verdict in the same
+  shape as one that did not. **A gate that silently degrades its own isolation reports a
+  verdict it did not earn**, and the degradation is exactly the case that happens under
+  load — which is when the verdict is least worth trusting.
+  It pairs with `Critic.Deny` being a dead knob (above): both are places where the
+  guarantee is stated and the mechanism does not carry it. Adding the third disposition
+  before it is needed is cheaper than adding it after a run that used the fallback.
+
+## Tier 1 and Tier 2, Built (2026-08-23)
+
+Five items requested; **checking their premises first removed one and reshaped two.**
+That is now five passes running, and the pattern is stable enough to state as a rule:
+**an entry describing a defect is a claim about the code, and it ages.** Check before
+planning, not after.
+
+- **The invariant net was already built, at all three layers.** `InvariantsHold`, the
+  adjudicator that calls it, and an `oracle invariants` CLI verb. The entry said
+  *"nothing covers the second"*. Nothing to do, and the cost of the stale entry was a
+  full read of the oracle package to establish that.
+- **The freeze targeted a mechanism that does not exist.** The entry has adh writing
+  acceptance criteria at Strategy with nothing preventing an edit before Evaluation.
+  adh does not write them: the bar is `conf.ProofContract(arc.Resolution)`, read fresh
+  each time. The real exposure is a config edit or a changed resolution, and the second
+  is likelier — so the fix landed in the right place only because the premise was
+  checked.
+- **The §13 registry item was two-thirds already true.** `runDeclaredTool` knew `found`
+  and threw it away one call up. §19.2's stated blocker — that `Ran:false` cannot
+  separate a broken tool from an invented one — holds only for the empty-ref path in
+  two of five finding kinds.
+- **Guards went on the spec, not the arc, *because* that is less expressive.** A
+  per-arc guard list lets the author of a change choose which guards apply to it, and
+  both failures that motivated the feature were a loop editing its own criteria.
+- **The bar report does not block and the guard does.** They look similar and are not:
+  a breached guard is a measured fact about the change, and a moved bar is a process
+  observation that is often legitimate. Blocking the second would make the check a wall.
+
+- [ ] **Nothing tells an author which specs are guards.** `nfr.Spec.Guard` is set in
+  the repository's own NFR files and there is no command that lists them, so the answer
+  to *"what will this change be held to?"* is a grep. `adh nfr list --guards`, or a line
+  in `doctor`. Small, and it is the readable half of a feature whose whole value is that
+  the guard set is known in advance.
