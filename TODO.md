@@ -1301,7 +1301,7 @@ from). adh is the tool most of it lands on. Checked against the code.
 Source: a survey of `~/Documents/agent-fuschia` (26 repositories). Three items, two of
 which sharpen invariants adh already holds rather than adding new ones.
 
-- [ ] **"Cannot verify" must not read as "verified" — and `eval` has the same seam.**
+- [x] **"Cannot verify" must not read as "verified" — and `eval` has the same seam.**
   `agent-fuschia/vac-gate` enforces two rules worth copying verbatim, both about refusing to
   let an absence pass as a success: `binding-unrecorded` ("unrecorded is not matching" — a
   declared key the contract never recorded *fails*, rather than being skipped), and the
@@ -1403,7 +1403,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   session concept, and the model-gate is convention-only, which is where it belongs.
   Recorded against that item so this has a trigger that can fire instead of one that cannot.
 
-- [ ] **`Dispose` throws away a distinction its own input type already carries.**
+- [x] **`Dispose` throws away a distinction its own input type already carries.**
   `Adjudicated` has three fields — `Finding`, `Ran`, `Failed` — and
   `disposition.go:79` collapses them to two buckets: `if r.Ran && r.Failed` is
   confirmed, *"every other case — it passed, or no artifact ran — is unconfirmed."*
@@ -1627,7 +1627,7 @@ than as a finding, because the report supplies no evidence for it beyond a corpu
 Found while verifying that adh's critic has no code path carrying the builder's transcript.
 It does not — and the config says otherwise.
 
-- [ ] **`Critic.Deny: []string{"transcript"}` is declared in `config.go:147` and read by
+- [x] **`Critic.Deny: []string{"transcript"}` is declared in `config.go:147` and read by
       nothing.** Zero non-test references anywhere in the repository. The actual guarantee
       is structural and lives elsewhere: `prompt.view` omits `History` for the critic, and
       the type comment states it plainly — *"the guarantee is enforced here in the data, so
@@ -1651,3 +1651,48 @@ It does not — and the config says otherwise.
       Related: gnosis's `doctor` grew an unread-value check for exactly this class, and
       distinguishes *consumed* / *pinned* / *unread* because two states were not enough.
       `Deny` is `unread` today and reads as `consumed`.
+
+## Three Tier-1 Items Built (2026-08-23)
+
+`Critic.Deny`, the `eval` third outcome, and `Dispose`'s collapse. The last two were
+one change: `Dispose` is the mechanism and `eval` the consequence.
+
+- **`GroundFrom` was dead too, and the entry named only `Deny`.** Zero non-test
+  readers, and worse than dead: it declared four inputs where `critic.Ground`
+  assembles eight, so it was a config key that under-described the thing it appeared
+  to control. Fixing only `Deny` would have left the identical defect beside it.
+- **The cheap option did not work, and checking is what showed it.** The entry judged
+  deletion "cheapest and loses nothing real". Two facts overturn that: SPEC §19.4
+  declares both keys, and `BurntSushi/toml` **ignores unknown keys** — so a user with
+  `deny = [...]` would keep a line that silently does nothing forever. **Deletion moves
+  the silence from Go to TOML rather than ending it.** Reading the field was the only
+  option that ends it.
+- **The damage in `Dispose` was one layer deeper than the entry described.** It says
+  both cases "flow to `LessonNotes()` and become §11 lesson candidates". They also flow
+  to `PrecisionEntry`, whose doc calls unconfirmed *"a false positive"*, and
+  `NoisyKinds` then condemns the kind — *"the next critic holds these to a higher
+  bar."* A missing artifact trained the harness to distrust a whole category of real
+  defect, compounding with how broken the environment was. That is what made this Tier
+  1, and it was not in the entry.
+- **Excluding it from the numerator would have been the wrong fix.** `NoisyKinds`
+  divides unconfirmed by total, so dropping unchecked from one slice and leaving it in
+  the other understates the rate instead of correcting it. It appears in neither.
+- **The blocking question was narrowed rather than answered.** `vac-gate`'s *"'cannot
+  regrade' is not 'regraded'"* is right where the refusal is trustworthy, and here
+  `Ran:false` cannot tell a broken tool from a critic naming a tool that never existed.
+  Recorded with its trigger (§13's registry) instead of adopted or dropped.
+- **The deny list rides on `critic.Inputs`.** A parameter would have been a sixth on
+  `Request` and a seventh on `Emit`, threaded through two packages to reach one
+  assertion. `Inputs` exists to let the shell hand facts to the pure core *"without
+  churning every Ground/Load/ForStage signature"* — this is that case.
+
+- [ ] **Resolve a finding's artifact against the §13 tool registry.** The prerequisite
+  for revisiting whether an unchecked finding blocks. Today `Ran:false` conflates *the
+  registered tool is broken* with *the critic named something that was never a tool*,
+  and only the first is a refusal worth failing an arc on. Once adjudication resolves
+  the ref, the two separate and §19.2's recorded decision can change.
+- [ ] **`deny` accepts one input because the renderer can enforce one.** Denying
+  anything else is a load error naming why: adh assembles the critic's grounding whole
+  and does not filter it. If per-input filtering is ever wanted, `adh.CriticInput.Deniable`
+  is the single place that changes — recorded so the restriction reads as a decision
+  rather than an omission.
