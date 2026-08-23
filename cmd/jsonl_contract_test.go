@@ -43,6 +43,22 @@ var payloadKeys = map[string][]string{
 		"accepted", "arcs", "attention_per_accept", "compute_tokens",
 		"deterministic_ratio", "failure_taxonomy", "steps_deterministic", "steps_model",
 	},
+	"autonomy show":     {"level"},
+	"context check":     {"units"},
+	"context eval":      {"cases", "passed", "precision", "recall"},
+	"context index":     {"units"},
+	"context lint":      {"problems", "units"},
+	"context misses":    {"misses", "proposals"},
+	"context verify":    {"drift", "results"},
+	"loop tick":         {"arcs_opened", "loops", "results"},
+	"nfr lint":          {"specs", "valid"},
+	"oracle diff":       {"boards", "mode"},
+	"oracle invariants": {"boards", "hold"},
+	"oracle selftest":   {"passed"},
+	"sleep run":         {"reason", "staged"},
+	"sleep status":      {"common_patterns", "staged"},
+	"tool doctor":       {"tools", "valid"},
+	"worker show":       {"epoch", "models"},
 }
 
 // jsonlDebt names invocations that do not yet honour --jsonl.
@@ -57,20 +73,11 @@ var payloadKeys = map[string][]string{
 // until its entry is removed, and a new violation fails immediately. The list can only
 // shrink.
 //
-// Each is a multi-part human report -- staged proposals, calibration, common patterns
-// -- whose JSON shape is a contract worth designing rather than transcribing. Minting
-// eight machine contracts in an afternoon is how you get eight you regret, and the
-// envelope assertion already covers the commands themselves.
-var jsonlDebt = map[string]bool{
-	"autonomy show":     true,
-	"oracle diff":       true,
-	"oracle invariants": true,
-	"oracle selftest":   true,
-	"context lint":      true,
-	"context index":     true,
-	"sleep run":         true,
-	"sleep status":      true,
-}
+// **It is empty, and an empty ratchet is still load-bearing.** The eleven entries are
+// paid; what remains is the forward direction, which fails the moment a command prints
+// prose under --jsonl. Deleting the map because it holds nothing would remove the guard
+// that keeps it holding nothing.
+var jsonlDebt = map[string]bool{}
 
 // notData names the commands whose stdout is not a data stream, so --jsonl does not
 // apply to them.
@@ -215,11 +222,12 @@ func checkInvocation(t *testing.T, args []string) {
 			continue
 		}
 		data := wantEnvelope(t, line, args)
-		if len(args) == 1 {
-			// Payload keys are recorded per top-level command. A verb's payload
-			// usually needs a fixture and is out of scope here.
-			wantPayloadKeys(t, args[0], data)
-		}
+		// Keyed by the whole invocation, verb included. It was once keyed by the
+		// top-level command on the reasoning that a verb's payload needs a fixture --
+		// true when written, and false as soon as eight verbs learned to answer from
+		// an empty tree. A verb that still needs state emits no payload here and so
+		// is not forced into the table.
+		wantPayloadKeys(t, strings.Join(args, " "), data)
 	}
 }
 
