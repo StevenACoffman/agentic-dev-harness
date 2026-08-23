@@ -31,6 +31,7 @@ const (
 	KindUnverifiedClaim   = "unverified_claim"   // a unit's claim quote is not found in its cited source
 	KindInvalidKPI        = "invalid_kpi"        // a unit declares a malformed KPI (§16/§18)
 	KindNoGuards          = "no_guards"          // NFR specs exist and none is a guard (§10.5)
+	KindDanglingCommand   = "dangling_command"   // a unit's prose names a command that does not resolve
 )
 
 // Inputs bundles the loaded harness state Check reasons over.

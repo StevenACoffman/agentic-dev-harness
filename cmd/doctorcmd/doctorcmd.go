@@ -62,6 +62,8 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	// harnesscheck stays pure over metadata; provenance source existence needs the
 	// filesystem, so the command runs it and merges the defects (§10.4).
 	problems := append(harnesscheck.Check(&in), cfg.sourceProblems(in.Units)...)
+	problems = append(problems, commandProblems(
+		filepath.Join(cfg.repoDir(), contextstore.DefaultStoreDir), in.Units, in.Tools)...)
 	return cfg.report(problems)
 }
 
