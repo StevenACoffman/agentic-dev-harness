@@ -672,6 +672,38 @@ exactly one input, the Execution transcript. The working set is:
 - the context units routed for the arc's labels and paths (§10), including any
   NFR check that encodes a nonfunctional requirement.
 
+**The guarantee is that the transcript is not *supplied*. It is not that the critic did
+not *have* it.** adh emits a prompt and something external answers it; if the session
+that produced the change also answers the critic prompt, it holds the transcript in its
+own context even though the prompt does not contain it, and adh cannot see that.
+`model.Relay` carries a response and a capability tier — nothing about *who* answered or
+in what session — so there is no identity to compare against the builder's.
+
+The sentence above says adh denies exactly one input, and that is true of the prompt.
+Stated without this narrowing it reads as a claim about the reader, which adh cannot
+make. A guarantee stated more broadly than it holds is worse than a narrow one, because
+a reader stops looking — the same narrowing this project already accepted for
+content-addressing detecting accidents rather than tampering.
+
+Two things follow, both decided rather than deferred:
+
+- **A self-declared "this ran in a fresh context" field is refused.** It would be
+  testimony from the one party that benefits from misreporting it. That is what
+  separates it from §19.2's `unexamined`, where a critic gains nothing by lying; here
+  the incentive runs the wrong way, and a reader would treat an unverifiable claim as a
+  check.
+- **The fix, if it is ever wanted, is session identity on the relay** — refusing a
+  critic reply whose session matches the builder's. That is a feature and not a field:
+  the relay has no session concept today, and inventing one to close this is a larger
+  decision than the gap warrants while a human is choosing who answers.
+
+adh's critic also has **no degraded path**, and that is why there is no third
+disposition for *checked under reduced independence*. A surveyed judge elsewhere spawns
+a fresh-context subagent and, when the runtime cannot, runs inline and records the
+downgrade. adh spawns nothing and invokes no model, so the state cannot arise — and a
+field that could only ever be empty is worse than an absent one, because an empty
+downgrade field reads as evidence of an isolation nobody checked.
+
 "Cold" is an isolation boundary on the builder's reasoning (§SPEC 5.3), not a
 context boundary on the repository. A critic forced to reason from its own
 priors because the environment did not teach it records a routing gap (§10, exit

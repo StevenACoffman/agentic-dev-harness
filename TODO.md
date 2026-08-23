@@ -1763,7 +1763,22 @@ Also worth recording: gnosis was still carrying five `skillsaw` items as open th
 `skillsaw` had already closed. **A backlog that mirrors another repository's work goes
 stale in the direction that flatters** — one home, and a pointer from everywhere else.
 
-- [ ] **A critic that ran with reduced independence must say so.** The surveyed judge
+- [x] **A critic that ran with reduced independence must say so.** *Not adh's, and
+  marked rather than deleted so the next transfer does not re-propose it.* The entry's
+  mechanism is a judge that **spawns a fresh-context subagent and falls back to inline**.
+  adh spawns nothing and never invokes a model — it emits a prompt and something
+  external answers — so there is no fallback path and the state cannot arise. adh's own
+  copy of this reached the same conclusion on 2026-08-22 (above), which is the second
+  instance of the cross-repo staleness this section's own note describes: the transfer
+  did not know the destination had already closed it.
+  **What was real in it is now in the spec.** §19.1 said adh "denies exactly one input",
+  which reads as a claim about the reader and is only true of the prompt — if the
+  session that built the change also answers the critic prompt it holds the transcript
+  regardless. That narrowing, and the two decisions that follow it (a self-declared
+  fresh-context field is refused; session identity on the relay is the only real fix and
+  is a feature, not a field), are now stated where the guarantee is stated.
+  `canonizer` keeps this item: its judge does spawn, so the degraded path exists there.
+  Original entry: The surveyed judge
   spawns a fresh-context subagent and, when it cannot, runs inline **and emits an event
   recording the downgrade**. The disposition vocabulary here has no state for that:
   `checked` and `unchecked` between them cover *examined* and *not examined*, and
