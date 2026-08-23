@@ -44,6 +44,18 @@ type Adjudicated struct {
 	// blocking rule — that decision stands — it makes the decision revisitable on
 	// evidence rather than on the guess that the two are inseparable.
 	Unrunnable adh.Unrunnable
+
+	// Measured is the value a meter produced, and HasMeasure whether one did.
+	//
+	// A bool rather than a sentinel: 0 is a legitimate measurement, and NaN would be a
+	// second vocabulary for "absent" beside the one this struct already has.
+	Measured   float64
+	HasMeasure bool
+
+	// Regressed reports a measurement worse than the spec's baseline that still
+	// cleared the acceptance bar. It is the reservation §19.2 had no disposition for:
+	// the change is admissible and it cost something, and both facts are true.
+	Regressed bool
 }
 
 // Verdict is the disposition of a critic's findings after adjudication (§19.2).
@@ -75,6 +87,12 @@ type Verdict struct {
 	// ReturnsToExecution. It is also not a lesson candidate: a lesson is drawn from a
 	// finding that was checked and did not reproduce, and this one was not checked.
 	Unchecked []adh.Finding
+
+	// Reservations are findings that passed adjudication with a measurement worse
+	// than baseline. They do not block — a regression inside the bar is information,
+	// and blocking on it would make Fail and Baseline the same threshold — but an arc
+	// that advances carrying one has cost something, and that used to be invisible.
+	Reservations []adh.Finding
 
 	// Refused is the subset of Unchecked whose artifact was a **registered** tool
 	// that could not start, as opposed to a finding naming nothing or naming a tool
@@ -175,6 +193,9 @@ func Dispose(results []Adjudicated) Verdict {
 			v.Confirmed = append(v.Confirmed, r.Finding)
 		default:
 			v.Unconfirmed = append(v.Unconfirmed, r.Finding)
+			if r.Regressed {
+				v.Reservations = append(v.Reservations, r.Finding)
+			}
 		}
 	}
 	return v
@@ -262,6 +283,10 @@ func (v *Verdict) LessonNotes() []string { return notesFor(v.Unconfirmed) }
 // report them. Same shape as the other two, because a reader comparing the three lists
 // should not have to notice a formatting difference.
 func (v *Verdict) UncheckedNotes() []string { return notesFor(v.Unchecked) }
+
+// ReservationNotes renders the findings that passed while measuring worse than
+// baseline, so an advancing arc can say what it cost.
+func (v *Verdict) ReservationNotes() []string { return notesFor(v.Reservations) }
 
 // RefusedNotes renders the findings a registered tool refused to check.
 //

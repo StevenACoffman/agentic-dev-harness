@@ -58,8 +58,12 @@ type result struct {
 	// Refused is the subset of Unchecked whose artifact was a registered tool that
 	// would not start (§19.2). Carried so an agent can tell a broken environment from
 	// a critic naming artifacts that do not exist.
-	Refused int    `json:"refused"`
-	Stage   string `json:"stage"`
+	Refused int `json:"refused"`
+
+	// Reservations is how many findings passed while measuring worse than baseline.
+	// An agent reading a clean review needs to know the change cost something.
+	Reservations int    `json:"reservations"`
+	Stage        string `json:"stage"`
 }
 
 // New creates and registers the eval command with the given parent config.
@@ -180,11 +184,12 @@ func (cfg *Config) report(arc *adh.Arc, verdict *critic.Verdict) error {
 func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	if cfg.JSONL {
 		if err := cfg.EmitOK(result{
-			Arc:         arc.ID,
-			Unconfirmed: len(verdict.Unconfirmed),
-			Unchecked:   len(verdict.Unchecked),
-			Refused:     len(verdict.Refused),
-			Stage:       string(arc.Stage),
+			Arc:          arc.ID,
+			Unconfirmed:  len(verdict.Unconfirmed),
+			Unchecked:    len(verdict.Unchecked),
+			Refused:      len(verdict.Refused),
+			Reservations: len(verdict.Reservations),
+			Stage:        string(arc.Stage),
 		}); err != nil {
 			return fmt.Errorf("eval: %w", err)
 		}
@@ -206,6 +211,14 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	// that named nothing is the critic's problem, and a registered tool that will not
 	// start is the environment's — and only the second is evidence the repository
 	// declared a check it cannot currently perform.
+	if n := len(verdict.Reservations); n > 0 {
+		// The arc advanced and it cost something. Reported beside the advance rather
+		// than folded into it: "no findings confirmed" is true and incomplete.
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: advanced with %d reservation(s) — measured worse than baseline "+
+				"while still clearing the bar: %s\n",
+			n, strings.Join(verdict.ReservationNotes(), "; "))
+	}
 	if n := len(verdict.Refused); n > 0 {
 		_, _ = fmt.Fprintf(cfg.Stderr,
 			"eval: %d of those named a registered tool that would not start: %s\n",

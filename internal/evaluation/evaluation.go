@@ -50,11 +50,25 @@ const (
 	AdvanceToOps      Disposition = iota // no finding confirmed; on to the ops gate
 	ReturnToExecution                    // a finding confirmed, within the rework budget
 	Fail                                 // a finding confirmed, rework budget exhausted
+
+	// AdvanceWithReservation: nothing confirmed, and something measured worse than
+	// its baseline while still clearing the acceptance bar.
+	//
+	// **It advances.** A regression inside the bar is information, not a breach —
+	// blocking on it would make Fail and Baseline the same threshold and would refuse
+	// changes the repository declared acceptable. What it is not is silent: an arc
+	// that advances having cost something says so.
+	//
+	// A disposition rather than a field on AdvanceToOps, because Decide's result is
+	// what the shell branches on to report, and a caller that only ever sees
+	// AdvanceToOps will not think to look for a field.
+	AdvanceWithReservation
 )
 
 // Disposition is what Evaluation does with an arc given a verdict and the arc's
-// rework history (SPEC §4.1): advance to the ops gate, return to Execution to
-// rework, or fail terminally once the rework budget is spent.
+// rework history (SPEC §4.1): advance to the ops gate — with or without a recorded
+// reservation — return to Execution to rework, or fail terminally once the rework
+// budget is spent.
 type Disposition int
 
 // Adjudicator runs the repository artifact a critic finding names and reports
@@ -188,6 +202,9 @@ func parseMeasurement(out string) (value float64, ok bool) {
 // mutates the arc.
 func Decide(verdict *critic.Verdict, reworks, maxReworks int) Disposition {
 	if !verdict.ReturnsToExecution() {
+		if len(verdict.Reservations) > 0 {
+			return AdvanceWithReservation
+		}
 		return AdvanceToOps
 	}
 	if verdict.HasStructural() || reworks >= maxReworks {
@@ -245,11 +262,36 @@ func Apply(
 		}
 	}
 	disposition := Decide(verdict, arc.Reworks, maxReworks)
-	if disposition != AdvanceToOps { // both the rework and the terminal path failed a check
+	// Both the rework and the terminal path failed a check. An advance with a
+	// reservation did not: nothing was confirmed, so there is no failure to register —
+	// the reservation is a cost, not a defect.
+	if disposition == ReturnToExecution || disposition == Fail {
 		if err := failures.Append(failures.RegistryFile, verdict.FailureNotes()...); err != nil {
 			return &adh.Error{Op: op, Err: err}
 		}
 	}
+	recordDisposition(arc, verdict, disposition, maxReworks)
+	arc.Findings = nil
+	// Cleared with the findings: a gap declared by the review just disposed of must
+	// not be read as a gap in the next one.
+	arc.Unexamined = nil
+	return nil
+}
+
+// recordDisposition moves the arc and writes what happened into its history.
+//
+// Requires: disposition is Decide's answer for verdict.
+// Ensures: the arc's stage and status reflect the disposition, and its history records
+// the reason in the tense a later reader needs — the arc outlives the command that
+// disposed of it, and "why did this advance" is asked from the arc rather than from a
+// terminal that has scrolled.
+//
+// Extracted from Apply when a fourth disposition pushed it past the complexity limit,
+// and it is the better shape independently: this is the policy, and Apply is the
+// bookkeeping around it.
+func recordDisposition(
+	arc *adh.Arc, verdict *critic.Verdict, disposition Disposition, maxReworks int,
+) {
 	switch disposition {
 	case ReturnToExecution:
 		arc.Reworks++
@@ -270,12 +312,16 @@ func Apply(
 			"evaluation: no findings confirmed; %d lesson candidate(s)",
 			len(verdict.Unconfirmed),
 		))
+	case AdvanceWithReservation:
+		arc.Stage = adh.StageOps
+		// The reservation goes in the history rather than only in the report,
+		// because the arc outlives the command that disposed of it and "what did
+		// this cost" is asked later, by somebody reading the arc.
+		arc.History = append(arc.History, fmt.Sprintf(
+			"evaluation: no findings confirmed; advanced with %d reservation(s): %s",
+			len(verdict.Reservations), strings.Join(verdict.ReservationNotes(), "; "),
+		))
 	}
-	arc.Findings = nil
-	// Cleared with the findings: a gap declared by the review just disposed of must
-	// not be read as a gap in the next one.
-	arc.Unexamined = nil
-	return nil
 }
 
 // recordStrata stamps every class the verdict disposed into the failure-record log
@@ -466,7 +512,6 @@ func (a *RepoAdjudicator) runDeclaredTool(
 	}
 	start := time.Now()
 	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
-	a.logRun(tool.ID, ranCheck, ranCheck && !passed, time.Since(start))
 	// A registered tool that could not start is the trustworthy refusal: the
 	// repository declared this check and the environment cannot perform it, which is
 	// evidence about the repository rather than about the finding that named it.
@@ -474,6 +519,9 @@ func (a *RepoAdjudicator) runDeclaredTool(
 	if !ranCheck {
 		res.Unrunnable = adh.UnrunnableToolFailed
 	}
+	// Logged with the reason, so the accumulated record answers *why* the
+	// deterministic path missed rather than only how often.
+	a.logRun(tool.ID, ranCheck, ranCheck && !passed, time.Since(start), res.Unrunnable)
 	return res, true
 }
 
@@ -481,13 +529,15 @@ func (a *RepoAdjudicator) runDeclaredTool(
 // logging is enabled (the real adjudicator; disabled for tests). Best-effort — a
 // log-write failure never changes the adjudication result. The clock stays in this
 // shell-side engine; the log stores only the duration and the opaque stratum.
-func (a *RepoAdjudicator) logRun(id string, ran, failed bool, took time.Duration) {
+func (a *RepoAdjudicator) logRun(
+	id string, ran, failed bool, took time.Duration, why adh.Unrunnable,
+) {
 	if a.logPath == "" {
 		return
 	}
 	_ = toolrun.AppendOutcome(
 		a.logPath, id, contextstore.Stratum(time.Now()),
-		ran, failed, int(took.Milliseconds()),
+		ran, failed, int(took.Milliseconds()), string(why),
 	)
 }
 
@@ -536,7 +586,13 @@ func (a *RepoAdjudicator) adjudicateSpec(ctx context.Context, spec *nfr.Spec) cr
 		// registered tool that could not start is.
 		return critic.Adjudicated{Unrunnable: adh.UnrunnableToolFailed}
 	}
-	return critic.Adjudicated{Ran: true, Failed: !spec.Meets(value)}
+	// The measurement travels rather than being reduced to a boolean here. A spec that
+	// cleared its Fail bar and still moved the wrong way from Baseline is admissible
+	// *and* cost something, and collapsing to Meets discarded the second fact.
+	return critic.Adjudicated{
+		Ran: true, Failed: !spec.Meets(value),
+		Measured: value, HasMeasure: true, Regressed: spec.Regressed(value),
+	}
 }
 
 // adjudicateContract verifies the proof manifest a contract finding names. A

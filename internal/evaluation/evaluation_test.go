@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
@@ -510,5 +511,52 @@ func TestRepoAdjudicatorNFRSpec(t *testing.T) {
 					ran, failed, tt.wantRan, tt.wantFailed)
 			}
 		})
+	}
+}
+
+// TestAnArcAdvancesWithItsReservationRecorded. adh advanced or returned to Execution;
+// there was no disposition for *advanced, with the regression recorded*, so a change
+// that passed every bar while costing something reached Ops looking identical to one
+// that cost nothing.
+func TestAnArcAdvancesWithItsReservationRecorded(t *testing.T) {
+	t.Parallel()
+	f := adh.Finding{Summary: "latency", Kind: adh.FindingNFR, Class: adh.FixableFinding}
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: f, Ran: true, Failed: false, HasMeasure: true, Measured: 150, Regressed: true},
+	})
+
+	if len(v.Reservations) != 1 {
+		t.Fatalf("reservations = %+v, want the regressed finding", v.Reservations)
+	}
+	got := evaluation.Decide(&v, 0, 3)
+	if got != evaluation.AdvanceWithReservation {
+		t.Errorf("disposition = %v, want AdvanceWithReservation", got)
+	}
+}
+
+// TestAReservationDoesNotBlock. A regression inside the bar is information, not a
+// breach — blocking on it would make Fail and Baseline the same threshold and refuse
+// changes the repository declared acceptable.
+func TestAReservationDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	f := adh.Finding{Summary: "latency", Kind: adh.FindingNFR, Class: adh.FixableFinding}
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: f, Ran: true, Failed: false, HasMeasure: true, Measured: 150, Regressed: true},
+	})
+	if v.ReturnsToExecution() {
+		t.Error("a reservation returned the arc to execution")
+	}
+
+	arc := adh.Arc{ID: "a1", Stage: adh.StageEvaluation, Status: adh.StatusOpen}
+	if err := evaluation.Apply(&arc, &v, false, 3, "2026-08"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if arc.Stage != adh.StageOps {
+		t.Errorf("stage = %q, want ops", arc.Stage)
+	}
+	// The arc outlives the command that disposed of it, so the cost is in its history.
+	last := arc.History[len(arc.History)-1]
+	if !strings.Contains(last, "reservation") {
+		t.Errorf("the arc's history does not record the reservation: %q", last)
 	}
 }

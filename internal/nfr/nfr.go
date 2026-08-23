@@ -107,6 +107,27 @@ func (s *Spec) Meets(value float64) bool {
 	return value <= s.Fail
 }
 
+// Regressed reports whether a measured value is worse than the spec's baseline.
+//
+// Requires: nothing.
+// Ensures: **false when Baseline is unset**, because a spec with no baseline has
+// nothing to have regressed from — and reporting every unbaselined spec as regressed
+// would make the signal noise on its first run. Direction-aware, and pure.
+//
+// It is distinct from Meets, and the gap between them is the point: Meets asks whether
+// the value clears the acceptance bar, and this asks whether it got worse. A change can
+// pass every bar and still cost something, which is the case that used to advance an arc
+// with nothing recorded.
+func (s *Spec) Regressed(value float64) bool {
+	if s.Baseline == 0 {
+		return false
+	}
+	if s.Direction == Higher {
+		return value < s.Baseline
+	}
+	return value > s.Baseline
+}
+
 // ordered reports whether Fail → Goal (→ Stretch) increases in quality for the
 // spec's direction. A zero Stretch means unset and is skipped.
 func (s *Spec) ordered() bool {
