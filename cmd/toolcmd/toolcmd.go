@@ -92,6 +92,12 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool registry invalid: %s\n", verr)
 		return root.ExitError(codeRegistry)
 	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"tools": len(reg.Tools), "valid": true}); err != nil {
+			return fmt.Errorf("tool: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d tools declared, registry valid\n", len(reg.Tools))
 	return nil
 }

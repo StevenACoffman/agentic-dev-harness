@@ -61,6 +61,17 @@ func (cfg *Config) show() error {
 	if err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
+	if cfg.JSONL {
+		// The same two facts the human lines carry: which epoch, and the per-role
+		// model bindings. An absent epoch is an empty id rather than an error --
+		// "not requalified yet" is a state, not a failure.
+		if err := cfg.EmitOK(map[string]any{
+			"epoch": epoch.ID, "models": epoch.Models,
+		}); err != nil {
+			return fmt.Errorf("worker: %w", err)
+		}
+		return nil
+	}
 	if epoch.ID == "" {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no epoch recorded; run 'worker requalify'")
 		return nil

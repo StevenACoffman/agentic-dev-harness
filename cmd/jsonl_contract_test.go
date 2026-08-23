@@ -45,6 +45,33 @@ var payloadKeys = map[string][]string{
 	},
 }
 
+// jsonlDebt names invocations that do not yet honour --jsonl.
+//
+// **These are violations, not exceptions.** notData below is for a command where JSON
+// does not apply; every entry here is a command that should emit an envelope and
+// prints prose instead. They surfaced together when the table started deriving verbs
+// from the usage line, which is how eleven of them were hiding at once.
+//
+// It is a ratchet and the assertion runs both ways: an invocation listed here must
+// still violate, and one not listed must not. So fixing a command *fails this test*
+// until its entry is removed, and a new violation fails immediately. The list can only
+// shrink.
+//
+// Each is a multi-part human report -- staged proposals, calibration, common patterns
+// -- whose JSON shape is a contract worth designing rather than transcribing. Minting
+// eight machine contracts in an afternoon is how you get eight you regret, and the
+// envelope assertion already covers the commands themselves.
+var jsonlDebt = map[string]bool{
+	"autonomy show":     true,
+	"oracle diff":       true,
+	"oracle invariants": true,
+	"oracle selftest":   true,
+	"context lint":      true,
+	"context index":     true,
+	"sleep run":         true,
+	"sleep status":      true,
+}
+
 // notData names the commands whose stdout is not a data stream, so --jsonl does not
 // apply to them.
 //
@@ -151,6 +178,51 @@ func wantPayloadKeys(t *testing.T, name string, data map[string]json.RawMessage)
 	}
 }
 
+// wantStillViolating asserts a recorded debt has not been paid without being removed
+// from the list.
+//
+// The ratchet only works in both directions. Without this, fixing a command would
+// leave a stale entry that silently exempts it again the next time it regresses.
+func wantStillViolating(t *testing.T, out string, args []string) {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(line), &obj) != nil {
+			return // still prose, as recorded
+		}
+	}
+	t.Errorf("adh %s --jsonl now emits JSON; remove it from jsonlDebt so the "+
+		"contract is enforced rather than exempted", strings.Join(args, " "))
+}
+
+// checkInvocation runs one invocation with --jsonl and applies the contract to it.
+//
+// Extracted from the table so the loop reads as what it is — every registered
+// invocation, checked — and so the three assertions it composes stay separable.
+func checkInvocation(t *testing.T, args []string) {
+	t.Helper()
+	out, _ := run(t, append([]string{"--jsonl"}, args...)...)
+	if jsonlDebt[strings.Join(args, " ")] {
+		wantStillViolating(t, out, args)
+		return
+	}
+	wantJSONLStdout(t, out, args)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		data := wantEnvelope(t, line, args)
+		if len(args) == 1 {
+			// Payload keys are recorded per top-level command. A verb's payload
+			// usually needs a fixture and is out of scope here.
+			wantPayloadKeys(t, args[0], data)
+		}
+	}
+}
+
 // TestJSONLStdoutIsAlwaysJSON is the output half of the flag defect fixed alongside it.
 //
 // `adh arc list --jsonl` printed "no arcs" to stdout — human prose to a caller that
@@ -168,19 +240,7 @@ func TestJSONLStdoutIsAlwaysJSON(t *testing.T) {
 	for _, args := range registeredInvocations(t) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			t.Chdir(t.TempDir())
-			out, _ := run(t, append([]string{"--jsonl"}, args...)...)
-			wantJSONLStdout(t, out, args)
-			for _, line := range strings.Split(out, "\n") {
-				if strings.TrimSpace(line) == "" {
-					continue
-				}
-				data := wantEnvelope(t, line, args)
-				if len(args) == 1 {
-					// Payload keys are recorded per top-level command. A verb's
-					// payload usually needs a fixture and is out of scope here.
-					wantPayloadKeys(t, args[0], data)
-				}
-			}
+			checkInvocation(t, args)
 		})
 	}
 }
@@ -197,13 +257,48 @@ func registeredInvocations(t *testing.T) [][]string {
 		if notData[cmd.Name] {
 			continue
 		}
-		if len(cmd.Subcommands) == 0 {
-			out = append(out, []string{cmd.Name})
-			continue
-		}
+		out = append(out, []string{cmd.Name})
 		for _, sub := range cmd.Subcommands {
 			out = append(out, []string{cmd.Name, sub.Name})
 		}
+		for _, verb := range verbsFromUsage(cmd.Usage) {
+			out = append(out, []string{cmd.Name, verb})
+		}
 	}
 	return out
+}
+
+// verbsFromUsage extracts the verbs a command dispatches internally, from the
+// `<a|b|c>` group in its usage line.
+//
+// **Twelve commands dispatch on args[0] rather than registering ff subcommands, so the
+// registry walk above cannot see their verbs** — and that blind spot is why `tool list`
+// and `arc new` were both violating the --jsonl contract while this test passed. The
+// usage string is where those verbs are already written down, and it is user-facing, so
+// it is kept accurate by the same pressure that keeps `--help` accurate.
+//
+// A verb needing an argument will refuse, and a refusal is not a violation: the envelope
+// assertion still applies to it. What this buys is that the verbs which *do* answer are
+// covered.
+func verbsFromUsage(usage string) []string {
+	open := strings.Index(usage, "<")
+	if open < 0 {
+		return nil
+	}
+	shut := strings.Index(usage[open:], ">")
+	if shut < 0 {
+		return nil
+	}
+	group := usage[open+1 : open+shut]
+	if !strings.Contains(group, "|") {
+		return nil // a placeholder like <arc-id>, not a verb list
+	}
+	var verbs []string
+	for _, alt := range strings.Split(group, "|") {
+		// "set L0-L4" is a verb plus its argument; the verb is the first word.
+		if verb, _, _ := strings.Cut(strings.TrimSpace(alt), " "); verb != "" {
+			verbs = append(verbs, verb)
+		}
+	}
+	return verbs
 }

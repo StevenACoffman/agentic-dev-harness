@@ -189,6 +189,12 @@ func (cfg *Config) lint(specs []nfr.Spec) error {
 	if bad > 0 {
 		return root.ExitError(lintCode)
 	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"specs": len(specs), "valid": true}); err != nil {
+			return fmt.Errorf("nfr: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d NFR spec(s), all valid\n", len(specs))
 	return nil
 }
