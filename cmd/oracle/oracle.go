@@ -91,6 +91,27 @@ func (cfg *Config) diff(ctx context.Context) error {
 	boards := oraclelib.GenerateBoards(corpusSeed, corpusBoards, corpusRows, corpusCols, corpusHues)
 	div := oraclelib.Diverges(oraclelib.React, oraclelib.Native, boards)
 	rep := oraclelib.Report{Boards: len(boards), Divergent: div}
+	if cfg.JSONL {
+		// Corpus mode answers "do the two engines agree over N generated boards".
+		// The `mode` key exists because command mode answers a different question
+		// under the same verb, and a consumer branching on `boards` must not silently
+		// receive a command-mode result.
+		data := map[string]any{"mode": "corpus", "boards": rep.Boards}
+		if div == nil {
+			if err := cfg.EmitOK(data); err != nil {
+				return fmt.Errorf("oracle: %w", err)
+			}
+			return nil
+		}
+		// The divergent board is the finding. An exit code alone tells an agent that
+		// something disagreed and not on what, which is the whole content.
+		data["divergent_board"] = div
+		if err := cfg.EmitError(oracleGateCode, "oracle-divergence",
+			"the reference and candidate engines disagree"); err != nil {
+			return fmt.Errorf("oracle: %w", err)
+		}
+		return root.ExitError(oracleGateCode)
+	}
 	_, _ = fmt.Fprintln(cfg.Stdout, rep.String())
 	if div != nil {
 		return root.ExitError(oracleGateCode)
@@ -112,6 +133,9 @@ func (cfg *Config) diffCommands(ctx context.Context) error {
 		return err
 	}
 	div := oraclelib.DiffOutputs(refOut, candOut)
+	if cfg.JSONL {
+		return cfg.emitCommandDiff(div)
+	}
 	if div == nil {
 		_, _ = fmt.Fprintln(
 			cfg.Stdout,
@@ -146,13 +170,49 @@ func (cfg *Config) repoDir() string {
 	return "."
 }
 
+// emitCommandDiff reports command-mode diff as an envelope.
+//
+// `mode` distinguishes it from corpus mode, which answers a different question under
+// the same verb. The divergence travels whole -- line, reference, candidate -- because
+// that triple is the finding, and an agent handed only an exit code knows something
+// disagreed and not what.
+func (cfg *Config) emitCommandDiff(div *oraclelib.CommandDivergence) error {
+	if div == nil {
+		if err := cfg.EmitOK(map[string]any{"mode": "command", "divergent": false}); err != nil {
+			return fmt.Errorf("oracle: %w", err)
+		}
+		return nil
+	}
+	if err := cfg.EmitError(oracleGateCode, "oracle-divergence", fmt.Sprintf(
+		"reference and candidate differ at line %d", div.Line)); err != nil {
+		return fmt.Errorf("oracle: %w", err)
+	}
+	return root.ExitError(oracleGateCode)
+}
+
 func (cfg *Config) invariants() error {
 	boards := oraclelib.GenerateBoards(corpusSeed, corpusBoards, corpusRows, corpusCols, corpusHues)
 	for _, board := range boards {
 		if !oraclelib.InvariantsHold(board, oraclelib.Native(board)) {
+			if cfg.JSONL {
+				// The violating board is the answer. A gate that failed is more
+				// interesting than one that passed, so the failing path is the one
+				// that must carry data rather than only an exit code.
+				if err := cfg.EmitError(6, "invariant-violated", fmt.Sprintf(
+					"an invariant does not hold at board %v", board)); err != nil {
+					return fmt.Errorf("oracle: %w", err)
+				}
+				return root.ExitError(6)
+			}
 			_, _ = fmt.Fprintf(cfg.Stderr, "invariant violated at board %v\n", board)
 			return root.ExitError(6)
 		}
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"boards": len(boards), "hold": true}); err != nil {
+			return fmt.Errorf("oracle: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "invariants hold over %d boards\n", len(boards))
 	return nil
@@ -160,8 +220,23 @@ func (cfg *Config) invariants() error {
 
 func (cfg *Config) selfTest() error {
 	if err := oraclelib.SelfTest(corpusSeed); err != nil {
+		if cfg.JSONL {
+			// A failed self-test means the gate cannot be trusted, which is the most
+			// consequential thing this binary can report; it must not arrive as a
+			// bare exit code.
+			if eErr := cfg.EmitError(15, "gate-untrustworthy", err.Error()); eErr != nil {
+				return fmt.Errorf("oracle: %w", eErr)
+			}
+			return root.ExitError(15)
+		}
 		_, _ = fmt.Fprintf(cfg.Stderr, "%s\n", err)
 		return root.ExitError(15)
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"passed": true}); err != nil {
+			return fmt.Errorf("oracle: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, "gate self-test passed: both nets catch the planted defect")
 	return nil

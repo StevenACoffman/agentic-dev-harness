@@ -52,6 +52,14 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		if err != nil {
 			return fmt.Errorf("autonomy: %w", err)
 		}
+		if cfg.JSONL {
+			if err := cfg.EmitOK(map[string]any{
+				"level": conf.AutonomyLevel().String(),
+			}); err != nil {
+				return fmt.Errorf("autonomy: %w", err)
+			}
+			return nil
+		}
 		_, _ = fmt.Fprintln(cfg.Stdout, conf.AutonomyLevel().String())
 		return nil
 	case "set":
