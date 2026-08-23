@@ -1941,8 +1941,33 @@ not.
   envelope in the family is snake_case. Free to fix in the same pass, because before it
   the struct was never serialised — no consumer could be relying on the old shape.
 
-- [ ] **`--jsonl` output is unchecked for *shape*, only for parseability.** The contract
+- [x] **`--jsonl` output is unchecked for *shape*, only for parseability.** The contract
   test asserts stdout parses as JSON; it does not assert that a command's payload keys
   are stable. `metrics` shipped capitalised keys for as long as it shipped JSON at all,
   and nothing would have caught a rename. A golden-file or key-set assertion per command
   is the next increment, and it is worth having before an agent depends on a field name.
+
+## The Payload-Shape Assertion (2026-08-23)
+
+- **The valuable half was not the half the entry asked for.** It asked for key
+  stability; the envelope assertion is broader and catches a likelier failure. Every
+  line must decode into `root.Outcome` with unknown fields refused — because writing
+  `EmitJSONL` with an ad-hoc struct is one line, and a command inventing its own
+  top-level shape is more probable than a deliberate rename.
+- **The maintained list is asserted in both directions**, which is the only thing that
+  makes one survivable. A command producing a payload that nobody recorded fails the
+  suite, so a new machine-readable contract cannot ship unexamined. Third use of this
+  shape after `standards.Unread` and `ruleset`'s marker table.
+- **All three directions were shown to fail before it landed** — a renamed key, a
+  missing map entry, a non-envelope shape. Two of them needed a second attempt because
+  the first edit missed on whitespace and produced a false green, which is the argument
+  for doing this at all: **a test that has only ever passed is not yet a check.**
+- **Keys, not golden files.** Every value is environment-dependent — `arcs: 0` today,
+  `3` on a machine with arcs — so a golden file freezes data rather than contract.
+
+- [ ] **Payloads reachable only with fixture state are unasserted.** The seven commands
+  covered are the seven that answer from an empty tree. `arc show`, `eval`, `proof
+  verify`, `context show` and the rest need a fixture each, and their payloads are the
+  ones an agent is *most* likely to consume — a caller scripting adh reads `eval`'s
+  verdict far more often than `version`'s build metadata. The envelope assertion already
+  covers them; the key sets do not.
