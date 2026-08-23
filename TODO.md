@@ -318,6 +318,13 @@ not an adh component.
       list names packaging, per-claim citations, and freshness. It does not name the type
       substitution, which is the one that will bite, because a `verified` field that is a
       string where the spec says list is the kind of divergence that reads as conformance.
+
+      **The decision, stated so it can be made rather than re-observed:** keeping the tier
+      costs who confirmed it and when, permanently and silently; changing it is a migration
+      for a stored artifact plus a change to `Rank()`'s routing tie-break. The cheap middle
+      — store the events and keep `Rank()` folding over them — is probably right and is
+      still a migration. Nothing forces it today, which is what makes it a decision rather
+      than a defect.
       **Not necessarily a bug:** if adh never exchanges units with an OKF consumer, storing
       the tier is cheaper and `Rank()` is a real need OKF does not serve. The decision to
       make explicitly is **whether `Unit` claims OKF conformance or borrows its
@@ -1539,6 +1546,12 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   happened first**, against an explicit allowlist of actions that do not count. Ordering
   is not a property a prose reply can be trusted to report about itself.
 
+  **Before building it, note adh's case is not gnosis's.** gnosis emits a prompt *for a
+  model*; adh never invokes one, so "scripted model" here means scripting whatever answers
+  the relay — a human or an agent — which is a different fixture with a different seam.
+  Copying gnosis's design across would build the wrong thing. What transfers unchanged is
+  the discipline: assert on what the answerer sent.
+
 - [ ] **No map says what each suite covers that the others do not.** adh runs the
   differential oracle, the invariant checker, and `gate.SelfTest`.
   `superpowers/docs/testing.md` annotates every test with its coverage delta against the
@@ -2012,28 +2025,29 @@ two repositories had been reasoning about in prose.** The other holds it lists a
 skillet's, so a family-wide run belongs in whatever periodically checks the family
 rather than in any one repo's habits.
 
-- [ ] **Eight commands do not honour `--jsonl`.** Recorded as `jsonlDebt` in
-  `cmd/jsonl_contract_test.go` and ratcheted so the set can only shrink: `autonomy show`,
-  `oracle diff|invariants|selftest`, `context lint|index`, `sleep run|status`. Each is a
-  multi-part human report, so the work per command is designing what its payload *is* —
-  `sleep status` alone prints staged proposals, calibration, and common patterns, and
-  the right JSON for that is three keys or three commands, which is a decision.
+- [x] **Eight commands do not honour `--jsonl`.** DONE. `autonomy show`, `oracle
+  diff|invariants|selftest`, `context lint|index`, `sleep run|status` all emit §8
+  envelopes; `jsonlDebt` is empty and stays as the forward ratchet. Two of the eight were
+  not "add a branch": `context lint` printed each defect to stderr as it found it, so it
+  now **collects** `[]harnesscheck.Problem` and both renderings read one slice — the two
+  can no longer disagree about the count, which they could before. `sleep status` split
+  into gather (`stagedProposals`/`calibration`/`commonPatterns`) and render.
+
+  **The pass found a second defect the item did not name, and it is the more useful
+  finding.** `wantPayloadKeys` was keyed by the top-level command behind an
+  `if len(args) == 1` guard, whose comment said a verb's payload needs a fixture. True
+  when written; false the moment these eight learned to answer from an empty tree — and
+  the guard meant the ratchet silently skipped every command this item fixed. Re-keyed by
+  the whole invocation, which surfaced **sixteen** unasserted payloads, not eight: `context
+  check|eval|misses|verify`, `loop tick`, `nfr lint`, `tool doctor` and `worker show` had
+  been emitting unasserted machine contracts all along. All sixteen are now recorded.
+
+  Method note worth keeping: **a guard justified by a true premise becomes a silent hole
+  when the premise moves, and nothing fails to announce it.** This is the same shape as
+  the stale-premise entries found five times this month, except the stale premise was
+  load-bearing in a *test* — so the suite stayed green while covering less than it read as
+  covering. Verified by hand: all sixteen payloads printed and inspected.
 - [ ] **Fixture-dependent payloads are still unasserted.** `arc show`, `eval`, `proof
   verify` and the rest need state to reach. The verb sweep covered what answers from an
   empty tree; these need one arc fixture, and it is worth doing once the eight above are
   paid so the table is not asserting a contract half the surface does not keep.
-- [ ] **`Unit.Verified` — decide whether adh wants the evidence or the conclusion.**
-  Not built, and stating the shape of the decision is the point: OKF §5.2 stores
-  verification *events* (`{by, at}`) and derives the tier; adh stores the tier. Keeping
-  the tier costs *who confirmed it and when*, permanently and silently. Changing it is a
-  migration for a stored artifact plus a change to `Rank()`'s routing tie-break. **The
-  cheap middle — store the events and keep `Rank()` folding over them — is probably
-  right and is still a migration.** Nothing forces it today, which is why it is a
-  decision rather than a defect.
-- [ ] **The relay test: adh's case is not gnosis's, and that is worth knowing first.**
-  gnosis §18.6 enumerates three methods because gnosis *emits a prompt for a model*.
-  adh never invokes a model at all — the relay is a human or an agent, and "scripted
-  model" here means scripting whatever answers the relay, which is a different fixture
-  with a different seam. Copying gnosis's design across would build the wrong thing.
-  What transfers unchanged is the discipline: **assert on what the answerer sent**, not
-  only on what it received, or the fixture is a playback.
