@@ -143,6 +143,23 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 
 // list prints each unit's id, kind, and labels.
 func (cfg *Config) list(units []contextstore.Unit) error {
+	if cfg.JSONL {
+		// One line per unit, and it carries the derived freshness: a caller choosing
+		// between units needs to know which ones the integrity log has condemned, and
+		// that is not readable from the authored tier alone.
+		for i := range units {
+			if err := cfg.EmitOK(map[string]any{
+				"id":        units[i].ID,
+				"kind":      units[i].Kind,
+				"labels":    units[i].Labels,
+				"verified":  units[i].Verified,
+				"freshness": units[i].Fresh,
+			}); err != nil {
+				return fmt.Errorf("context: %w", err)
+			}
+		}
+		return nil
+	}
 	for i := range units {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\n",
 			units[i].ID, units[i].Kind, strings.Join(units[i].Labels, ","))

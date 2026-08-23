@@ -70,6 +70,20 @@ func (cfg *Config) status(repo *vcs.Git) error {
 	if err != nil {
 		return fmt.Errorf("vcs: %w", err)
 	}
+	if cfg.JSONL {
+		// Changed is normalised to empty so "clean tree" reads as a list rather than
+		// null; a consumer should not distinguish absent from empty to learn it.
+		changed := state.Changed
+		if changed == nil {
+			changed = []string{}
+		}
+		if err := cfg.EmitOK(map[string]any{
+			"branch": state.Branch, "clean": state.Clean, "changed": changed,
+		}); err != nil {
+			return fmt.Errorf("vcs: %w", err)
+		}
+		return nil
+	}
 	tree := "clean"
 	if !state.Clean {
 		tree = "dirty"

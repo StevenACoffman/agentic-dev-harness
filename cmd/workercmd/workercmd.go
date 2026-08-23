@@ -92,6 +92,14 @@ func (cfg *Config) requalify() error {
 	if err := workerlib.Save(workerlib.DefaultStateFile, epoch); err != nil {
 		return fmt.Errorf("worker: %w", err)
 	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"epoch": epoch.ID, "roles": len(epoch.Models),
+		}); err != nil {
+			return fmt.Errorf("worker: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(
 		cfg.Stdout,
 		"requalified: epoch %s (%d roles)\n",

@@ -102,6 +102,16 @@ func (cfg *Config) list(reg looplib.Registry) error {
 	if err := reg.Validate(); err != nil {
 		return fmt.Errorf("loop: %w", err)
 	}
+	if cfg.JSONL {
+		for i := range reg.Loops {
+			if err := cfg.EmitOK(map[string]any{
+				"id": reg.Loops[i].ID, "goal": reg.Loops[i].Goal,
+			}); err != nil {
+				return fmt.Errorf("loop: %w", err)
+			}
+		}
+		return nil
+	}
 	for i := range reg.Loops {
 		l := &reg.Loops[i]
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\n", l.ID, l.Goal)
