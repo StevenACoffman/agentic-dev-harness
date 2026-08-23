@@ -169,3 +169,72 @@ func TestEvaluateFindsCRLFFrontmatter(t *testing.T) {
 		t.Errorf("a CRLF header was scored as body; factor = %v", f)
 	}
 }
+
+// scoreFor returns the deterministic reason string for one dimension.
+func scoreFor(t *testing.T, key, body string) (float64, string) {
+	t.Helper()
+	for _, d := range rubric.Evaluate(body).Dims {
+		if d.Key == key {
+			return d.Deterministic, d.Reason
+		}
+	}
+	t.Fatalf("no %s dimension in the result", key)
+	return 0, ""
+}
+
+// TestTheBoundaryDimensionSkipsAnArtifactItCannotJudge. skilllens states the exposure
+// and it is not symmetric: for a skill whose failure is "the output has the wrong
+// shape", a prohibition list is the form its own head-to-head reports as worse than no
+// guidance at all — so docking its absence recommends the change that harms the skill.
+//
+// The detectors were validated on the discipline skill, whose failure is skipping a
+// rule under pressure, and a document that executes nothing has no rule under pressure.
+func TestTheBoundaryDimensionSkipsAnArtifactItCannotJudge(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body string
+		want float64
+	}{
+		"executes nothing, no boundary": {
+			"# Notes\n\nProse about when to prefer one approach.\n", 1.0,
+		},
+		"executes commands, no boundary": {
+			"# Guide\n\n```sh\nmake verify\n```\n\nRun it.\n", 0.0,
+		},
+		"executes commands, has a boundary": {
+			"# Guide\n\n```sh\nmake verify\n```\n\n## Boundary\n\nNot outside the loop.\n", 1.0,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, reason := scoreFor(t, rubric.KeyBoundary, tc.body)
+			if got != tc.want {
+				t.Errorf("score = %.1f, want %.1f (%s)", got, tc.want, reason)
+			}
+			// The reason has to say *which* of the two 1.0 cases it is, or a reader
+			// cannot tell a passing artifact from an unjudged one.
+			if tc.want == 1.0 && got == 1.0 && !strings.Contains(reason, "boundary") {
+				t.Errorf("the reason does not mention the dimension: %q", reason)
+			}
+		})
+	}
+}
+
+// TestTheDeterministicGraderIsSilentOnAProseDocument is the property the grader
+// self-test's failure exposed, pinned so it reads as a decision rather than a gap.
+//
+// Both deterministic dimensions are inapplicable to an artifact that executes nothing,
+// so for such a document they say nothing and the score must come from the judge
+// dimensions. Before the boundary check existed, the only thing separating two prose
+// documents was the deduction skilllens calls harmful.
+func TestTheDeterministicGraderIsSilentOnAProseDocument(t *testing.T) {
+	t.Parallel()
+	rich := "# Guide\n\n## Failures\n\nIf it fails, roll back.\n\n## Boundary\n\nNot here.\n"
+	bare := "# Guide\n\nProse only.\n"
+
+	if a, b := rubric.Evaluate(rich).DetScore, rubric.Evaluate(bare).DetScore; a != b {
+		t.Errorf("deterministic scores differ for two non-executing documents: %.2f vs %.2f;"+
+			" the deterministic dimensions are not valid for either", a, b)
+	}
+}

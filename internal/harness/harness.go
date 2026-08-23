@@ -139,14 +139,30 @@ func CalibrateJudge(cases []JudgeCase) (Calibration, error) {
 
 // GraderSelfTest calibrates the grader (§18.2): a toothless gate is caught by
 // SelfTest, but a *blind grader* — one that cannot tell a strong artifact from a
-// weak one — makes the ratchet measure noise. It scores a known-strong artifact
-// (a Failures branch and a Boundary section) and a known-weak one (plain prose)
-// through the rubric and returns EINTERNAL unless the strong scores strictly
-// higher — proof the deterministic grader discriminates before the loop trusts it.
+// weak one — makes the ratchet measure noise. It scores a known-strong artifact and a
+// known-weak one through the rubric and returns EINTERNAL unless the strong scores
+// strictly higher — proof the deterministic grader discriminates before the loop
+// trusts it.
+//
+// **Both fixtures run a command, and that is load-bearing.** The deterministic
+// dimensions are failure-handling and boundary, and both are inapplicable to an
+// artifact that executes nothing: a document with no runtime has no failure to encode
+// and no rule-under-pressure to constrain. Scoring one is a category error the rubric
+// now declines to make.
+//
+// The earlier fixtures were plain prose, and they discriminated only because the
+// boundary dimension docked the weak one for lacking a prohibition list — the exact
+// deduction skilllens describes as harmful for artifacts of that shape. So the
+// self-test passed for the wrong reason, calibrating the grader on inputs it is not
+// valid for, and it failed the moment the rubric stopped making that mistake. That is
+// the self-test doing its job in the direction that is easy to miss: it caught a
+// correct change, and reading why is what showed the fixtures were wrong.
 func GraderSelfTest() error {
-	const strong = "# Guide\n\n## Failures\n\nIf the check fails, roll back.\n\n" +
-		"## Boundary\n\nDo not use this outside the arc loop.\n"
-	const weak = "# Guide\n\nThis document explains the general approach in prose.\n"
+	const strong = "# Guide\n\n```sh\nmake verify\n```\n\n## Failures\n\n" +
+		"If the check fails, roll back.\n\n## Boundary\n\n" +
+		"Do not use this outside the arc loop.\n"
+	const weak = "# Guide\n\n```sh\nmake verify\n```\n\n" +
+		"This document explains the general approach in prose.\n"
 	strongScore := rubric.Evaluate(strong).DetScore
 	weakScore := rubric.Evaluate(weak).DetScore
 	if strongScore <= weakScore {
