@@ -10,6 +10,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/proof"
 )
 
@@ -36,6 +37,11 @@ type Grounding struct {
 	// built. Carried here so the assertion reaches the renderer without a policy
 	// argument threaded through Emit and Request.
 	Denied []adh.CriticInput
+
+	// PriorGaps is what the previous critic declared it did not examine (§19.2), so
+	// this one can start where that one stopped. See Inputs.PriorGaps for why this
+	// does not contaminate a cold review.
+	PriorGaps []finding.Unexamined
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -56,6 +62,16 @@ type Inputs struct {
 	// alternative is a sixth parameter on Request and a seventh on Emit, threaded
 	// through two packages to reach one assertion.
 	Denied []adh.CriticInput
+
+	// PriorGaps is what the previous critic declared it did not examine (§19.2).
+	//
+	// **This is the one input the cold split lets through, and the exception is
+	// deliberate.** §19.1 withholds exactly one thing, the builder's transcript, and
+	// that is what makes the critic cold. A previous critic's *coverage* is neither
+	// the builder's reasoning nor a conclusion about the change — it is a record of
+	// angles already taken, so feeding it forward steers a fresh critic toward
+	// unexamined ground. That is the opposite of the contamination the split prevents.
+	PriorGaps []finding.Unexamined
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -77,6 +93,7 @@ func Ground(
 		Coverage:      in.Coverage,
 		Noisy:         in.Noisy,
 		Denied:        in.Denied,
+		PriorGaps:     in.PriorGaps,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts

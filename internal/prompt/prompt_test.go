@@ -11,6 +11,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/proof"
 )
 
@@ -299,5 +300,62 @@ func TestDenyIsEnforced(t *testing.T) {
 			_, rErr := r.Render(arc, &critic.Grounding{Diff: "d", Denied: tc.denied})
 			wantRenderError(t, rErr, tc.says)
 		})
+	}
+}
+
+// TestThePriorRunsGapsReachTheCritic. §19.1 withholds exactly one input, the builder's
+// transcript, and a previous critic's coverage is neither the builder's reasoning nor a
+// conclusion — it is a record of angles already taken, so feeding it forward steers a
+// fresh critic toward unexamined ground rather than contaminating it.
+func TestThePriorRunsGapsReachTheCritic(t *testing.T) {
+	t.Parallel()
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	arc := &adh.Arc{
+		ID: "a1", Title: "t", Stage: adh.StageCritic, Resolution: adh.ResolutionChange,
+	}
+	got, err := r.Render(arc, &critic.Grounding{
+		Diff: "d",
+		PriorGaps: []finding.Unexamined{
+			{Aspect: "concurrency", Reason: "no repro harness"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"concurrency", "no repro harness"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt omits %q:\n%s", want, got)
+		}
+	}
+	// The wording has to say these are not the scope. Offering last run's gaps
+	// invites a critic to treat them as a checklist and examine only those.
+	if !strings.Contains(got, "not the scope of this one") {
+		t.Errorf("the prompt does not warn against reading the gaps as a checklist:\n%s", got)
+	}
+}
+
+// TestTheCriticIsToldItMayDeclareAGap. Without this the parser is a reader with no
+// writer: nothing would ever populate `unexamined`, and the field would be the same
+// dead knob Critic.Deny was.
+func TestTheCriticIsToldItMayDeclareAGap(t *testing.T) {
+	t.Parallel()
+	r, err := prompt.New()
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	arc := &adh.Arc{
+		ID: "a1", Title: "t", Stage: adh.StageCritic, Resolution: adh.ResolutionChange,
+	}
+	got, err := r.Render(arc, &critic.Grounding{Diff: "d"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{`"unexamined"`, "aspect", "reason", "never blocks"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the critic prompt omits %q:\n%s", want, got)
+		}
 	}
 }

@@ -15,7 +15,12 @@ warrants it: {{range $i, $k := .Coverage}}{{if $i}}, {{end}}{{$k}}{{end}}
 {{end}}{{if .Noisy}}
 These check kinds have frequently not reproduced under adjudication — hold them to a
 higher bar and flag them only with strong evidence: {{range $i, $k := .Noisy}}{{if $i}}, {{end}}{{$k}}{{end}}
-{{end}}{{if not .HasGrounding}}
+{{end}}{{if .PriorGaps}}
+The previous review of this arc declared it did not examine the following. These are
+angles that review left open, not the scope of this one — cover what the change
+warrants and treat these as the first places nobody has looked:
+{{range .PriorGaps}}- {{.Aspect}} ({{.Reason}})
+{{end}}{{end}}{{if not .HasGrounding}}
 No repository grounding was routed for this review.
 {{end}}{{else}}
 No repository grounding was routed for this review.
@@ -27,3 +32,15 @@ Ground each finding in a named repository artifact; do not invent a requirement
 the repository does not hold. Class each finding fixable (a bounded edit resolves
 it) or structural (it needs a design change); a confirmed structural finding
 escalates to a human rather than looping through rework.
+
+Reply with a JSON object:
+
+    {"findings": [{"summary": "...", "kind": "oracle|invariant|device|nfr|contract",
+                   "class": "fixable|structural", "ref": "the artifact that confirms it"}],
+     "unexamined": [{"aspect": "what you did not look at", "reason": "why not"}]}
+
+Both lists may be empty. `unexamined` is how you say you did not look, which is a
+different answer from finding nothing — an empty `findings` list alone cannot tell the
+two apart, and the arc advances on that silence. Declaring a gap never blocks the arc
+and is never held against the review; leaving one undeclared is what costs the next
+reviewer. State the reason: an aspect with no why records nothing.
