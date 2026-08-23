@@ -30,6 +30,20 @@ type Adjudicated struct {
 	Finding adh.Finding
 	Ran     bool
 	Failed  bool
+
+	// Unrunnable says why the artifact did not run, and is meaningful only when Ran
+	// is false.
+	//
+	// §19.2 records that an unchecked finding does not block, on the reasoning that
+	// Ran:false covers both *the registered tool is broken* — an honest refusal worth
+	// acting on — and *the critic named a tool that never existed*, which is noise,
+	// and that blocking on the second would let one bad critic wedge every arc.
+	//
+	// **The adjudicator already knows which**, and threw the answer away one call up:
+	// runDeclaredTool's `found` distinguishes them. Carrying it does not change the
+	// blocking rule — that decision stands — it makes the decision revisitable on
+	// evidence rather than on the guess that the two are inseparable.
+	Unrunnable adh.Unrunnable
 }
 
 // Verdict is the disposition of a critic's findings after adjudication (§19.2).
@@ -61,6 +75,16 @@ type Verdict struct {
 	// ReturnsToExecution. It is also not a lesson candidate: a lesson is drawn from a
 	// finding that was checked and did not reproduce, and this one was not checked.
 	Unchecked []adh.Finding
+
+	// Refused is the subset of Unchecked whose artifact was a **registered** tool
+	// that could not start, as opposed to a finding naming nothing or naming a tool
+	// the repository never declared.
+	//
+	// The distinction is §19.2's stated blocker: the decision not to block on an
+	// unchecked finding rests on the two being inseparable, and they are not. Kept as
+	// a subset rather than a fourth bucket so the partition above stays a partition —
+	// every finding is still in exactly one of the three.
+	Refused []adh.Finding
 }
 
 // ParseFindings decodes a critic turn's reply (§19.2): the findings it raises and the
@@ -129,7 +153,8 @@ func ParseFindings(reply string) ([]adh.Finding, []finding.Unexamined, error) {
 //
 // Requires: nothing; an empty result set is a clean review.
 // Ensures: the three buckets partition results — every finding lands in exactly one —
-// and order within each is the order adjudicated. Pure; the caller runs the artifacts
+// and order within each is the order adjudicated. Refused is a subset of Unchecked and
+// is not part of the partition. Pure; the caller runs the artifacts
 // and records the effects.
 //
 // The artifact not running is tested first because it is the only case where Failed
@@ -143,6 +168,9 @@ func Dispose(results []Adjudicated) Verdict {
 		switch {
 		case !r.Ran:
 			v.Unchecked = append(v.Unchecked, r.Finding)
+			if r.Unrunnable.Trustworthy() {
+				v.Refused = append(v.Refused, r.Finding)
+			}
 		case r.Failed:
 			v.Confirmed = append(v.Confirmed, r.Finding)
 		default:
@@ -234,6 +262,13 @@ func (v *Verdict) LessonNotes() []string { return notesFor(v.Unconfirmed) }
 // report them. Same shape as the other two, because a reader comparing the three lists
 // should not have to notice a formatting difference.
 func (v *Verdict) UncheckedNotes() []string { return notesFor(v.Unchecked) }
+
+// RefusedNotes renders the findings a registered tool refused to check.
+//
+// Separate from UncheckedNotes because the two ask different things of a reader: a
+// finding naming nothing is the critic's problem, and a registered tool that will not
+// start is the environment's.
+func (v *Verdict) RefusedNotes() []string { return notesFor(v.Refused) }
 
 func notesFor(findings []adh.Finding) []string {
 	if len(findings) == 0 {

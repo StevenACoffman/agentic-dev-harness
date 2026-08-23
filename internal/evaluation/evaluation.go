@@ -206,11 +206,11 @@ func Adjudicate(
 	results := make([]critic.Adjudicated, 0, len(findings))
 	for i := range findings {
 		finding := findings[i]
-		ran, failed, err := adjudicator.Adjudicate(ctx, finding)
+		res, err := adjudicateOne(ctx, adjudicator, finding)
 		if err != nil {
 			return critic.Verdict{}, fmt.Errorf("adjudicating %s finding: %w", finding.Kind, err)
 		}
-		results = append(results, critic.Adjudicated{Finding: finding, Ran: ran, Failed: failed})
+		results = append(results, res)
 	}
 	return critic.Dispose(results), nil
 }
@@ -332,31 +332,87 @@ func (a *RepoAdjudicator) Adjudicate(
 	ctx context.Context,
 	finding adh.Finding,
 ) (ran, failed bool, err error) {
+	res, err := a.adjudicate(ctx, finding)
+	return res.Ran, res.Failed, err
+}
+
+// AdjudicateWhy is Adjudicate, and also says why an artifact did not run (§19.2).
+//
+// Requires: nothing.
+// Ensures: Unrunnable is meaningful only when Ran is false, and is
+// UnrunnableToolFailed only for a **registered** tool that could not start — the one
+// case that is evidence about the repository rather than about the finding.
+//
+// A second method rather than a widened Adjudicate, because Adjudicator is an
+// interface with test implementations and this reason is the RepoAdjudicator's to
+// know: a mock has no registry to have missed.
+func (a *RepoAdjudicator) AdjudicateWhy(
+	ctx context.Context,
+	finding adh.Finding,
+) (critic.Adjudicated, error) {
+	res, err := a.adjudicate(ctx, finding)
+	res.Finding = finding
+	return res, err
+}
+
+func (a *RepoAdjudicator) adjudicate(
+	ctx context.Context,
+	finding adh.Finding,
+) (critic.Adjudicated, error) {
 	switch finding.Kind {
 	case adh.FindingOracle:
-		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
-			return ran, failed, nil
+		if res, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return res, nil
 		}
-		return true, a.builtinOracle(), nil // the built-in oracle always runs
+		// The built-in always runs, so a ref that named nothing declared is not an
+		// unrunnable outcome here — it is a check that happened anyway.
+		return critic.Adjudicated{Ran: true, Failed: a.builtinOracle()}, nil
 	case adh.FindingInvariant:
-		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
-			return ran, failed, nil
+		if res, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return res, nil
 		}
-		return true, a.builtinInvariant(), nil // the built-in invariant check always runs
+		return critic.Adjudicated{Ran: true, Failed: a.builtinInvariant()}, nil
 	case adh.FindingDevice:
-		if ran, failed, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
-			return ran, failed, nil
+		if res, ok := a.runDeclaredTool(ctx, finding.Ref); ok {
+			return res, nil
 		}
-		return a.builtinDevice(ctx)
+		ran, failed, err := a.builtinDevice(ctx)
+		return critic.Adjudicated{Ran: ran, Failed: failed}, err
 	case adh.FindingContract:
-		ran, failed = a.adjudicateContract(finding.Ref)
-		return ran, failed, nil
+		return a.adjudicateContract(finding.Ref), nil
 	case adh.FindingNFR:
-		ran, failed = a.adjudicateNFR(ctx, finding.Ref)
-		return ran, failed, nil
+		return a.adjudicateNFR(ctx, finding.Ref), nil
 	default:
-		return false, false, nil
+		// ParseFindings validates Kind, so this is unreachable from a relayed reply;
+		// a caller constructing a finding in Go can still get here.
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableUnknownRef}, nil
 	}
+}
+
+// adjudicateOne asks the adjudicator for a result, taking the reason an artifact did
+// not run when the adjudicator can supply one.
+//
+// The type switch is the seam between an interface with test implementations and the
+// one implementation that has a registry to have missed. A mock cannot say *why* a
+// tool was unrunnable because it has no tools; widening the interface would make every
+// implementation answer a question only one of them can.
+func adjudicateOne(
+	ctx context.Context, adjudicator Adjudicator, finding adh.Finding,
+) (critic.Adjudicated, error) {
+	if why, ok := adjudicator.(interface {
+		AdjudicateWhy(context.Context, adh.Finding) (critic.Adjudicated, error)
+	}); ok {
+		res, err := why.AdjudicateWhy(ctx, finding)
+		if err != nil {
+			return critic.Adjudicated{}, fmt.Errorf("adjudicate %s: %w", finding.Kind, err)
+		}
+		return res, nil
+	}
+	ran, failed, err := adjudicator.Adjudicate(ctx, finding)
+	if err != nil {
+		return critic.Adjudicated{}, fmt.Errorf("adjudicate %s: %w", finding.Kind, err)
+	}
+	return critic.Adjudicated{Finding: finding, Ran: ran, Failed: failed}, nil
 }
 
 // builtinOracle runs adh's in-package differential oracle — the React/Native pair
@@ -398,18 +454,27 @@ func (a *RepoAdjudicator) builtinDevice(ctx context.Context) (ran, failed bool, 
 // runner is wired, or ref names no declared tool, so the caller falls back to adh's
 // built-in check for that kind. A declared tool that cannot start is ran=false
 // (unconfirmed), the same as any unrunnable artifact — never a false confirmation.
-func (a *RepoAdjudicator) runDeclaredTool(ctx context.Context, ref string) (ran, failed, ok bool) {
+func (a *RepoAdjudicator) runDeclaredTool(
+	ctx context.Context, ref string,
+) (critic.Adjudicated, bool) {
 	if ref == "" || a.runner == nil {
-		return false, false, false
+		return critic.Adjudicated{}, false
 	}
 	tool, found := a.checks.FindByID(ref)
 	if !found {
-		return false, false, false
+		return critic.Adjudicated{}, false
 	}
 	start := time.Now()
 	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
 	a.logRun(tool.ID, ranCheck, ranCheck && !passed, time.Since(start))
-	return ranCheck, ranCheck && !passed, true
+	// A registered tool that could not start is the trustworthy refusal: the
+	// repository declared this check and the environment cannot perform it, which is
+	// evidence about the repository rather than about the finding that named it.
+	res := critic.Adjudicated{Ran: ranCheck, Failed: ranCheck && !passed}
+	if !ranCheck {
+		res.Unrunnable = adh.UnrunnableToolFailed
+	}
+	return res, true
 }
 
 // logRun records a declared-tool adjudication run to the tool-run log (§16/§18) when
@@ -432,9 +497,9 @@ func (a *RepoAdjudicator) logRun(id string, ran, failed bool, took time.Duration
 // registry does not declare, or has no runner wired is unrunnable — an invented
 // requirement the repository does not hold, which the gate drops as unconfirmed. A
 // declared check that exits non-zero confirms the finding.
-func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, failed bool) {
+func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) critic.Adjudicated {
 	if ref == "" || a.runner == nil {
-		return false, false
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableNoRef}
 	}
 	// A ref that names a Planguage spec gates on the declarative Fail threshold: run
 	// the spec's Meter tool, measure, and confirm when the value breaches Fail (§10.5)
@@ -443,39 +508,52 @@ func (a *RepoAdjudicator) adjudicateNFR(ctx context.Context, ref string) (ran, f
 	if spec, ok := nfr.ByID(a.specs, ref); ok {
 		return a.adjudicateSpec(ctx, &spec)
 	}
-	ran, failed, _ = a.runDeclaredTool(ctx, ref)
-	return ran, failed
+	res, ok := a.runDeclaredTool(ctx, ref)
+	if !ok {
+		// Unlike the oracle kinds there is no built-in fallback here, so a ref naming
+		// nothing declared ends the adjudication rather than being run anyway.
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableUnknownRef}
+	}
+	return res
 }
 
 // adjudicateSpec measures a Planguage spec's Meter and confirms the finding when the
 // measured value breaches the spec's Fail bar (§10.5, §19.2). A spec whose Meter is
 // not a declared §13 tool, or whose tool emits no parseable measurement, is
 // unrunnable (unconfirmed) — the gate drops a requirement it cannot measure.
-func (a *RepoAdjudicator) adjudicateSpec(ctx context.Context, spec *nfr.Spec) (ran, failed bool) {
+func (a *RepoAdjudicator) adjudicateSpec(ctx context.Context, spec *nfr.Spec) critic.Adjudicated {
 	tool, ok := a.checks.FindByID(spec.Meter)
 	if !ok {
-		return false, false
+		// The spec names a meter the registry does not declare. That is the
+		// repository's own requirement pointing at a tool it did not provide, so it
+		// is closer to a broken declaration than to a critic's invention — but the
+		// tool was never registered, so it cannot be the tool-failed refusal either.
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableUnknownRef}
 	}
 	value, measured := a.runner.Measure(ctx, tool.Run, a.repoRoot())
 	if !measured {
-		return false, false
+		// A registered meter that produced no measurement: the same refusal a
+		// registered tool that could not start is.
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableToolFailed}
 	}
-	return true, !spec.Meets(value)
+	return critic.Adjudicated{Ran: true, Failed: !spec.Meets(value)}
 }
 
 // adjudicateContract verifies the proof manifest a contract finding names. A
 // finding that names no manifest is unrunnable; a manifest that is missing,
 // unreadable, or fails verification confirms the finding (the named proof does not
 // hold).
-func (a *RepoAdjudicator) adjudicateContract(ref string) (ran, failed bool) {
+func (a *RepoAdjudicator) adjudicateContract(ref string) critic.Adjudicated {
 	if ref == "" {
-		return false, false // unrunnable → unconfirmed
+		// The critic asserted a contract violation and named no packet. Noise rather
+		// than a refusal: there was never anything to run.
+		return critic.Adjudicated{Unrunnable: adh.UnrunnableNoRef}
 	}
 	pkt, err := proof.Load(ref)
 	if err != nil {
-		return true, true // named proof missing or unreadable = failed
+		return critic.Adjudicated{Ran: true, Failed: true} // named proof missing = failed
 	}
-	return true, proof.Verify(a.repoRoot(), &pkt) != nil
+	return critic.Adjudicated{Ran: true, Failed: proof.Verify(a.repoRoot(), &pkt) != nil}
 }
 
 // repoRoot is the directory the checks run in, defaulting to the current directory

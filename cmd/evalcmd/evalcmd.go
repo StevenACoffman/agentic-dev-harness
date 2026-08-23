@@ -52,8 +52,13 @@ type result struct {
 	// beside Unconfirmed rather than added to it: an agent branching on a clean
 	// review needs to know the review was incomplete, and the two used to be one
 	// number (§19.2).
-	Unchecked int    `json:"unchecked"`
-	Stage     string `json:"stage"`
+	Unchecked int `json:"unchecked"`
+
+	// Refused is the subset of Unchecked whose artifact was a registered tool that
+	// would not start (§19.2). Carried so an agent can tell a broken environment from
+	// a critic naming artifacts that do not exist.
+	Refused int    `json:"refused"`
+	Stage   string `json:"stage"`
 }
 
 // New creates and registers the eval command with the given parent config.
@@ -157,6 +162,7 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 			Arc:         arc.ID,
 			Unconfirmed: len(verdict.Unconfirmed),
 			Unchecked:   len(verdict.Unchecked),
+			Refused:     len(verdict.Refused),
 			Stage:       string(arc.Stage),
 		}); err != nil {
 			return fmt.Errorf("eval: %w", err)
@@ -174,6 +180,15 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 		_, _ = fmt.Fprintf(cfg.Stderr,
 			"eval: %d finding(s) could not be checked; their artifacts did not run: %s\n",
 			n, strings.Join(verdict.UncheckedNotes(), "; "))
+	}
+	// Named separately because it asks something different of the reader: a finding
+	// that named nothing is the critic's problem, and a registered tool that will not
+	// start is the environment's — and only the second is evidence the repository
+	// declared a check it cannot currently perform.
+	if n := len(verdict.Refused); n > 0 {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: %d of those named a registered tool that would not start: %s\n",
+			n, strings.Join(verdict.RefusedNotes(), "; "))
 	}
 	return nil
 }

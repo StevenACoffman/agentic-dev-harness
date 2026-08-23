@@ -315,3 +315,50 @@ func TestClearingFindingsClearsGaps(t *testing.T) {
 		}
 	}
 }
+
+// TestARegisteredToolThatWillNotStartIsARefusal. §19.2 defers the decision to block on
+// an unchecked finding because Ran:false covers both a broken tool and a critic naming
+// one that never existed. The adjudicator already knows which and used to throw the
+// answer away; this is that answer surviving to the verdict.
+func TestARegisteredToolThatWillNotStartIsARefusal(t *testing.T) {
+	t.Parallel()
+	f := func(s string) adh.Finding {
+		return adh.Finding{Summary: s, Kind: adh.FindingOracle}
+	}
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: f("registered but broken"), Unrunnable: adh.UnrunnableToolFailed},
+		{Finding: f("named nothing"), Unrunnable: adh.UnrunnableNoRef},
+		{Finding: f("named a phantom"), Unrunnable: adh.UnrunnableUnknownRef},
+		{Finding: f("ran and passed"), Ran: true},
+	})
+
+	// All three unrunnable findings stay in Unchecked: the partition is unchanged and
+	// the blocking rule is unchanged with it.
+	if len(v.Unchecked) != 3 {
+		t.Fatalf("unchecked = %d, want 3", len(v.Unchecked))
+	}
+	if v.ReturnsToExecution() {
+		t.Error("a refusal blocked the arc; §19.2's decision was supposed to stand")
+	}
+	// Only the registered-but-broken one is a refusal.
+	if got := v.RefusedNotes(); len(got) != 1 ||
+		!strings.Contains(got[0], "registered but broken") {
+		t.Errorf("refused = %v, want only the registered tool that could not start", got)
+	}
+}
+
+// TestTheZeroUnrunnableIsNotARefusal. An Adjudicated nobody populated must not claim
+// the repository refused anything — the direction a mistake should fail in.
+func TestTheZeroUnrunnableIsNotARefusal(t *testing.T) {
+	t.Parallel()
+	var u adh.Unrunnable
+	if u.Trustworthy() {
+		t.Error("the zero Unrunnable reads as a trustworthy refusal")
+	}
+	v := critic.Dispose([]critic.Adjudicated{
+		{Finding: adh.Finding{Summary: "s", Kind: adh.FindingOracle}},
+	})
+	if len(v.Refused) != 0 {
+		t.Errorf("an unpopulated reason produced a refusal: %v", v.Refused)
+	}
+}
