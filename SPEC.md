@@ -388,3 +388,43 @@ ______________________________________________________________________
   oracle or invariant test can decide correctness instead.
 - It does not remove human authority over irreversible actions at any autonomy
   level.
+
+### 9.1 Named Refusals
+
+The three above are the harness's shape. What follows are decisions **not** to build
+something specific, each recorded with the alternative that was considered, so an
+absence reads as a decision rather than as an omission. The list exists because two
+commissioned reviews re-proposed things this project had already declined, and an
+unwritten refusal cannot be cited.
+
+- **An unchecked finding does not block the arc** (§19.2). `vac-gate`'s rule — *"'cannot
+  regrade' is not 'regraded'"* — argues the honest refusal should fail the gate, and it
+  is right wherever the refusal is trustworthy. adh now distinguishes a registered tool
+  that would not start from a critic naming an artifact that never existed, so the
+  distinction exists; whether an arc may be *wedged* by the first is a separate call and
+  has not been made.
+- **adh does not filter a critic's grounding** (§19.4). `[critic] deny` accepts only
+  `transcript`, the one input the renderer withholds structurally. Accepting a name it
+  cannot honour would be a decoration that reads as a control, which is what the field
+  was before it was enforced.
+- **An ungrounded critic is allowed** (§19.1). Refusing an arc with no declared
+  footprint, or a repository with no context store, would make adh unusable before a
+  store exists. It is reported, not refused.
+- **A guard is a property of the repository, not of an arc** (§10.5). A per-arc guard
+  list would be more expressive and would let the author of a change choose which
+  guards apply to it. Both of the failures that motivated guards were a loop editing
+  its own criteria, so the expressiveness is the hazard.
+- **A moved acceptance bar is reported, not blocked** (§19.2). A bar sometimes moves
+  for a good reason; refusing the legitimate case would make the check a wall and
+  teach people to route around it. What ends is the bar moving *deniably*.
+- **No peer-agent coordination layer.** Its own source reports coordination paying off
+  at three or more concurrent agents; adh drives one arc at a time.
+- **No multi-model synthesis.** Cross-model verification needs a model-invocation seam
+  adh deliberately does not have — the relay is the seam, and a human or an agent is on
+  the other side of it.
+- **No reporting or dashboard surface.** The signal a session-mining loop produces is
+  worth having and is recorded elsewhere; delivering it is not adh's job.
+
+A refusal here is not permanent. Each names what would have to change, and the point of
+writing it down is that the next person to propose one of these starts from the
+argument rather than from the beginning.

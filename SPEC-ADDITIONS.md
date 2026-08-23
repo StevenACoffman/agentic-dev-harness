@@ -685,6 +685,43 @@ alone, which the prompt states plainly; this is not exit 12. `adh init`
 scaffolds a starter store so grounding is on by default, and Execution labels an
 arc by the areas it touched (§SPEC 5.4) so its context routes.
 
+**An ungrounded review is reported at emit.** The two non-gap cases above — an arc
+that declared no footprint, and a repository with no store — are allowed on purpose,
+and refusing them would make adh unusable before a context store exists. What is not
+acceptable is that they were *silent*: a review grounded in six routed units and one
+grounded in nothing reached Ops as the same artifact. The note is emitted with the
+prompt rather than at Evaluation, because that is when it is actionable — whoever is
+about to answer can still declare a label or add a unit.
+
+#### 19.1.1 The One Exception, and Why It Is Not a Leak
+
+Cold review withholds exactly one input, and that sentence has to stay exactly true to
+be worth anything. There is now one thing it deliberately lets through, and recording
+it here is what keeps a future reader from finding it in the code and reading it as a
+leak.
+
+**A critic is offered the previous review's declared gaps** (§19.2's `unexamined`):
+what the last critic said it did not look at, and why.
+
+It is not the builder's reasoning and it is not a conclusion about the change. It is a
+record of *angles already taken* — coverage, not content — so feeding it forward steers
+a fresh critic toward unexamined ground. That is the opposite of the contamination the
+cold split prevents, which is a critic inheriting the builder's account of what it
+already tried and why the code is the way it is.
+
+Two properties keep the exception narrow:
+
+- **It carries no verdict.** A gap says an aspect was not examined; it never says what
+  a previous critic concluded, and a critic that declared a *finding* passes nothing
+  forward. Coverage travels; judgment does not.
+- **It is offered, not scoped.** The prompt states that the gaps are angles the last
+  review left open and **not the scope of this one**, because the obvious failure is a
+  critic treating them as a checklist and examining only those. That wording is load-
+  bearing and has a test on it.
+
+Anything beyond coverage — the builder's transcript above all — stays withheld, and a
+second exception should be argued here before it is built rather than after.
+
 ### 19.2 Finding Disposition — Confirm Against the Repository
 
 A critic emits findings. Each finding names the repository artifact that would
