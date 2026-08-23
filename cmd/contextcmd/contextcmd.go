@@ -288,6 +288,9 @@ func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Dura
 		filepath.Join(cfg.repoDir(), toolrun.RunFile),
 		id, contextstore.Stratum(time.Now()),
 		ran, ran && code != 0, int(took.Milliseconds()),
+		// Same reason as `tool run`: this invokes a declared check directly, so an
+		// unstarted one is the environment refusing, not a misnamed artifact.
+		unrunnableFor(ran),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "context: could not record integrity run: %v\n", err)
@@ -551,4 +554,17 @@ func (cfg *Config) repoDir() string {
 // storeDir is the context store under the repo root.
 func (cfg *Config) storeDir() string {
 	return filepath.Join(cfg.repoDir(), contextstore.DefaultStoreDir)
+}
+
+// unrunnableFor names why a directly-invoked check did not run.
+//
+// Both call sites start a declared tool themselves, so there is only one way it can
+// fail to run: the tool would not start. The adjudicator's other two reasons — a
+// finding naming nothing, or naming a tool the registry does not declare — cannot
+// arise here, because the tool was resolved before it was invoked.
+func unrunnableFor(ran bool) string {
+	if ran {
+		return ""
+	}
+	return string(adh.UnrunnableToolFailed)
 }

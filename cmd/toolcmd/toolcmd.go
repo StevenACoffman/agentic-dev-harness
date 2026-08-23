@@ -15,6 +15,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
@@ -209,8 +210,24 @@ func (cfg *Config) logRun(id string, exit int, ran bool, took time.Duration) {
 		filepath.Join(cfg.repoDir(), toolrun.RunFile),
 		id, contextstore.Stratum(time.Now()),
 		ran, ran && exit != 0, int(took.Milliseconds()),
+		// `adh tool run` starts the tool directly, so a failure to start is the
+		// tool failing rather than a finding naming the wrong one.
+		unrunnableFor(ran),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool: could not record run outcome: %v\n", err)
 	}
+}
+
+// unrunnableFor names why a directly-invoked check did not run.
+//
+// Both call sites start a declared tool themselves, so there is only one way it can
+// fail to run: the tool would not start. The adjudicator's other two reasons — a
+// finding naming nothing, or naming a tool the registry does not declare — cannot
+// arise here, because the tool was resolved before it was invoked.
+func unrunnableFor(ran bool) string {
+	if ran {
+		return ""
+	}
+	return string(adh.UnrunnableToolFailed)
 }
