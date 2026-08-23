@@ -421,3 +421,69 @@ func TestSleepUnknownVerb(t *testing.T) {
 		t.Errorf("unknown sleep verb should return an error")
 	}
 }
+
+// wantStrayFlag asserts an invocation is refused for a flag after the verb, and that
+// the message names the form that works.
+func wantStrayFlag(t *testing.T, works string, args ...string) {
+	t.Helper()
+	_, err := run(t, args...)
+	if err == nil {
+		t.Fatalf("%v was accepted; the flag was silently ignored", args)
+	}
+	if !strings.Contains(err.Error(), "came after the verb") {
+		t.Errorf("%v: the error does not name the problem: %v", args, err)
+	}
+	if works != "" && !strings.Contains(err.Error(), works) {
+		t.Errorf("%v: the error does not suggest %q: %v", args, works, err)
+	}
+}
+
+// TestAFlagAfterTheVerbIsRefused. ff stops parsing flags at the first positional, so
+// everything after a verb is a positional and a flag written there is silently dropped.
+// Measured before the fix: `arc list --jsonl` printed human prose to a caller that asked
+// for JSON, and `oracle selftest --seed 7` ran the default seed and reported the
+// planted-defect gate as passing.
+func TestAFlagAfterTheVerbIsRefused(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		args  []string
+		works string
+	}{
+		// A root flag, which is the likelier mistake: --jsonl is what an agent
+		// reaches for on any command.
+		"a root flag after a verb": {
+			[]string{"arc", "list", "--jsonl"}, "arc --jsonl list",
+		},
+		// A flag carrying a value. Moving the flag alone would suggest
+		// `oracle --seed selftest 7`; moving the run from the flag onward is what
+		// makes the suggestion right.
+		"a valued flag after a verb": {
+			[]string{"oracle", "selftest", "--seed", "7"}, "oracle --seed 7 selftest",
+		},
+		// This one used to reach the verb as data and fail with "no such arc: --repo".
+		"a flag consumed as an argument": {
+			[]string{"context", "verify", "--repo", "x"}, "context --repo x verify",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			wantStrayFlag(t, tc.works, tc.args...)
+		})
+	}
+}
+
+// TestALegitimatePositionalStillWorks. The rule is flag-shaped arguments, not trailing
+// arguments: several verbs take a positional and refusing those would break them.
+func TestALegitimatePositionalStillWorks(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{
+		{"arc", "--jsonl", "list"},     // the corrected form of the case above
+		{"arc", "show", "no-such-arc"}, // a positional; fails for its own reason, not this one
+	} {
+		_, err := run(t, args...)
+		if err != nil && strings.Contains(err.Error(), "came after the verb") {
+			t.Errorf("%v was refused as a stray flag: %v", args, err)
+		}
+	}
+}

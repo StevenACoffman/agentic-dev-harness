@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -87,22 +86,16 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 }
 
-// noExtraArgs refuses a verb's trailing arguments, naming the flag case specially.
+// noExtraArgs refuses a verb's trailing arguments.
 //
-// ff stops parsing flags at the first positional, so `nfr list --guards` leaves
-// --guards as a trailing argument and the flag unset — and the command would then list
-// everything, having been told not to. **A flag that is silently ignored is worse than
-// one that is unsupported**: the caller believes the filter applied. Found by running
-// the command, not by a test.
-//
-// The message names the working form rather than describing the parser, because a
-// reader hitting this wants the line that works.
+// The flag case — `nfr list --guards`, where ff leaves the flag unparsed and the
+// command lists everything having been told not to — is caught earlier and centrally,
+// by cmd.Run's stray-flag guard, so every verb in adh gets it rather than this one.
+// What is left here is the non-flag case, `nfr list foo`, which is command-specific:
+// several verbs take a positional legitimately and these two do not.
 func noExtraArgs(verb string, rest []string) error {
 	if len(rest) == 0 {
 		return nil
-	}
-	if strings.HasPrefix(rest[0], "-") {
-		return fmt.Errorf("nfr: flags come before the verb: try `nfr %s %s`", rest[0], verb)
 	}
 	return fmt.Errorf("nfr: %s takes no arguments, got %q", verb, rest[0])
 }

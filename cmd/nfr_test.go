@@ -111,7 +111,7 @@ func TestNFRRefusesAFlagAfterTheVerb(t *testing.T) {
 		t.Fatal("a flag after the verb was silently ignored")
 	}
 	// The message names the form that works, because that is what a reader hitting
-	// this wants.
+	// this wants. Produced by cmd.Run's central guard, not by nfr — every verb gets it.
 	if !strings.Contains(err.Error(), "nfr --guards list") {
 		t.Errorf("the error does not give the working form: %v", err)
 	}

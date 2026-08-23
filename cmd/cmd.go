@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
@@ -88,17 +89,67 @@ func Run(
 	// with a leftover positional; without this guard it falls through to Run,
 	// returns ff.ErrNoExec, and exits 0 — indistinguishable from a bare invocation.
 	// A bare invocation leaves no leftover arg and is left to the ErrNoExec path.
-	if sel := r.Command.GetSelected(); sel.Exec == nil {
+	sel := r.Command.GetSelected()
+	if sel.Exec == nil {
 		if rest := sel.Flags.GetArgs(); len(rest) > 0 {
 			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
 			return fmt.Errorf("%s: unknown subcommand %q", sel.Name, rest[0])
 		}
+	}
+	if flag, fixed, found := strayFlag(sel.Name, sel.Flags.GetArgs()); found {
+		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
+		return fmt.Errorf(
+			"%s: %s came after the verb, where it is not parsed; try `%s`",
+			sel.Name, flag, fixed)
 	}
 
 	if runErr := runSelected(ctx, r, stderr); runErr != nil {
 		return runErr
 	}
 	return nil
+}
+
+// strayFlag reports a leftover argument that looks like a flag.
+//
+// **ff stops parsing flags at the first positional**, so everything after a verb is a
+// positional — and a flag written there is silently dropped rather than refused. Three
+// measured examples of what that costs: `adh arc list --jsonl` printed human prose to a
+// caller that asked for JSON; `adh oracle selftest --seed 7` ran the default seed and
+// reported the planted-defect gate as passing; and `adh context verify --repo x` fed
+// `--repo` to the verb as an arc id, failing with "no such arc: --repo".
+//
+// The rule is narrower than "no trailing arguments", and deliberately: several verbs
+// take a positional legitimately — `arc show a1`, `nfr show latency`. What no verb
+// takes is a **flag-shaped** one, so that is the whole test. A leftover flag is wrong
+// whether it names a real flag in the wrong place or an unknown one that should have
+// been refused; both are silence today.
+//
+// A bare "-" is excluded, because it is the conventional name for standard input and is
+// a positional wherever a command accepts one.
+//
+// It lives here rather than in each command for the reason this repository keeps
+// arriving at: twelve verbs would be twelve places to remember, and the thirteenth
+// command written next month would have the defect on the day it was written. Here a
+// new command inherits the guard by existing.
+// The suggested form moves the flag **and everything after it** ahead of the verbs,
+// rather than the flag alone. That is what makes it right for a flag carrying a value:
+// `oracle selftest --seed 7` becomes `oracle --seed 7 selftest`, where moving only the
+// flag would have produced `oracle --seed selftest 7`. It is correct whenever the
+// trailing run begins with the stray flag, which is how the mistake is actually typed;
+// where it is not, the suggestion is still closer than the original and the flag it
+// names is the real answer.
+func strayFlag(name string, rest []string) (flag, fixed string, found bool) {
+	for i, arg := range rest {
+		if len(arg) <= 1 || !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		reordered := make([]string, 0, len(rest)+1)
+		reordered = append(reordered, name)
+		reordered = append(reordered, rest[i:]...)
+		reordered = append(reordered, rest[:i]...)
+		return arg, strings.Join(reordered, " "), true
+	}
+	return "", "", false
 }
 
 // runSelected runs the parsed command and translates its error: an ExitError,
