@@ -1380,8 +1380,9 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
 
 ### The Critic, and What It Records About Itself
 
-- [ ] **A critic that could not run cold must say so, and there is no state for that
-  today.** §19.1's grounding contract denies the builder's transcript, which is the
+- [x] **A critic that could not run cold must say so, and there is no state for that
+  today.** *Closed unbuilt 2026-08-22: the state cannot occur. Reasoning below; the
+  residue moved to the session-identity item, which has a trigger that can fire.* §19.1's grounding contract denies the builder's transcript, which is the
   right mechanism and is the whole basis for calling the critic independent.
   `oh-my-agent`'s judge protocol reaches the same design — a spawned subagent with fresh
   context, briefed on the criteria and never on what the implementer claims it fixed,
@@ -1511,8 +1512,8 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   Better than probing for capabilities in the runner, because the fallback is authored
   by whoever wrote the stage and knows what the stage actually needs.
 
-- [ ] **`adh init` seeds `.adh/tools.json` — check it against the never-edit-the-user's-files
-  rule.** `superpowers` states it flatly: *"Everything ships through the harness's own
+- Note, and one residue — **`adh init` seeds `.adh/tools.json`; checked against the
+  never-edit-the-user's-files rule and it complies.** `superpowers` states it flatly: *"Everything ships through the harness's own
   install mechanism. Never edit the user's files… The harness owns what it loads; your
   install artifact is the only thing you get to write."* `init` writing into the
   repository it was invoked in is fine by that rule, and the rule is worth writing down
@@ -1520,6 +1521,11 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   which symlinks forty-five agent filenames into the user's tree; recorded as a contested
   pair, with superpowers holding the better argument — an installer that edits user
   config cannot be cleanly uninstalled or reasoned about.
+
+  - [ ] **Write the rule down in `SPEC.md` before something reaches for a global config.**
+    The compliance is currently accidental — nothing states that adh writes only inside the
+    repository it was invoked in, so the first feature that wants a user-level default has
+    no rule to violate. One sentence in the Non-Goals section.
 
 ### Testing the Seam `adh` Does Not Test
 
@@ -1727,7 +1733,9 @@ one change: `Dispose` is the mechanism and `eval` the consequence.
   registered tool is broken* with *the critic named something that was never a tool*,
   and only the first is a refusal worth failing an arc on. Once adjudication resolves
   the ref, the two separate and §19.2's recorded decision can change.
-- [ ] **`deny` accepts one input because the renderer can enforce one.** Denying
+- Note, not a work item — **`deny` accepts one input because the renderer can enforce
+  one.** Shipped: `adh.CriticInput.Deniable` (`internal/adh/criticinput.go:75`), enforced
+  at `internal/config/critic.go:40`. Denying
   anything else is a load error naming why: adh assembles the critic's grounding whole
   and does not filter it. If per-input filtering is ever wanted, `adh.CriticInput.Deniable`
   is the single place that changes — recorded so the restriction reads as a decision
