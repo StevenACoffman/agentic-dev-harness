@@ -1551,7 +1551,7 @@ their output shapes differ, and each already carries a reason. Full reasoning in
   shape from skillsaw's flag and gnosis's skip record. The rule: *applicability is derived,
   not declared, and a run states what it skipped. What gets suppressed is the consumer's
   choice; the reason is never optional.*
-- [ ] **Worth one pass: is any other adh gate suppressed without a reason?** The rule is
+- [x] **Worth one pass: is any other adh gate suppressed without a reason?** The rule is
   cheap to check and adh has several places that decline to act — `toolreg` entries whose
   capability is absent, `critic` when an arc routed no context, `eval` when a named
   artifact could not run. The last of those is already filed above as `Dispose` discarding
@@ -1568,7 +1568,7 @@ documents that *"an empty or absent list is a clean review"*, and `evaluation` d
 the arc on that silence, so a critic that looked at nothing and a critic that found nothing
 reach Ops identically. Design record in `skillet/TODO.md`.
 
-- [ ] **Parse `unexamined` in `critic.ParseFindings` and carry it on the arc.** The parse
+- [x] **Parse `unexamined` in `critic.ParseFindings` and carry it on the arc.** The parse
   is already the right shape — it validates each finding and rejects a malformed reply with
   `EINVALID` rather than advancing on trust — so extend it: an entry failing `Valid()`
   (either field empty or whitespace-only) rejects the reply the same way a finding with no
@@ -1576,7 +1576,7 @@ reach Ops identically. Design record in `skillet/TODO.md`.
   passes for a reply that found nothing.
   Advisory by construction: `Result.HasBlocking` iterates `Diagnostics` only, so a declared
   gap cannot change a verdict however `Dispose` is written.
-- [ ] **`critic.Ground` should offer the prior run's gaps, and this is the one place it
+- [x] **`critic.Ground` should offer the prior run's gaps, and this is the one place it
   helps rather than contaminates.** §19.1 withholds exactly one input, the builder's
   transcript, and that is what makes the critic cold. A previous critic's *coverage* is not
   the builder's reasoning and not a conclusion — it is a record of angles already taken —
@@ -1696,3 +1696,40 @@ one change: `Dispose` is the mechanism and `eval` the consequence.
   and does not filter it. If per-input filtering is ever wanted, `adh.CriticInput.Deniable`
   is the single place that changes — recorded so the restriction reads as a decision
   rather than an omission.
+
+## The Suppression Sweep, and Adopting `Unexamined` (2026-08-23)
+
+- **The sweep found one of three, and clearing the other two was most of its value.**
+  `toolreg` states its reason — *"an absent binary is reported at run time, not a
+  registry defect"* — and so does `LoadRepo`'s absent-file-is-empty. `eval`'s
+  unrunnable artifact was the previous pass. What was left is the **ungrounded
+  critic**: `HasGrounding` has exactly one caller and, outside the routing-gap branch,
+  its answer was discarded. Third instance in this repo of a distinction the code
+  computes and then throws away, after `Critic.Deny` and `Dispose`.
+- **The refusal was right; only the silence was the defect.** `ForStage` deliberately
+  does not treat a footprint-less arc or an empty store as a gap, and it should not —
+  failing those would make adh unusable on a repository that has not adopted the
+  context store. The fix is a record, not a block.
+- **The plan said report it at eval and that was wrong.** Deriving it there reads
+  `arc.Context`, which any Evaluation emit overwrites. Emit is also where it is
+  *actionable*: whoever is about to answer the prompt can still declare a label or add
+  a unit, and by eval the review has already happened.
+- **skillet's doc vetoed the obvious shortcut.** Having the harness write an
+  `Unexamined` for the ungrounded case would have been three lines and is exactly the
+  conflation skillet split the types to prevent: *"a caller must not read the two alike,
+  and they are deliberately different types for that reason."* Testimony goes on the
+  arc; a mechanical fact goes on `relay.Outcome`. Worth keeping because the shortcut
+  will look attractive again.
+- **The parser would have been a reader with no writer.** The critic template never
+  stated the reply shape — an operator learned it from `SPEC.md` — so nothing would ever
+  have emitted an `unexamined` entry. Adding the parse without the contract would have
+  reproduced `Critic.Deny` in a new place, one commit after fixing it. Caught by asking
+  what would populate the field, not by a test.
+- **The anti-checklist wording has a test on it**, because it is the part a later edit
+  smooths away: offering last run's gaps invites a critic to treat them as the scope.
+
+- [ ] **`SPEC.md` §19.1 should state the prior-gaps exception.** The code and the
+  template both carry the reasoning — a previous critic's coverage is not the builder's
+  reasoning and not a conclusion — but the spec still says the cold split withholds one
+  input without saying what it deliberately lets through. An exception documented only
+  at the call site is one a future reader will read as a leak.
