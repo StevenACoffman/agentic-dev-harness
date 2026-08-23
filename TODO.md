@@ -1158,20 +1158,37 @@ Source: a survey of `~/Documents/agent-red` (26 agent-tooling projects). Most of
 promising from READMEs turned out to be weaker than what adh already has; the two items
 below survived checking against the code, and the third is a retraction.
 
-- [ ] **Evidence records have no staleness state.** `internal/evidence` is an append-only
-  log with `Timestamp`, validate-on-write, malformed-line-is-a-hard-error — the right shape.
-  But a grep for `stale` across `internal/` returns nothing: when the artifact an evidence
-  record measured changes underneath it, the record stays exactly as authoritative as the
-  day it was written, and `NO-PROOF-NO-CLOSE` is satisfied by a proof of something that no
-  longer exists. `proof.Verify` catches this for *declared artifacts* by re-hashing; nothing
-  catches it for the evidence log. `goalx/cli/freshness_state.go` carries the vocabulary
-  worth taking: a four-state enum — `fresh`, `stale`, `unknown`, `not_applicable` — with
-  `LatestRevision` vs `CurrentRevision` and a `Reason` per item, split across cognition
-  facts and evidence items. **The four states are the point.** `unknown` (never evaluated)
-  and `not_applicable` (no revision to compare) are distinct from `stale`, exactly as
-  `skillet/timeseries` keeps `Verdict.Compared` distinct from a zero baseline — absence of
-  a comparison is not a passing comparison. Deterministic and model-free: it is a revision
-  comparison, not a judgment.
+- [x] **Evidence records have no staleness state.** *Closed 2026-08-23 as misdiagnosed,
+  and chasing the premise found a real defect one package over — built, see below.*
+
+  Two things were wrong. **It conflates two unrelated subsystems:** `internal/evidence`
+  is the sleep-loop audit log (§18.6), consumed by `consolidate.Calibration` and
+  `cmd/sleep`; NO-PROOF-NO-CLOSE is `adh.CanClose` + `closecmd.verifyProof`. They share
+  no type and no call path. **And the guarantee it says is broken is enforced:**
+  `verifyProof` calls `prooflib.Verify(repoDir, &pkt)` on *every close*, so the digests
+  are re-checked at the moment of closing rather than trusted from when written. A proof
+  of something that no longer exists fails the gate.
+
+  **An evidence record also cannot go stale, because it is an event.** `Record` is
+  `{Timestamp, Arc, Stage, GateAction, OldScore, NewScore, Status, Note}` — no artifact
+  path, no hash, no revision. It records *at time T the gate decided Z given scores X and
+  Y*, which is a historical fact, and `Calibration` folds the records into a report on
+  read. That is the same distinction the `Unit.Verified` entry above already makes: OKF
+  §5.2 stores verification events and derives the tier because events are durable and
+  conclusions age. The evidence log is on the right side of that line, and adding
+  `LatestRevision`/`CurrentRevision` to it would mean inventing an artifact for a record
+  that measured none.
+
+  **The instinct was right and the address was wrong.** A stored conclusion outliving the
+  thing it measured is real, in `contextstore`: `Unit.Integrity` names a tool, `context
+  verify` classified each unit ok/drift/unverified, and **nothing in the repository had
+  ever written `Unit.Verified`** — zero assignments outside tests. Since `Rank()` uses the
+  tier as the routing tie-break, a unit the tool had just proved drifted still outranked a
+  clean one at the next route. Built: verification events are appended to a log paired
+  with the store, freshness is derived at load time, and recorded drift *suppresses* the
+  authored tier rather than overwriting it, so re-verifying restores standing with no
+  edit. The four states land where they earn their place — a unit declaring no integrity
+  tool is `not_applicable`, not `unknown`.
   src: `agent-red/goalx` `cli/freshness_state.go`.
 - [ ] **Capability routing is a missing axis, not a missing feature.** The autonomy ladder
   governs *how much* an agent may do; nothing expresses *which* agent should take a given
@@ -2055,7 +2072,41 @@ rather than in any one repo's habits.
   the stale-premise entries found five times this month, except the stale premise was
   load-bearing in a *test* — so the suite stayed green while covering less than it read as
   covering. Verified by hand: all sixteen payloads printed and inspected.
-- [ ] **Fixture-dependent payloads are still unasserted.** `arc show`, `eval`, `proof
-  verify` and the rest need state to reach. The verb sweep covered what answers from an
-  empty tree; these need one arc fixture, and it is worth doing once the eight above are
-  paid so the table is not asserting a contract half the surface does not keep.
+- [x] **Fixture-dependent payloads are still unasserted.** DONE, and the entry
+  understated it twice over.
+
+  The contract ran only against a bare temp directory, where every state-dependent
+  command refuses and prints nothing — and empty stdout satisfies "empty or JSON"
+  trivially. So the contract was unenforced across the whole surface an agent actually
+  consumes, and **five commands were printing tab-separated prose there unobserved**:
+  `vcs status`, `context list`, `tool list`, `loop list`, `worker requalify`. None was in
+  `jsonlDebt`; nothing could have caught them. All five now emit envelopes and their six
+  payload contracts are recorded.
+
+  **A second defect was in the enumeration itself.** `verbsFromUsage` took the first
+  angle-bracket group in a usage line, and for `arc [--label <l>]... <new|list|show>`
+  that is the flag placeholder `<l>`, which does not alternate — so it returned nothing
+  and *no arc verb was ever enumerated*. The walk never reached `arc list` or `arc show`,
+  the payloads this very item named. It now scans for the first group that alternates.
+
+  Method note, and it is the same one as the pass before: **a test that cannot fail for
+  the interesting inputs is not covering them, and it reports as coverage.** Both defects
+  here were invisible for the same reason — the fixture was too poor to reach the
+  behaviour — which is a different failure from a wrong assertion and does not announce
+  itself.
+
+  - [ ] **Still uncovered: payloads reachable only with an *argument*.** `arc show <id>`,
+    `context show <id>`, `proof verify <path>`. The registry walk enumerates invocations,
+    not their operands, so covering these means the table naming its own arguments — a
+    different maintained list, and worth a decision rather than a reflex.
+  - [ ] **Usage and precondition errors report `reason: "internal"`.** Found while
+    probing for payloads. `ReasonForError` is `adh.ErrorCode(err)`, which yields
+    `internal` for an untyped error, and these commands return bare `fmt.Errorf`:
+    `eval` ("arc arc-0001 is at strategy, not evaluation"), `context show` ("requires a
+    unit id"), `proof verify` ("requires a manifest path"), `worker`/`gate` ("unknown
+    verb"). `CodeForError` maps the same untyped errors to exit 1 rather than the usage
+    code. **`reason` is the token an agent branches on, and `internal` is what you emit
+    when adh itself broke** — so a caller with a sensible retry-on-internal policy will
+    retry a call that can never succeed. The fix is typed errors (`adh.EINVALID` /
+    `ECONFLICT`) at these return sites; the ratchet shape is a contract test asserting no
+    command reports `internal` for an invocation the usage line forbids.
