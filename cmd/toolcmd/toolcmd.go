@@ -85,7 +85,8 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 // list prints each declared tool and what it verifies.
 func (cfg *Config) list(reg toolreg.Registry) error {
 	if cfg.JSONL {
-		for _, tool := range reg.Tools {
+		for i := range reg.Tools {
+			tool := &reg.Tools[i]
 			if err := cfg.EmitOK(map[string]any{
 				"id": tool.ID, "verifies": tool.Verifies,
 			}); err != nil {
@@ -94,7 +95,8 @@ func (cfg *Config) list(reg toolreg.Registry) error {
 		}
 		return nil
 	}
-	for _, tool := range reg.Tools {
+	for i := range reg.Tools {
+		tool := &reg.Tools[i]
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\tverifies: %s\n", tool.ID, tool.Verifies)
 	}
 	return nil

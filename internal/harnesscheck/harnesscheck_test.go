@@ -1,8 +1,11 @@
 package harnesscheck_test
 
 import (
+	"slices"
+	"sort"
 	"testing"
 
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/loop"
@@ -105,5 +108,82 @@ func TestNoGuardsIsReported(t *testing.T) {
 				t.Errorf("no_guards reported = %v, want %v", found, tc.want)
 			}
 		})
+	}
+}
+
+// wantUnclaimed asserts which finding kinds a registry leaves unclaimed. The helper is
+// extracted before the table so each case reads as the claim it makes about a registry
+// rather than as filtering machinery.
+func wantUnclaimed(t *testing.T, reg toolreg.Registry, want []string) {
+	t.Helper()
+	got := make([]string, 0)
+	for _, p := range harnesscheck.Check(&harnesscheck.Inputs{Tools: reg}) {
+		if p.Kind == harnesscheck.KindUnclaimedKind {
+			got = append(got, p.Ref)
+		}
+	}
+	sort.Strings(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("unclaimed kinds = %v, want %v", got, want)
+	}
+}
+
+// TestUnclaimedFindingKinds covers the check and, more importantly, where it declines to
+// judge: a registry that has not adopted `adjudicates` is not a registry with gaps.
+func TestUnclaimedFindingKinds(t *testing.T) {
+	t.Parallel()
+	tool := func(id string, kinds ...adh.FindingKind) toolreg.Tool {
+		return toolreg.Tool{ID: id, Run: "x", Verifies: "y", Adjudicates: kinds}
+	}
+	tests := []struct {
+		name string
+		reg  toolreg.Registry
+		want []string
+	}{{
+		// Not adopted: reporting five gaps on a fresh init would be noise on every new
+		// repository, and the field's absence says nothing about coverage.
+		name: "a registry claiming nothing is not judged",
+		reg:  toolreg.Registry{Tools: []toolreg.Tool{tool("a"), tool("b")}},
+		want: []string{},
+	}, {
+		name: "an empty registry is not judged either",
+		reg:  toolreg.Registry{},
+		want: []string{},
+	}, {
+		// Opted in, so the gaps are meaningful.
+		name: "one claim makes the remaining gaps meaningful",
+		reg:  toolreg.Registry{Tools: []toolreg.Tool{tool("a", adh.FindingOracle)}},
+		want: []string{"contract", "device", "invariant", "nfr"},
+	}, {
+		// The tempting rule is that an unclassified tool might cover the rest. That is
+		// the silence this check removes: if nothing claims a kind, nothing claims it.
+		name: "an unclassified tool alongside a claiming one suppresses nothing",
+		reg: toolreg.Registry{Tools: []toolreg.Tool{
+			tool("a", adh.FindingOracle), tool("b"),
+		}},
+		want: []string{"contract", "device", "invariant", "nfr"},
+	}, {
+		name: "a fully claimed registry reports nothing",
+		reg: toolreg.Registry{Tools: []toolreg.Tool{tool("a",
+			adh.FindingOracle, adh.FindingInvariant, adh.FindingDevice,
+			adh.FindingNFR, adh.FindingContract)}},
+		want: []string{},
+	}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			wantUnclaimed(t, tt.reg, tt.want)
+		})
+	}
+}
+
+func TestRegistryRejectsUnknownAdjudicatedKind(t *testing.T) {
+	t.Parallel()
+	reg := toolreg.Registry{Tools: []toolreg.Tool{{
+		ID: "a", Run: "x", Verifies: "y",
+		Adjudicates: []adh.FindingKind{"teleport"},
+	}}}
+	if err := reg.Validate(); adh.ErrorCode(err) != adh.EINVALID {
+		t.Errorf("Validate with an unknown kind = %v, want EINVALID", err)
 	}
 }

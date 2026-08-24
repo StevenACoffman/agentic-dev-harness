@@ -10,6 +10,7 @@ package harnesscheck
 import (
 	"sort"
 
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/loop"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
@@ -32,6 +33,7 @@ const (
 	KindInvalidKPI        = "invalid_kpi"        // a unit declares a malformed KPI (§16/§18)
 	KindNoGuards          = "no_guards"          // NFR specs exist and none is a guard (§10.5)
 	KindDanglingCommand   = "dangling_command"   // a unit's prose names a command that does not resolve
+	KindUnclaimedKind     = "unclaimed_kind"     // no declared tool adjudicates a finding kind (§13.2)
 )
 
 // Inputs bundles the loaded harness state Check reasons over.
@@ -82,6 +84,46 @@ func appendRegistryProblems(problems []Problem, in *Inputs) []Problem {
 	}
 	if err := in.Loops.Validate(); err != nil {
 		problems = append(problems, Problem{Kind: KindLoopRegistry, Detail: err.Error()})
+	}
+	return appendUnclaimedKinds(problems, in.Tools)
+}
+
+// appendUnclaimedKinds reports a finding kind no declared tool claims to adjudicate.
+//
+// A critic can raise findings of any kind; evaluation can only confirm one whose artifact
+// runs. So a kind nothing claims is a hole where findings arrive and are never settled --
+// they land as unchecked, which by §19.2 does not block, so the arc advances with the
+// question open and nothing says why.
+//
+// **An unclassified tool does not suppress the report.** The tempting rule is "maybe one
+// of the tools without an `adjudicates` list covers it", and that is the silence this
+// check exists to remove: if nothing *claims* the kind, the honest answer is that nothing
+// claims it. Advisory, like doctor's other problems -- an incomplete registry is a state
+// of the world rather than a defect.
+//
+// §12 applicability: **a registry where no tool declares any kind is skipped entirely.**
+// That is a different state from one with gaps -- it has not adopted the field, so the
+// check cannot judge it, and reporting every kind unclaimed on a fresh `adh init` would
+// be noise on every new repository. Once one tool opts in, the registry is making claims
+// and the gaps in them are meaningful.
+func appendUnclaimedKinds(problems []Problem, reg toolreg.Registry) []Problem {
+	claimed := make(map[adh.FindingKind]bool)
+	for i := range reg.Tools {
+		for _, kind := range reg.Tools[i].Adjudicates {
+			claimed[kind] = true
+		}
+	}
+	if len(claimed) == 0 {
+		return problems
+	}
+	for _, kind := range adh.FindingKinds() {
+		if !claimed[kind] {
+			problems = append(problems, Problem{
+				Kind: KindUnclaimedKind, Ref: string(kind),
+				Detail: "no declared tool adjudicates findings of this kind; " +
+					"a critic can raise them and evaluation can never confirm them",
+			})
+		}
 	}
 	return problems
 }

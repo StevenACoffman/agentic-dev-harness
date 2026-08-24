@@ -38,6 +38,17 @@ type Tool struct {
 	Verifies   string    `json:"verifies"`
 	RepairHint string    `json:"repair_hint,omitempty"`
 	KPIs       []adh.KPI `json:"kpis,omitempty"`
+
+	// Adjudicates is the set of finding kinds this tool can settle. Absent means
+	// **unclassified, not "adjudicates nothing"** -- a registry written before this
+	// field existed keeps working, and the zero value must not assert something its
+	// author never said.
+	Adjudicates []adh.FindingKind `json:"adjudicates,omitempty"`
+	// IfAbsent is what to do without this capability, as against RepairHint's how to
+	// obtain it. Those are different questions and the second is the one that matters
+	// where the tool cannot be installed. Authored per tool, because whoever declared
+	// the capability knows what its absence costs.
+	IfAbsent string `json:"if_absent,omitempty"`
 }
 
 // Registry is the set of declared tools.
@@ -49,7 +60,8 @@ type Registry struct {
 // description, and that IDs are unique. It returns EINVALID on the first defect.
 func (r Registry) Validate() error {
 	seen := make(map[string]bool, len(r.Tools))
-	for _, tool := range r.Tools {
+	for i := range r.Tools {
+		tool := &r.Tools[i]
 		switch {
 		case tool.ID == "":
 			return &adh.Error{Code: adh.EINVALID, Message: "tool with empty id"}
@@ -65,6 +77,15 @@ func (r Registry) Validate() error {
 			}
 		case seen[tool.ID]:
 			return &adh.Error{Code: adh.EINVALID, Message: "duplicate tool id: " + tool.ID}
+		}
+		for j := range tool.Adjudicates {
+			if !tool.Adjudicates[j].Valid() {
+				return &adh.Error{
+					Code: adh.EINVALID,
+					Message: "tool " + tool.ID + " adjudicates unknown finding kind: " +
+						string(tool.Adjudicates[j]),
+				}
+			}
 		}
 		for j := range tool.KPIs {
 			if !tool.KPIs[j].Valid() {
@@ -122,9 +143,9 @@ func StarterRegistry() Registry {
 // FindByVerifies returns the first tool whose Verifies matches, so a stage
 // selects a capability by what it proves rather than by a hard-coded command.
 func (r Registry) FindByVerifies(verifies string) (Tool, bool) {
-	for _, tool := range r.Tools {
-		if tool.Verifies == verifies {
-			return tool, true
+	for i := range r.Tools {
+		if r.Tools[i].Verifies == verifies {
+			return r.Tools[i], true
 		}
 	}
 	return Tool{}, false
@@ -133,9 +154,9 @@ func (r Registry) FindByVerifies(verifies string) (Tool, bool) {
 // FindByID returns the tool with the given ID, so a caller that already knows a
 // check by name (e.g. an NFR finding's Ref, §19.2) can resolve it to a command.
 func (r Registry) FindByID(id string) (Tool, bool) {
-	for _, tool := range r.Tools {
-		if tool.ID == id {
-			return tool, true
+	for i := range r.Tools {
+		if r.Tools[i].ID == id {
+			return r.Tools[i], true
 		}
 	}
 	return Tool{}, false
