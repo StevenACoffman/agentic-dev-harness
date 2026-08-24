@@ -1348,17 +1348,33 @@ from). adh is the tool most of it lands on. Checked against the code.
   it was built. It is categorically different from the builder's transcript, which `adh`
   withholds. Feeding prior coverage into a fresh critic biases it toward unexamined ground —
   the opposite of the contamination the cold split exists to prevent.
-- [ ] **A gate before Strategy: make the arc earn the right to start.**
-  `agent-blue/mycellium-harness` opens with four questions — what is the problem, who has
-  it, what is the riskiest assumption, what is the smallest move that tests it — before an
-  editor opens, and its stated invariant is that "what the agent won't do is silently skip
-  past missing evidence and call the work done." Crucially, **depth is negotiable and
-  skipping is not**: a weekend hack draws lighter prompts than a team product, and a user
-  may decline depth at any step, but never silently. adh's arc begins at Strategy, which
-  plans *how*, and takes *whether* as given. This is the validation half of the
-  validation/verification pair (`agent-blue/nfrs-guide`: validation is "are we building the
-  right thing — requirements examined for conflicts and assurance they meet need";
-  verification is "are we building it right"). adh is currently all verification.
+- [x] **A gate before Strategy: make the arc earn the right to start.** DONE 2026-08-24
+  as a one-line refusal, not a stage. Recorded in `SPEC-ADDITIONS.md` §19.2.
+
+  **The diagnosis was wrong and the insight was right.** adh is *not* all verification:
+  §12's resolution vocabulary is the validation half, and it already spans the ground the
+  four questions cover — `investigation` answers without shipping, `experiment` tests the
+  riskiest assumption on an instrumented surface, and `decision` records a choice, often
+  not to build, closing on a written ADR. **"Do not build this" was already a first-class,
+  provable outcome.** What was missing was the obligation to answer: `stage.Apply`
+  defaulted an unset resolution to `change`, so an arc that never considered whether to
+  build silently became a build — exactly the "silently skip past missing evidence" the
+  source names, and one line rather than a missing stage.
+
+  A relayed strategy reply without a `resolution:` line is now EINVALID, and the prompt
+  says the line is required. Depth stays negotiable: `change` in three seconds is fine.
+
+  **The blast radius was measured before committing to the shape, and the measurement
+  changed it.** Removing the default outright failed 9 tests across 4 packages — and
+  worse, it broke the mock drive, whose arcs would reach `close` with no resolution and be
+  refused by `CanClose`. `critic.ParseReply` has exactly one caller, `relay.Resume`, so
+  the mock path never parses a resolution and the default is its only source of one. The
+  refusal therefore belongs in the relay path alone: 3 failures, of which one was the test
+  specifying the old behaviour and two were fixture strings.
+
+  Both sites now explain the asymmetry, since a reader finding a refusal in one path and a
+  default in the other would otherwise reasonably conclude one is a bug.
+
 - [x] **"Every instruction the agent reads must be backed by a working command."** Principle
   1 of `agent-blue/agentic-harness-bootstrap`, enforced by
   `templates/verify-harness.sh.tmpl`, whose first check **parses the module table out of

@@ -854,6 +854,22 @@ size is a measurement nobody has taken rather than a number anyone can quote. St
 the rule as though it covered both directions would be the broader-than-it-holds failure
 this document refuses elsewhere: a reader would stop looking.
 
+**A strategy reply must name its resolution.** The first line is
+`resolution: <change|investigation|experiment|decision>`, and a relayed reply without it
+is EINVALID rather than a silent code change. adh's validation half is §12's resolution
+vocabulary, not a stage before Strategy: `investigation` answers a question without
+shipping code, `experiment` tests the riskiest assumption on an instrumented surface, and
+`decision` records a choice — often not to build — closing on a written ADR. What was
+missing was never the vocabulary but the obligation to use it. **Depth is negotiable and
+skipping is not**: answering `change` immediately is legitimate, arriving at `change` by
+not answering is not.
+
+`stage.Apply` still defaults an unset resolution to `change`, and that is not an
+inconsistency. `adh run` without `--relay` completes through a mock whose reply is fixed
+text; nothing on that path parses a resolution, so the default is that path's only source
+of one rather than a policy about unanswered questions. The two paths ask different
+questions — one asks nothing.
+
 A critic emits findings. Each finding names the repository artifact that would
 confirm it: an oracle divergence, an invariant, an on-device check (§SPEC 2.4),
 an NFR check (§10), or a named local contract. The Evaluation stage that follows
