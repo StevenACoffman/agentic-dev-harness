@@ -57,7 +57,25 @@ func parseStrategyReply(text string) (Reply, error) {
 	first, rest, split := strings.Cut(text, "\n")
 	after, ok := strings.CutPrefix(strings.TrimSpace(first), resolutionPrefix)
 	if !ok {
-		return Reply{Text: text}, nil
+		// **Whether is a question, not a default.** An omitted line used to become a
+		// code change in stage.Apply, so an arc that never considered building silently
+		// became a build -- the one thing adh's resolution vocabulary exists to make
+		// answerable, since "investigation", "experiment" and "decision" already
+		// express not-a-change outcomes and a decision closes with an ADR. Depth is
+		// negotiable and skipping is not: answering "change" immediately is fine,
+		// arriving there by not answering is not.
+		//
+		// Strategy runs once per arc -- rework returns to Execution, not here -- so
+		// there is no legitimate second reply that could already hold a resolution and
+		// reasonably omit the line.
+		//
+		// stage.Apply still defaults, and that is not an inconsistency: it is the mock
+		// drive's only source of a resolution, because that path never parses one.
+		return Reply{}, &adh.Error{
+			Code: adh.EINVALID,
+			Message: "strategy reply must begin with `" + resolutionPrefix +
+				" <change|investigation|experiment|decision>`",
+		}
 	}
 	res, err := adh.ParseResolution(strings.TrimSpace(after))
 	if err != nil {
