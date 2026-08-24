@@ -3,7 +3,11 @@ package contextstore
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
 // humanActor is the actor-class prefix that earns HumanReviewed when folding events.
@@ -137,4 +141,62 @@ func (t *Trust) UnmarshalJSON(data []byte) error {
 func actorClass(by string) string {
 	class, _, _ := strings.Cut(by, ":")
 	return class
+}
+
+// RecordVerification appends a verification event to the unit stored at path.
+//
+// **It edits the `verified` key and nothing else.** The file is decoded into raw
+// messages and re-encoded, so a unit carrying fields adh does not model keeps them: a
+// store is a team's curated knowledge base, and a harness that silently drops what it
+// does not understand is one nobody can extend. This is the first thing in adh that
+// writes a unit, which is why the care is worth stating.
+//
+// A unit still storing a bare tier is refused. The legacy string asserts a conclusion
+// with no actor and no date, and there is no honest way to fold it into an event list --
+// inventing an actor for it is exactly what Valid rejects, and dropping it would silently
+// discard a human's judgement. Converting is a person's decision, because only a person
+// knows who the original reviewer was.
+func RecordVerification(path string, event Verification) error {
+	const op = "contextstore.RecordVerification"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	var trust Trust
+	if stored, ok := raw["verified"]; ok {
+		if err := json.Unmarshal(stored, &trust); err != nil {
+			return &adh.Error{Op: op, Err: err}
+		}
+	}
+	if trust.Stated != "" {
+		return &adh.Error{
+			Code: adh.ECONFLICT,
+			Message: "unit stores a bare trust tier (" + string(trust.Stated) +
+				"); convert it to a verification list before signing off, since who " +
+				"originally reviewed it is not recorded and adh will not invent one",
+		}
+	}
+	trust.Events = append(trust.Events, event)
+	encoded, err := json.Marshal(trust)
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	raw["verified"] = encoded
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o600); err != nil {
+		return &adh.Error{Op: op, Err: err}
+	}
+	return nil
+}
+
+// UnitPath is the file a unit with this id is stored at.
+func UnitPath(storeDir, id string) string {
+	return filepath.Join(storeDir, id+".json")
 }

@@ -2,6 +2,9 @@ package contextstore_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
@@ -134,4 +137,71 @@ func TestTrustJoinsWithFreshness(t *testing.T) {
 	if tier := units[0].Verified.Tier(); tier != contextstore.HumanReviewed {
 		t.Errorf("the events were destroyed (tier now %q); drift only suppresses", tier)
 	}
+}
+
+// wantRecordRefused asserts RecordVerification refuses a stored unit, and why.
+func wantRecordRefused(t *testing.T, stored, wantIn string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "u1.json")
+	if err := os.WriteFile(path, []byte(stored), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	err := contextstore.RecordVerification(path, contextstore.Verification{By: "human:s"})
+	if err == nil {
+		t.Fatalf("RecordVerification(%s) succeeded, want a refusal", stored)
+	}
+	if !strings.Contains(err.Error(), wantIn) {
+		t.Errorf("message %q does not contain %q", err, wantIn)
+	}
+}
+
+func TestRecordVerificationAppendsAndPreserves(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "u1.json")
+	// A field adh does not model. A store is a team's knowledge base, and a harness
+	// that silently drops what it does not understand is one nobody can extend.
+	stored := `{"id":"u1","kind":"note","house_field":{"a":1}}`
+	if err := os.WriteFile(path, []byte(stored), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	first := contextstore.Verification{By: "human:steve", At: "2026-07-01"}
+	if err := contextstore.RecordVerification(path, first); err != nil {
+		t.Fatalf("RecordVerification: %v", err)
+	}
+	second := contextstore.Verification{By: "ci:nightly", At: "2026-08-01"}
+	if err := contextstore.RecordVerification(path, second); err != nil {
+		t.Fatalf("RecordVerification: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := raw["house_field"]; !ok {
+		t.Error("an unmodelled field was dropped by the write")
+	}
+	var trust contextstore.Trust
+	if err := json.Unmarshal(raw["verified"], &trust); err != nil {
+		t.Fatalf("verified: %v", err)
+	}
+	if len(trust.Events) != 2 {
+		t.Fatalf("events = %d, want both appended", len(trust.Events))
+	}
+	// Both kept, and the human one still decides: the case a stored tier could not
+	// represent at all.
+	if tier := trust.Tier(); tier != contextstore.HumanReviewed {
+		t.Errorf("tier = %q, want human-reviewed", tier)
+	}
+}
+
+func TestRecordVerificationRefusesALegacyTier(t *testing.T) {
+	t.Parallel()
+	wantRecordRefused(t,
+		`{"id":"u1","verified":"human-reviewed"}`,
+		"convert it to a verification list")
 }
