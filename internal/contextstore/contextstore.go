@@ -69,7 +69,7 @@ type Unit struct {
 	Claims       []Claim   `json:"claims,omitempty"`
 	KPIs         []adh.KPI `json:"kpis,omitempty"`
 	Integrity    string    `json:"integrity,omitempty"`
-	Verified     TrustTier `json:"verified,omitempty"`
+	Verified     Trust     `json:"verified,omitempty"`
 	SupersededBy string    `json:"superseded_by,omitempty"`
 
 	// Fresh is derived from the integrity log by ApplyFreshness, never persisted.

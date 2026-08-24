@@ -162,7 +162,7 @@ func (u *Unit) EffectiveTier() TrustTier {
 	if u.Fresh == FreshnessDrifted {
 		return Unverified
 	}
-	return u.Verified
+	return u.Verified.Tier()
 }
 
 // freshnessOf maps one unit's newest recorded result to a freshness state.

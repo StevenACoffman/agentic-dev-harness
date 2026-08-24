@@ -161,7 +161,7 @@ func (cfg *Config) list(units []contextstore.Unit) error {
 				"id":        units[i].ID,
 				"kind":      units[i].Kind,
 				"labels":    units[i].Labels,
-				"verified":  units[i].Verified,
+				"verified":  units[i].Verified.Tier(),
 				"freshness": units[i].Fresh,
 			}); err != nil {
 				return fmt.Errorf("context: %w", err)
@@ -210,7 +210,7 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 		if err := cfg.EmitOK(map[string]any{
 			"id": unit.ID, "kind": unit.Kind, "owner": unit.Owner,
 			"provenance": unit.Provenance, "sources": unit.Sources,
-			"verified": string(unit.Verified), "superseded_by": unit.SupersededBy,
+			"verified": string(unit.Verified.Tier()), "superseded_by": unit.SupersededBy,
 			"content": content,
 		}); err != nil {
 			return fmt.Errorf("context: %w", err)
@@ -222,8 +222,8 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 	} else {
 		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s)\n", unit.ID, unit.Kind)
 	}
-	if unit.Verified != "" {
-		_, _ = fmt.Fprintf(cfg.Stdout, "> trust: %s\n", unit.Verified)
+	if tier := unit.Verified.Tier(); tier != contextstore.Unverified {
+		_, _ = fmt.Fprintf(cfg.Stdout, "> trust: %s\n", tier)
 	}
 	for _, src := range unit.Sources {
 		_, _ = fmt.Fprintf(cfg.Stdout, "> source: %s\n", src)

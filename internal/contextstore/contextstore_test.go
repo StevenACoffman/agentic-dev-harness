@@ -242,8 +242,16 @@ func TestTrustTier(t *testing.T) {
 
 func TestRouteTrustTieBreakAndSupersession(t *testing.T) {
 	units := []contextstore.Unit{
-		{ID: "a-low", Labels: []string{"sec"}, Verified: contextstore.Unverified},
-		{ID: "b-high", Labels: []string{"sec"}, Verified: contextstore.HumanReviewed},
+		{
+			ID:       "a-low",
+			Labels:   []string{"sec"},
+			Verified: contextstore.Trust{Stated: contextstore.Unverified},
+		},
+		{
+			ID:       "b-high",
+			Labels:   []string{"sec"},
+			Verified: contextstore.Trust{Stated: contextstore.HumanReviewed},
+		},
 		{ID: "old", Labels: []string{"sec"}, SupersededBy: "b-high"},
 	}
 	routed := contextstore.Route(units, []string{"sec"}, nil, 0)
@@ -265,9 +273,20 @@ func TestRouteTrustTieBreakAndSupersession(t *testing.T) {
 func TestWikiLintHelpers(t *testing.T) {
 	units := []contextstore.Unit{
 		{ID: "ok", Labels: []string{"x"}},
-		{ID: "orphan", Kind: "note"},                                // no labels or paths
-		{ID: "stale", Labels: []string{"y"}, SupersededBy: "ghost"}, // dangling
-		{ID: "bad", Labels: []string{"z"}, Verified: "sideways"},    // invalid tier
+		{
+			ID:   "orphan",
+			Kind: "note",
+		}, // no labels or paths
+		{
+			ID:           "stale",
+			Labels:       []string{"y"},
+			SupersededBy: "ghost",
+		}, // dangling
+		{
+			ID:       "bad",
+			Labels:   []string{"z"},
+			Verified: contextstore.Trust{Stated: "sideways"},
+		}, // invalid tier
 	}
 	if got := contextstore.Orphans(units); len(got) != 1 || got[0] != "orphan" {
 		t.Errorf("Orphans = %v, want [orphan]", got)
@@ -286,7 +305,7 @@ func TestIndex(t *testing.T) {
 			ID:         "rule",
 			Kind:       "base-rule",
 			Labels:     []string{"security"},
-			Verified:   contextstore.HumanReviewed,
+			Verified:   contextstore.Trust{Stated: contextstore.HumanReviewed},
 			Provenance: "OWASP",
 		},
 		{ID: "old", Kind: "note", SupersededBy: "rule"}, // superseded → excluded

@@ -36,16 +36,18 @@ func wantFreshness(
 	if tier := got[0].EffectiveTier(); tier != wantTier {
 		t.Errorf("effective tier = %q, want %q", tier, wantTier)
 	}
-	if got[0].Verified != unit.Verified {
+	if got[0].Verified.Tier() != unit.Verified.Tier() {
 		t.Errorf("authored tier changed to %q, want %q left alone",
-			got[0].Verified, unit.Verified)
+			got[0].Verified.Tier(), unit.Verified.Tier())
 	}
 }
 
 func TestFreshnessStates(t *testing.T) {
 	t.Parallel()
 	checked := contextstore.Unit{
-		ID: "u1", Integrity: "drift-check", Verified: contextstore.HumanReviewed,
+		ID:        "u1",
+		Integrity: "drift-check",
+		Verified:  contextstore.Trust{Stated: contextstore.HumanReviewed},
 	}
 	tests := []struct {
 		name     string
@@ -53,63 +55,75 @@ func TestFreshnessStates(t *testing.T) {
 		records  []contextstore.IntegrityRecord
 		want     contextstore.Freshness
 		wantTier contextstore.TrustTier
-	}{{
-		// The zero value must assert nothing: a store nobody has verified routes
-		// exactly as it did before this existed.
-		name: "no record is unknown, and suppresses nothing",
-		unit: checked, records: nil,
-		want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
-	}, {
-		name: "a passing run is fresh",
-		unit: checked,
-		records: []contextstore.IntegrityRecord{
-			{Unit: "u1", Result: contextstore.ResultOK},
+	}{
+		{
+			// The zero value must assert nothing: a store nobody has verified routes
+			// exactly as it did before this existed.
+			name: "no record is unknown, and suppresses nothing",
+			unit: checked, records: nil,
+			want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
 		},
-		want: contextstore.FreshnessFresh, wantTier: contextstore.HumanReviewed,
-	}, {
-		// The defect this whole file exists for.
-		name: "a drifted unit routes as unverified",
-		unit: checked,
-		records: []contextstore.IntegrityRecord{
-			{Unit: "u1", Result: contextstore.ResultDrift},
+		{
+			name: "a passing run is fresh",
+			unit: checked,
+			records: []contextstore.IntegrityRecord{
+				{Unit: "u1", Result: contextstore.ResultOK},
+			},
+			want: contextstore.FreshnessFresh, wantTier: contextstore.HumanReviewed,
 		},
-		want: contextstore.FreshnessDrifted, wantTier: contextstore.Unverified,
-	}, {
-		// A tool that could not run has neither cleared nor condemned the unit, and
-		// must not be read as either.
-		name: "a tool that could not run leaves the unit unknown",
-		unit: checked,
-		records: []contextstore.IntegrityRecord{
-			{Unit: "u1", Result: contextstore.ResultUnverified},
+		{
+			// The defect this whole file exists for.
+			name: "a drifted unit routes as unverified",
+			unit: checked,
+			records: []contextstore.IntegrityRecord{
+				{Unit: "u1", Result: contextstore.ResultDrift},
+			},
+			want: contextstore.FreshnessDrifted, wantTier: contextstore.Unverified,
 		},
-		want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
-	}, {
-		// §12: a unit declaring no integrity tool is outside the check's judgement,
-		// not failing it. Scoring it would make every hand-written unit look suspect.
-		name: "no integrity tool is not applicable, not unknown",
-		unit: contextstore.Unit{ID: "u1", Verified: contextstore.HumanReviewed},
-		records: []contextstore.IntegrityRecord{
-			{Unit: "u1", Result: contextstore.ResultDrift},
+		{
+			// A tool that could not run has neither cleared nor condemned the unit, and
+			// must not be read as either.
+			name: "a tool that could not run leaves the unit unknown",
+			unit: checked,
+			records: []contextstore.IntegrityRecord{
+				{Unit: "u1", Result: contextstore.ResultUnverified},
+			},
+			want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
 		},
-		want: contextstore.FreshnessNotApplicable, wantTier: contextstore.HumanReviewed,
-	}, {
-		// Append-only: the log's own order is the recency, so a re-verified unit
-		// recovers with no edit to the authored field.
-		name: "the newest record wins, so re-verifying restores standing",
-		unit: checked,
-		records: []contextstore.IntegrityRecord{
-			{Unit: "u1", Result: contextstore.ResultDrift},
-			{Unit: "u1", Result: contextstore.ResultOK},
+		{
+			// §12: a unit declaring no integrity tool is outside the check's judgement,
+			// not failing it. Scoring it would make every hand-written unit look suspect.
+			name: "no integrity tool is not applicable, not unknown",
+			unit: contextstore.Unit{
+				ID:       "u1",
+				Verified: contextstore.Trust{Stated: contextstore.HumanReviewed},
+			},
+			records: []contextstore.IntegrityRecord{
+				{Unit: "u1", Result: contextstore.ResultDrift},
+			},
+			want:     contextstore.FreshnessNotApplicable,
+			wantTier: contextstore.HumanReviewed,
 		},
-		want: contextstore.FreshnessFresh, wantTier: contextstore.HumanReviewed,
-	}, {
-		name: "a record for another unit does not touch this one",
-		unit: checked,
-		records: []contextstore.IntegrityRecord{
-			{Unit: "other", Result: contextstore.ResultDrift},
+		{
+			// Append-only: the log's own order is the recency, so a re-verified unit
+			// recovers with no edit to the authored field.
+			name: "the newest record wins, so re-verifying restores standing",
+			unit: checked,
+			records: []contextstore.IntegrityRecord{
+				{Unit: "u1", Result: contextstore.ResultDrift},
+				{Unit: "u1", Result: contextstore.ResultOK},
+			},
+			want: contextstore.FreshnessFresh, wantTier: contextstore.HumanReviewed,
 		},
-		want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
-	}}
+		{
+			name: "a record for another unit does not touch this one",
+			unit: checked,
+			records: []contextstore.IntegrityRecord{
+				{Unit: "other", Result: contextstore.ResultDrift},
+			},
+			want: contextstore.FreshnessUnknown, wantTier: contextstore.HumanReviewed,
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -125,9 +139,13 @@ func TestDriftedUnitStopsOutrankingAClean(t *testing.T) {
 	both := []contextstore.Unit{
 		{
 			ID: "reviewed", Labels: []string{"sec"},
-			Integrity: "check", Verified: contextstore.HumanReviewed,
+			Integrity: "check", Verified: contextstore.Trust{Stated: contextstore.HumanReviewed},
 		},
-		{ID: "plain", Labels: []string{"sec"}, Verified: contextstore.MachineConfirmed},
+		{
+			ID:       "plain",
+			Labels:   []string{"sec"},
+			Verified: contextstore.Trust{Stated: contextstore.MachineConfirmed},
+		},
 	}
 	if got := contextstore.Route(both, []string{"sec"}, nil, 0); got[0].ID != "reviewed" {
 		t.Fatalf("before any record, routed %q first, want reviewed", got[0].ID)
@@ -139,9 +157,9 @@ func TestDriftedUnitStopsOutrankingAClean(t *testing.T) {
 	if got[0].ID != "plain" {
 		t.Fatalf("after recorded drift, routed %q first, want plain", got[0].ID)
 	}
-	if got[1].Verified != contextstore.HumanReviewed {
+	if got[1].Verified.Tier() != contextstore.HumanReviewed {
 		t.Errorf("drift destroyed the authored tier (%q); it must only be suppressed",
-			got[1].Verified)
+			got[1].Verified.Tier())
 	}
 }
 
@@ -151,7 +169,9 @@ func TestFreshIsNeverSerialised(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	unit := contextstore.Unit{
-		ID: "u1", Integrity: "check", Verified: contextstore.HumanReviewed,
+		ID:        "u1",
+		Integrity: "check",
+		Verified:  contextstore.Trust{Stated: contextstore.HumanReviewed},
 	}
 	contextstore.ApplyFreshness([]contextstore.Unit{unit}, nil)
 	write(t, dir, "u1.json", `{"id":"u1","integrity":"check","verified":"human-reviewed"}`)
