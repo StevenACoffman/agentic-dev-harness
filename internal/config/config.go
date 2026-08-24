@@ -79,6 +79,23 @@ type Config struct {
 	Critic     Critic     `toml:"critic"`
 	Proof      Proof      `toml:"proof"`
 	Evaluation Evaluation `toml:"evaluation"`
+	Identity   Identity   `toml:"identity"`
+}
+
+// Identity is who this harness records as the actor on a verification event
+// (SPEC-ADDITIONS §10.4).
+//
+// **Config-derived, and attributable rather than authenticated.** It establishes who the
+// harness was configured as, not who was at the keyboard, and adh states that limit
+// rather than implying more. A flag would let any caller mint a `human:` event, which
+// makes the tier fold worth defeating.
+type Identity struct {
+	// Actor is the full actor id including its class, e.g. "human:steve" or
+	// "ci:nightly". The class is declared rather than inferred: a bare name would have
+	// to be guessed into a class, and guessing "human" is exactly the guess that lets a
+	// CI runner mint sign-offs. Unset means the harness has no identity and cannot
+	// record a verification.
+	Actor string `toml:"actor"`
 }
 
 // Evaluation is the Evaluation-stage policy (SPEC §4.1). MaxReworks bounds the
@@ -269,6 +286,9 @@ func resolve(docs [][]byte) (Config, error) {
 	// Validated after the overlay rather than per document: a lower layer may name an
 	// input a higher one replaces, and rejecting the intermediate state would refuse a
 	// config whose resolved value is fine.
+	if err := validateIdentity(&cfg.Identity); err != nil {
+		return Config{}, err
+	}
 	if err := validateCritic(&cfg.Critic); err != nil {
 		return Config{}, err
 	}
@@ -360,4 +380,26 @@ func allRoles() []adh.Stage {
 		adh.StageStrategy, adh.StageExecution, adh.StageCritic,
 		adh.StageEvaluation, adh.StageOps,
 	}
+}
+
+// validateIdentity rejects a configured actor with no class.
+//
+// `Verification.By` is folded on the part before its colon, so a bare "steve" would
+// become a class named "steve" — not human, not machine, and silently outside the
+// taxonomy the tier derives from. Rejecting it at load is what stops someone
+// "helpfully" defaulting an unprefixed name to human later, which is precisely the
+// inference the config-derived-actor decision exists to avoid.
+func validateIdentity(id *Identity) error {
+	if id.Actor == "" {
+		return nil // no identity configured; recording a verification is then refused
+	}
+	class, rest, found := strings.Cut(id.Actor, ":")
+	if !found || class == "" || rest == "" {
+		return &adh.Error{
+			Code: adh.EINVALID,
+			Message: "identity.actor must be <class>:<name> (e.g. human:steve, " +
+				"ci:nightly); got " + id.Actor,
+		}
+	}
+	return nil
 }
