@@ -67,7 +67,10 @@ func TestResumeAdvancesAndClearsPending(t *testing.T) {
 		Status:  adh.StatusOpen,
 		Pending: &adh.Pending{Stage: adh.StageStrategy, Prompt: "p"},
 	}
-	out, err := relay.Resume(context.Background(), &arc, "widen it", fakePrompter{}, nil)
+	// The resolution line is required at strategy (critic.parseStrategyReply); a plain
+	// plan is refused rather than silently becoming a code change.
+	reply := "resolution: change\nwiden it"
+	out, err := relay.Resume(context.Background(), &arc, reply, fakePrompter{}, nil)
 	if err != nil {
 		t.Fatalf("Resume: %v", err)
 	}

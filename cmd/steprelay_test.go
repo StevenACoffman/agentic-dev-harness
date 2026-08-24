@@ -128,7 +128,11 @@ func TestStepRelayResumeAdvances(t *testing.T) {
 	mustRun(t, "step", "--relay", "--jsonl", id) // open the turn
 
 	respPath := filepath.Join(t.TempDir(), "reply.txt")
-	if err := os.WriteFile(respPath, []byte("chose a code change; steps: ..."), 0o600); err != nil {
+	if err := os.WriteFile(
+		respPath,
+		[]byte("resolution: change\nchose a code change; steps: ..."),
+		0o600,
+	); err != nil {
 		t.Fatalf("write reply: %v", err)
 	}
 
