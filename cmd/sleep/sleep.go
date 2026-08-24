@@ -12,7 +12,6 @@ package sleep
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -104,7 +103,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: expected a verb: run, adopt, status, or schedule")
+		return root.MissingVerbError{
+			Scope: "sleep",
+			Verbs: []string{"run", "adopt", "status", "schedule"},
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("sleep")
@@ -119,7 +121,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "schedule":
 		return cfg.schedule(ctx, args[1:])
 	default:
-		return fmt.Errorf("sleep: unknown verb %q; want run, adopt, status, or schedule", args[0])
+		return root.UnknownVerbError{
+			Scope: "sleep", Got: args[0],
+			Verbs: []string{"run", "adopt", "status", "schedule"},
+		}
 	}
 }
 
@@ -317,7 +322,10 @@ func (cfg *Config) gateUntrustworthy(what string, cause error) error {
 
 func (cfg *Config) adopt(args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: adopt requires a staging id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "sleep: adopt requires a staging id",
+		}
 	}
 	id := args[0]
 	man, err := readManifest(id)

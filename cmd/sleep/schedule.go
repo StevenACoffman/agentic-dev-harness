@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 )
 
@@ -58,7 +59,10 @@ func (execRunner) Run(ctx context.Context, command []string) error {
 // schedule dispatches the `sleep schedule` verbs over the SQLite job store.
 func (cfg *Config) schedule(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: schedule expects a verb: add, list, remove, tick, or run")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "sleep: schedule expects a verb: add, list, remove, tick, or run",
+		}
 	}
 	store, err := schedule.Open(ctx, cfg.scheduleDir())
 	if err != nil {
@@ -179,7 +183,10 @@ func (cfg *Config) scheduleList(ctx context.Context, store *schedule.Store) erro
 // scheduleRemove deletes a named job.
 func (cfg *Config) scheduleRemove(ctx context.Context, store *schedule.Store, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: schedule remove <name>")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "sleep: schedule remove <name>",
+		}
 	}
 	if err := store.Remove(ctx, args[0]); err != nil {
 		return fmt.Errorf("sleep: %w", err)

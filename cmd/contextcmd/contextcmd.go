@@ -7,7 +7,6 @@ package contextcmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,11 +91,22 @@ func New(parent *root.Config) *Config {
 	return &cfg
 }
 
+// contextVerbs are the verbs context dispatches.
+//
+// A function rather than a package var (gochecknoglobals) and named once rather than
+// written into both refusals, which is where nine verbs listed twice inside one function
+// had pushed exec past the length limit. The usage line is still a third copy; that one
+// is authored prose and stays.
+func contextVerbs() []string {
+	return []string{
+		"list", "show", "route", "lint", "verify",
+		"check", "misses", "eval", "index",
+	}
+}
+
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New(
-			"context: expected a verb: list, show, route, lint, verify, check, misses, eval, or index",
-		)
+		return root.MissingVerbError{Scope: "context", Verbs: contextVerbs()}
 	}
 	storeDir := cfg.storeDir()
 	units, err := contextstore.LoadFresh(storeDir)
@@ -134,10 +144,9 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		_, _ = fmt.Fprint(cfg.Stdout, contextstore.Index(units))
 		return nil
 	default:
-		return fmt.Errorf(
-			"context: unknown verb %q; want list, show, route, lint, verify, check, misses, eval, or index",
-			args[0],
-		)
+		return root.UnknownVerbError{
+			Scope: "context", Got: args[0], Verbs: contextVerbs(),
+		}
 	}
 }
 
@@ -172,7 +181,10 @@ func (cfg *Config) list(units []contextstore.Unit) error {
 // outcome carrying the metadata, provenance, and content.
 func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []string) error {
 	if len(args) == 0 {
-		return errors.New("context: show requires a unit id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "context: show requires a unit id",
+		}
 	}
 	id := args[0]
 	for i := range units {
@@ -186,7 +198,10 @@ func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []strin
 		}
 		return cfg.reportUnit(unit, content)
 	}
-	return fmt.Errorf("context: no such unit %q", id)
+	return &adh.Error{
+		Code:    adh.ENOTFOUND,
+		Message: fmt.Sprintf("context: no such unit %q", id),
+	}
 }
 
 // reportUnit emits a unit and its content, as one outcome under --jsonl else text.

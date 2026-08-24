@@ -16,6 +16,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	lessonlib "github.com/StevenACoffman/agentic-dev-harness/internal/lesson"
@@ -62,7 +63,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("lesson: expected a verb: list or promote")
+		return root.MissingVerbError{
+			Scope: "lesson",
+			Verbs: []string{"list", "promote"},
+		}
 	}
 	switch args[0] {
 	case "list":
@@ -70,7 +74,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "promote":
 		return cfg.promote(args[1:])
 	default:
-		return fmt.Errorf("lesson: unknown verb %q; want list or promote", args[0])
+		return root.UnknownVerbError{
+			Scope: "lesson", Got: args[0],
+			Verbs: []string{"list", "promote"},
+		}
 	}
 }
 
@@ -107,7 +114,10 @@ func (cfg *Config) list() error {
 
 func (cfg *Config) promote(args []string) error {
 	if len(args) == 0 {
-		return errors.New("lesson: promote requires a class")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "lesson: promote requires a class",
+		}
 	}
 	owner := lessonlib.Owner(cfg.To)
 	if cfg.To == "" || !owner.Valid() {
@@ -122,7 +132,10 @@ func (cfg *Config) promote(args []string) error {
 	class := args[0]
 	lesson, ok := findLesson(lessons, class)
 	if !ok {
-		return fmt.Errorf("lesson: no candidate class %q; see `adh lesson list`", class)
+		return &adh.Error{
+			Code:    adh.ENOTFOUND,
+			Message: fmt.Sprintf("lesson: no candidate class %q; see `adh lesson list`", class),
+		}
 	}
 	records, err := failures.LoadRecords(failures.RecordsFile)
 	if err != nil {

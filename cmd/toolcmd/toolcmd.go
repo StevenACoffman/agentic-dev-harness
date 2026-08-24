@@ -7,7 +7,6 @@ package toolcmd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -59,7 +58,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tool: expected a verb: list, doctor, or run")
+		return root.MissingVerbError{
+			Scope: "tool",
+			Verbs: []string{"list", "doctor", "run"},
+		}
 	}
 	reg, err := toolreg.LoadRepo(cfg.repoDir())
 	if err != nil {
@@ -73,7 +75,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "run":
 		return cfg.run(ctx, reg, args[1:])
 	default:
-		return fmt.Errorf("tool: unknown verb %q; want list, doctor, or run", args[0])
+		return root.UnknownVerbError{
+			Scope: "tool", Got: args[0],
+			Verbs: []string{"list", "doctor", "run"},
+		}
 	}
 }
 
@@ -119,7 +124,10 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 // outcome's data (one clean line); otherwise they stream live to the worker.
 func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tool: run requires a tool id (see `tool list`)")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "tool: run requires a tool id (see `tool list`)",
+		}
 	}
 	id := args[0]
 	tool, ok := reg.FindByID(id)

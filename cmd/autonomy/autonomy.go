@@ -4,7 +4,6 @@ package autonomy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 )
@@ -44,7 +44,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("autonomy: expected a verb: show or set")
+		return root.MissingVerbError{
+			Scope: "autonomy",
+			Verbs: []string{"show", "set"},
+		}
 	}
 	switch args[0] {
 	case "show":
@@ -65,13 +68,19 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "set":
 		return cfg.set(args[1:])
 	default:
-		return fmt.Errorf("autonomy: unknown verb %q; want show or set", args[0])
+		return root.UnknownVerbError{
+			Scope: "autonomy", Got: args[0],
+			Verbs: []string{"show", "set"},
+		}
 	}
 }
 
 func (cfg *Config) set(args []string) error {
 	if len(args) == 0 {
-		return errors.New("autonomy: set requires a level (L0-L4)")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "autonomy: set requires a level (L0-L4)",
+		}
 	}
 	next, err := authority.ParseLevel(args[0])
 	if err != nil {

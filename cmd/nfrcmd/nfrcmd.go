@@ -5,13 +5,13 @@ package nfrcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 )
 
@@ -62,7 +62,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("nfr: expected a verb: list, show, or lint")
+		return root.MissingVerbError{
+			Scope: "nfr",
+			Verbs: []string{"list", "show", "lint"},
+		}
 	}
 	specs, err := nfr.Load(cfg.specDir())
 	if err != nil {
@@ -82,7 +85,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		}
 		return cfg.lint(specs)
 	default:
-		return fmt.Errorf("nfr: unknown verb %q; want list, show, or lint", args[0])
+		return root.UnknownVerbError{
+			Scope: "nfr", Got: args[0],
+			Verbs: []string{"list", "show", "lint"},
+		}
 	}
 }
 
@@ -97,7 +103,10 @@ func noExtraArgs(verb string, rest []string) error {
 	if len(rest) == 0 {
 		return nil
 	}
-	return fmt.Errorf("nfr: %s takes no arguments, got %q", verb, rest[0])
+	return &adh.Error{
+		Code:    adh.EINVALID,
+		Message: fmt.Sprintf("nfr: %s takes no arguments, got %q", verb, rest[0]),
+	}
 }
 
 // list prints each spec's id, tag, scale, and role.
@@ -133,7 +142,10 @@ func role(s *nfr.Spec) string {
 // show prints one spec in full — the Planguage keywords a worker reasons over.
 func (cfg *Config) show(specs []nfr.Spec, args []string) error {
 	if len(args) == 0 {
-		return errors.New("nfr: show requires a spec id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "nfr: show requires a spec id",
+		}
 	}
 	id := args[0]
 	for i := range specs {
@@ -149,7 +161,10 @@ func (cfg *Config) show(specs []nfr.Spec, args []string) error {
 		cfg.printSpec(&specs[i])
 		return nil
 	}
-	return fmt.Errorf("nfr: no such spec %q", id)
+	return &adh.Error{
+		Code:    adh.ENOTFOUND,
+		Message: fmt.Sprintf("nfr: no such spec %q", id),
+	}
 }
 
 // printSpec renders one spec's Planguage keywords for a human.

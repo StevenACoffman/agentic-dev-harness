@@ -4,7 +4,6 @@ package workercmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -41,7 +40,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("worker: expected a verb: show or requalify")
+		return root.MissingVerbError{
+			Scope: "worker",
+			Verbs: []string{"show", "requalify"},
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("worker")
@@ -52,7 +54,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "requalify":
 		return cfg.requalify()
 	default:
-		return fmt.Errorf("worker: unknown verb %q; want show or requalify", args[0])
+		return root.UnknownVerbError{
+			Scope: "worker", Got: args[0],
+			Verbs: []string{"show", "requalify"},
+		}
 	}
 }
 

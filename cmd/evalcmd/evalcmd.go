@@ -8,7 +8,6 @@ package evalcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -87,7 +86,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("eval: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "eval: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("eval")
@@ -97,11 +99,8 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
-	if arc.Status != adh.StatusOpen {
-		return fmt.Errorf("eval: arc %s is not open (status %s)", arc.ID, arc.Status)
-	}
-	if arc.Stage != adh.StageEvaluation {
-		return fmt.Errorf("eval: arc %s is at %s, not evaluation", arc.ID, arc.Stage)
+	if err := evaluable(&arc); err != nil {
+		return err
 	}
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
@@ -264,4 +263,24 @@ func exitFor(kind adh.FindingKind) int {
 	default:
 		return exitInvariant
 	}
+}
+
+// evaluable reports whether an arc is in a state eval can adjudicate.
+//
+// ECONFLICT rather than an untyped error: the invocation is well-formed and the state is
+// wrong, so a caller's next move is to advance the arc rather than to fix the command.
+func evaluable(arc *adh.Arc) error {
+	if arc.Status != adh.StatusOpen {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("eval: arc %s is not open (status %s)", arc.ID, arc.Status),
+		}
+	}
+	if arc.Stage != adh.StageEvaluation {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("eval: arc %s is at %s, not evaluation", arc.ID, arc.Stage),
+		}
+	}
+	return nil
 }

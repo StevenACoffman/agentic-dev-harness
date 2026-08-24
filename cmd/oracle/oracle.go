@@ -6,12 +6,12 @@ package oracle
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	oraclelib "github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 )
@@ -65,7 +65,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("oracle: expected a verb: diff, invariants, or selftest")
+		return root.MissingVerbError{
+			Scope: "oracle",
+			Verbs: []string{"diff", "invariants", "selftest"},
+		}
 	}
 	switch args[0] {
 	case "diff":
@@ -75,7 +78,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "selftest":
 		return cfg.selfTest()
 	default:
-		return fmt.Errorf("oracle: unknown verb %q; want diff, invariants, or selftest", args[0])
+		return root.UnknownVerbError{
+			Scope: "oracle", Got: args[0],
+			Verbs: []string{"diff", "invariants", "selftest"},
+		}
 	}
 }
 
@@ -86,7 +92,10 @@ func (cfg *Config) diff(ctx context.Context) error {
 	case cfg.Reference != "" && cfg.Candidate != "":
 		return cfg.diffCommands(ctx)
 	case cfg.Reference != "" || cfg.Candidate != "":
-		return errors.New("oracle: diff command mode needs both --reference and --candidate")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "oracle: diff command mode needs both --reference and --candidate",
+		}
 	}
 	boards := oraclelib.GenerateBoards(corpusSeed, corpusBoards, corpusRows, corpusCols, corpusHues)
 	div := oraclelib.Diverges(oraclelib.React, oraclelib.Native, boards)

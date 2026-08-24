@@ -5,12 +5,12 @@ package device
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	devicelib "github.com/StevenACoffman/agentic-dev-harness/internal/device"
 )
 
@@ -40,7 +40,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "validate" {
-		return errors.New("device: expected 'validate'")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "device: expected 'validate'",
+		}
 	}
 	report, err := devicelib.Mock{Healthy: true}.Validate(ctx)
 	if err != nil {

@@ -6,7 +6,6 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -83,7 +82,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("run: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "run: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("run")
@@ -173,7 +175,10 @@ func (cfg *Config) resumeRelay(
 	barFor func(adh.Resolution) string,
 ) error {
 	if arc.Pending == nil || arc.Pending.Stage != arc.Stage {
-		return fmt.Errorf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage),
+		}
 	}
 	text, err := cfg.readResponse()
 	if err != nil {

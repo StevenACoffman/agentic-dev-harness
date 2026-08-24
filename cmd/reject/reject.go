@@ -7,7 +7,6 @@ package reject
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
@@ -46,7 +45,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("reject: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "reject: requires an arc id",
+		}
 	}
 	id := args[0]
 	store := state.Default()
@@ -56,7 +58,14 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	}
 	// Symmetric with approve: only a blocked arc is waiting at a gate to reject.
 	if arc.Status != adh.StatusBlocked {
-		return fmt.Errorf("reject: arc %s is not waiting at a gate (status %s)", id, arc.Status)
+		return &adh.Error{
+			Code: adh.ECONFLICT,
+			Message: fmt.Sprintf(
+				"reject: arc %s is not waiting at a gate (status %s)",
+				id,
+				arc.Status,
+			),
+		}
 	}
 	if cfg.DryRun {
 		return cfg.reportDryRun(id, len(arc.Paths))

@@ -6,13 +6,14 @@ package vcscmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
@@ -47,7 +48,20 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("vcs: expected a verb: status, branch, or commit")
+		return root.MissingVerbError{
+			Scope: "vcs",
+			Verbs: []string{"status", "branch", "commit"},
+		}
+	}
+	// The verb is checked before the repository is opened, so a typo is reported as a
+	// typo. Opening first meant `vcs bogus` outside a git tree failed with a git error
+	// -- reason "internal", as though adh had broken -- and the actual mistake went
+	// unmentioned.
+	if !slices.Contains([]string{"status", "branch", "commit"}, args[0]) {
+		return root.UnknownVerbError{
+			Scope: "vcs", Got: args[0],
+			Verbs: []string{"status", "branch", "commit"},
+		}
 	}
 	repo, err := vcs.Open(worktreeDir)
 	if err != nil {
@@ -61,7 +75,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "commit":
 		return cfg.commit(repo)
 	default:
-		return fmt.Errorf("vcs: unknown verb %q; want status, branch, or commit", args[0])
+		return root.UnknownVerbError{
+			Scope: "vcs", Got: args[0],
+			Verbs: []string{"status", "branch", "commit"},
+		}
 	}
 }
 
@@ -97,7 +114,10 @@ func (cfg *Config) status(repo *vcs.Git) error {
 
 func (cfg *Config) branch(repo *vcs.Git, args []string) error {
 	if len(args) == 0 {
-		return errors.New("vcs: branch requires a name")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "vcs: branch requires a name",
+		}
 	}
 	if err := repo.CreateBranch(args[0]); err != nil {
 		return fmt.Errorf("vcs: %w", err)
@@ -108,7 +128,10 @@ func (cfg *Config) branch(repo *vcs.Git, args []string) error {
 
 func (cfg *Config) commit(repo *vcs.Git) error {
 	if cfg.Message == "" {
-		return errors.New("vcs: commit requires -m <message>")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "vcs: commit requires -m <message>",
+		}
 	}
 	who := vcs.Signature{Name: "adh", Email: "adh@localhost"}
 	hash, err := repo.Commit(cfg.Message, who, time.Now())

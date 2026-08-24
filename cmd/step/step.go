@@ -10,7 +10,6 @@ package step
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -92,7 +91,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("step: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "step: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("step")
@@ -103,7 +105,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("step: %w", err)
 	}
 	if arc.Status != adh.StatusOpen {
-		return fmt.Errorf("step: arc %s is not open (status %s)", arc.ID, arc.Status)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("step: arc %s is not open (status %s)", arc.ID, arc.Status),
+		}
 	}
 	if arc.Stage == adh.StageOps {
 		return cfg.reportOpsGate(&arc)
@@ -328,10 +333,16 @@ func (cfg *Config) resume(
 ) error {
 	switch {
 	case arc.Pending == nil:
-		return fmt.Errorf("step: arc %s has no pending turn to resume", arc.ID)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("step: arc %s has no pending turn to resume", arc.ID),
+		}
 	case arc.Pending.Stage != arc.Stage:
-		return fmt.Errorf("step: pending turn is for %s but arc %s is at %s",
-			arc.Pending.Stage, arc.ID, arc.Stage)
+		return &adh.Error{
+			Code: adh.ECONFLICT,
+			Message: fmt.Sprintf("step: pending turn is for %s but arc %s is at %s",
+				arc.Pending.Stage, arc.ID, arc.Stage),
+		}
 	}
 	text, err := cfg.readResponse()
 	if err != nil {

@@ -51,6 +51,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/vcscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/version"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/workercmd"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
 // Run parses args and dispatches to the matching command.
@@ -92,21 +93,43 @@ func Run(
 	sel := r.Command.GetSelected()
 	if sel.Exec == nil {
 		if rest := sel.Flags.GetArgs(); len(rest) > 0 {
-			_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
-			return fmt.Errorf("%s: unknown subcommand %q", sel.Name, rest[0])
+			return refuse(r, stderr, sel, &adh.Error{
+				Code:    adh.EINVALID,
+				Message: fmt.Sprintf("%s: unknown subcommand %q", sel.Name, rest[0]),
+			})
 		}
 	}
 	if flag, fixed, found := strayFlag(sel.Name, sel.Flags.GetArgs()); found {
-		_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
-		return fmt.Errorf(
-			"%s: %s came after the verb, where it is not parsed; try `%s`",
-			sel.Name, flag, fixed)
+		return refuse(r, stderr, sel, &adh.Error{
+			Code: adh.EINVALID,
+			Message: fmt.Sprintf(
+				"%s: %s came after the verb, where it is not parsed; try `%s`",
+				sel.Name, flag, fixed),
+		})
 	}
 
 	if runErr := runSelected(ctx, r, stderr); runErr != nil {
 		return runErr
 	}
 	return nil
+}
+
+// refuse reports a pre-dispatch usage error the way the caller asked to be told.
+//
+// These three refusals -- an unparseable flag, an unknown subcommand, a flag written
+// after the verb -- happen before the command runs, so they never reached the envelope
+// translation in runSelected. Under --jsonl a machine consumer got the usage banner on
+// stderr and *nothing at all* on stdout, which is the same defect as prose on stdout
+// wearing different clothes: the caller asked for one envelope per outcome and got no
+// outcome. The banner remains the right answer for a human.
+func refuse(r *root.Config, stderr io.Writer, sel *ff.Command, err error) error {
+	if r.JSONL {
+		code := root.CodeForError(err)
+		_ = r.EmitError(code, root.ReasonForError(err), err.Error())
+		return root.ExitError(code)
+	}
+	_, _ = fmt.Fprintf(stderr, "\n%s\n", ffhelp.Command(sel))
+	return err
 }
 
 // strayFlag reports a leftover argument that looks like a flag.

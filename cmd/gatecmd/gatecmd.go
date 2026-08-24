@@ -5,7 +5,6 @@ package gatecmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -49,13 +48,19 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("gate: expected a verb: list")
+		return root.MissingVerbError{
+			Scope: "gate",
+			Verbs: []string{"list"},
+		}
 	}
 	switch args[0] {
 	case "list":
 		return cfg.list()
 	default:
-		return fmt.Errorf("gate: unknown verb %q; want list", args[0])
+		return root.UnknownVerbError{
+			Scope: "gate", Got: args[0],
+			Verbs: []string{"list"},
+		}
 	}
 }
 
