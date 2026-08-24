@@ -603,6 +603,20 @@ The cycle:
 
 1. **Harvest** closed arcs and their proof, reviews, and human corrections since
    the last cycle. Read-only; no network.
+
+   A signal carries **provenance**, and the *zero value is unknown* — a signal that
+   does not say where it came from is not assumed to be arc-derived. Only arc-derived
+   signals may enter step 2's held-out splits: mining sessions the harness never
+   governed is a heuristic, and a wrong inference there does not merely add noise, it
+   moves the objective the gate hill-climbs. Signals of other provenance feed
+   reflection and §11 lesson candidates, where a false positive costs a discarded
+   suggestion and the temporal (≥2 strata) and human gates already stand in the way.
+   The asymmetry is deliberate: **tolerant where a wrong signal wastes attention,
+   strict where it would corrupt the measure.**
+
+   A provenance that has not earned entry to the splits is recorded rather than
+   discarded, so a mining rule found to be imprecise can be excluded retroactively
+   instead of being untraceable.
 2. **Mine** recurring, checkable tasks from that history and assign each to a
    stable split. Real tasks are archived so later cycles can recall similar ones;
    recalled and synthetic tasks may enlarge the *training* set only, never enter

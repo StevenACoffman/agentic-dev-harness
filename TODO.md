@@ -1265,6 +1265,49 @@ from). adh is the tool most of it lands on. Checked against the code.
   Scope note: harvesting foreign session stores is a read of someone else's on-disk format
   and will rot; keep each harvester behind one normalizing seam so a format change is one
   file, as SkillOpt does.
+
+  **Decided 2026-08-23 — marked provenance on one accretion path, built report-first.**
+  Recorded in `SPEC-ADDITIONS.md` §18 step 1 and on `consolidate.Signal`.
+
+  The decision needed the code traced first, and doing so narrowed it. Signals flow two
+  ways and only one is exposed: `lesson promote` is already double-gated (≥2 strata *and*
+  a human running it with an explicit `--to`), but `sleep run` does `Harvest → Mine →
+  Tasks`, and those tasks **are the held-out splits that score a candidate edit**.
+  Adoption is human; the score comparison is mechanical. So a mined signal does not merely
+  suggest work, it edits the objective — and that is where the whole question lived.
+
+  **Volume settled the rest.** 57 session files on this machine against a handful of
+  closed arcs (this repository has none). Equal citizenship was not viable: foreign
+  signals would dominate any count-based threshold immediately.
+
+  So: `Signal` gains a provenance field rather than a separate type — one accretion path,
+  one place that says no — and **the zero value means unknown**, so arc-derived signals
+  are the ones explicitly marked and a consumer added later gets the conservative reading
+  by forgetting. Only arc-derived signals enter the splits. Everything else feeds
+  reflection and the lesson candidates, where the existing gates stand between a false
+  positive and a change. Tolerant where a wrong signal wastes attention, strict where it
+  would corrupt the measure. A rejected provenance is recorded rather than dropped, so an
+  imprecise mining rule can be excluded retroactively instead of being untraceable.
+
+  Quarantine-and-promote was the runner-up and matches the house style (`Miss` proposes,
+  nothing auto-routes). Refused because its failure mode — a queue nobody drains — leaves
+  the original complaint standing while costing a store, a verb, and a review burden.
+
+  - [ ] **Increment 1: mine and report, wire nothing.** Retry-chain detection over the
+    session corpus, output a report — which classes recur, which are absent from the
+    lessons. **Nothing enters `Harvest`.** The reason to build this first is that nobody
+    knows the mining rule's false-positive rate on real sessions: measuring it is cheap
+    here and expensive after wiring, because by then a bad inference is already inside a
+    score somebody trusted.
+  - [ ] **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
+    Gated on increment 1 showing the mining is precise enough to be worth trusting.
+  - [ ] **Increment 3 (may never be right): admit foreign signals to the splits.** Only
+    with evidence from increments 1–2, and the honest default is no.
+
+  **One thing increment 1 will answer on its own:** this repository has zero arcs. If that
+  is typical, `Harvest` reading only closed arcs is not a coverage gap — it is the reason
+  the accretion loop has had almost nothing to learn from, and the report would say so
+  immediately.
 - [x] **Log why the deterministic path did not fire, every time judgment is relayed.**
   *Reframed: adh has no fallback layer, so there is no relay miss to log. The real
   distinction lives in adjudication, where `adh.Unrunnable` already computes why the
