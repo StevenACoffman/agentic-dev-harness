@@ -134,7 +134,25 @@ compaction.
   gate) — so a routed unit's weight reflects how it was earned and a §11 promotion /
   human approval moves it up the tier (the "agent proposes, a human confirms"
   design rule, recorded on the unit), and **freshness/lifecycle** (last-updated,
-  staleness, supersession) so the anti-drift check above can flag a stale unit. A
+  staleness, supersession) so the anti-drift check above can flag a stale unit.
+
+  `verified` holds the **events**, not the tier: a list of `{by, at}` verifications
+  from which the tier is derived, so a human sign-off and an automated re-confirmation
+  remain distinct records rather than collapsing into one adjective. A bare tier string
+  is still read, permanently — adh has never written the field, so there is no migration
+  after which that form could stop being valid input.
+
+  **The actor on a verification event is config-derived, and the record is attributable
+  rather than authenticated.** `by` is taken from the repository's configured identity,
+  not from a flag on the invocation: a `--by` a caller could type would let anyone mint
+  a `human:` event, which makes the human/machine fold worth defeating and is the same
+  reason an event with no actor at all is invalid. Config-derived is still
+  self-asserted — it establishes *who the harness was configured as*, not who was at the
+  keyboard — and adh states that limit rather than implying more. It is the same
+  narrowing already accepted for content-addressing detecting accidents rather than
+  tampering, and for checksums not being authentication: **a guarantee stated more
+  broadly than it holds is worse than a narrow one, because a reader stops looking.**
+  Anything stronger needs a signing identity adh does not have and should not invent. A
   navigable `index.md` (the routing preview) and an append-only `log.md` (the
   chronological evidence trail) are the store's two special files.
 

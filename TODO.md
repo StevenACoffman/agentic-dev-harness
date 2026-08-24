@@ -319,6 +319,27 @@ not an adh component.
       same package by the time it was built — the integrity log stores events and derives
       freshness identically. Composes with it: recorded drift suppresses the derived tier
       without destroying the events behind it.
+
+      - [ ] **Nothing writes a verification event, so the shape is expressible and
+        unreachable.** Zero constructions of `Verification` outside tests. `context verify`
+        writes *integrity* records — a different log answering "has the content drifted",
+        not "who confirmed it" — so the OKF conformance is read-only. **An unreachable
+        field reads as a shipped feature**, which is worse than not having the shape, and
+        it is the same complaint this entry was originally making.
+
+        **Decided 2026-08-23: the actor is config-derived, and the record is attributable
+        rather than authenticated.** Not a `--by` flag — a caller-supplied actor lets
+        anyone mint a `human:` event, which makes the fold worth defeating and is the same
+        reason an actorless event is invalid. Config-derived is still self-asserted: it
+        establishes who the harness was configured as, not who was at the keyboard, and
+        adh states that limit rather than implying more. Same narrowing already accepted
+        for content-addressing detecting accidents rather than tampering. Anything
+        stronger needs a signing identity adh does not have and should not invent.
+        Recorded in `SPEC-ADDITIONS.md` §10.4 and on `contextstore.Verification`.
+
+        What is left is the verb — whether recording a sign-off is its own command or a
+        flag on `context verify` — and that is a small shape question, not a decision
+        anyone needs to weigh in on.
       **Not necessarily a bug:** if adh never exchanges units with an OKF consumer, storing
       the tier is cheaper and `Rank()` is a real need OKF does not serve. The decision to
       make explicitly is **whether `Unit` claims OKF conformance or borrows its

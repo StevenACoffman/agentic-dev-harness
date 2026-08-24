@@ -15,6 +15,16 @@ const humanActor = "human"
 
 // Verification is one verification event: who confirmed a unit, and when.
 //
+// **By is config-derived, and the record is attributable rather than authenticated.**
+// Whatever writes this field must take the actor from the repository's configured
+// identity, never from a flag on the invocation: a caller-supplied actor would let anyone
+// mint a human: event, which makes the fold in Tier worth defeating and is the same
+// reason an actorless event is invalid below. Config-derived is still self-asserted -- it
+// establishes who the harness was configured as, not who was at the keyboard -- and that
+// limit is stated rather than implied, the same narrowing already accepted for
+// content-addressing detecting accidents rather than tampering. Anything stronger needs a
+// signing identity adh does not have and should not invent.
+//
 // OKF §5.2 stores these rather than the tier they imply, and the reason is what a stored
 // tier cannot say. "human-reviewed" cannot name which human or on what date, and it
 // cannot represent "reviewed by a person *and* re-confirmed by a nightly process" --
