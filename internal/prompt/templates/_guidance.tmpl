@@ -4,5 +4,6 @@ Routed repository guidance for this change (§10) — read a unit's text with `a
 {{end}}{{end}}{{end}}
 {{define "tools"}}{{if .Tools}}
 Available tools (§13) — select a capability by what it verifies:
-{{range .Tools}}- {{.ID}}: verifies {{.Verifies}}{{if .Run}} (run: {{.Run}}){{end}}
+{{range .Tools}}- {{.ID}}: verifies {{.Verifies}}{{if .Run}} (run: {{.Run}}){{end}}{{if .IfAbsent}}
+  if unavailable: {{.IfAbsent}}{{end}}
 {{end}}{{end}}{{end}}
