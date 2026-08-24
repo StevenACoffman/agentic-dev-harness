@@ -1205,16 +1205,23 @@ below survived checking against the code, and the third is a retraction.
   edit. The four states land where they earn their place — a unit declaring no integrity
   tool is `not_applicable`, not `unknown`.
   src: `agent-red/goalx` `cli/freshness_state.go`.
-- [ ] **Capability routing is a missing axis, not a missing feature.** The autonomy ladder
-  governs *how much* an agent may do; nothing expresses *which* agent should take a given
-  arc. `clu` declares agent capabilities in config and routes unassigned work by `cap:*`
-  label, with a well-defined shared pool (`assignee IS NULL` and no `cap:*` label) so
-  unlabelled work is never stranded, and it refuses at creation time to attach a `cap:` a
-  no declared agent could match — the failure mode that makes label routing rot. Relevant
-  because the harness is meant to serve a team with genuinely different skills, and today
-  arc assignment carries none of that. Not urgent; recorded because the shape is right and
-  the refuse-unmatchable-label detail is the part that is easy to omit and expensive to
-  retrofit.
+- [x] **Capability routing is a missing axis, not a missing feature.** *Refused
+  2026-08-24, and the premise was stronger than the entry knew.* Recorded in
+  `SPEC-ADDITIONS.md` §14.
+
+  **`Arc` has no assignee at all** — no owner, no assignment — so "does arc assignment
+  carry capability routing" presupposes something that does not exist. The real question
+  is whether adh becomes multi-agent, which is foundational rather than an added axis.
+  §14 holds one worker constant precisely so a baseline means something: the epoch, the
+  ambition ceiling, the calibration report and every KPI are measured against it. Plural
+  workers with different capabilities make each of those per-worker or meaningless, so
+  this replaces the measurement story rather than extending it. Nothing forces it.
+
+  Kept for whenever an owner *is* recorded: it should be **advisory** — who is driving,
+  not who may — and a requirement label added later must be refused at creation when
+  nothing can match it, which is already how a dangling integrity ref and an undeclared
+  tool are handled. That refuse-unmatchable detail is the part of `clu`'s design worth
+  having and the part easiest to omit.
   src: `agent-red/clu` `internal/cli/{create,batch}.go`, `internal/config/config.go:247`.
 - **Retraction — adh's redaction is already the better design; do not adopt `pantry`'s.**
   An earlier pass suggested lifting pantry's "3-layer redaction". Checked: `internal/redact`
@@ -1647,18 +1654,25 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   - [ ] **Build it: `Tool.Adjudicates`, and a `doctor` check for a finding kind no
     declared tool claims.** Small, and it is what gives L1513 its key.
 
-- [ ] **A capability that is absent needs authored fallback wording, not a repair hint.**
-  `RepairHint` carries the install line, which answers *how do I get this*. It does not
-  answer *what do I do without it*, and those are different questions — the second one
-  matters in an environment where the tool cannot be installed. `superpowers`' porting
-  checklist gives every capability an `If absent` column and defines **degradable** as
-  the skill already carrying fallback wording for the missing tool, with one prohibition
-  that is the whole point: *"never to invent a `Task` call."* An agent that cannot
-  dispatch a subagent must do the work inline or report the missing capability. It must
-  not synthesise a call to something that is not there.
+- [x] **A capability that is absent needs authored fallback wording, not a repair hint.**
+  DECIDED 2026-08-24, recorded in `SPEC-ADDITIONS.md` §13.2. `repair_hint` answers *how do
+  I get this*; an optional **`if_absent`** answers *what do I do without it*, authored per
+  tool by whoever declared the capability, and worth writing only for a tool that
+  `adjudicates` something — the useful case is *the check that would settle this finding
+  kind is unavailable, so do this instead*.
 
-  Better than probing for capabilities in the runner, because the fallback is authored
-  by whoever wrote the stage and knows what the stage actually needs.
+  **Probing the environment before emitting the prompt was refused.** It would make prompt
+  content depend on the machine, forfeiting reproducibility and the scripted-relay fixture
+  that is already planned. So a declared-but-absent tool is still listed, and the risk that
+  leaves is a model reporting a result it never obtained.
+
+  **§19.2 already answers the frightening half.** A fabricated tool result cannot confirm a
+  finding, because adjudication re-runs the artifact itself — so `if_absent` saves a wasted
+  cycle rather than making the loop trustworthy. Worth recording because the source's
+  prohibition (*"never invent a `Task` call"*) reads like a trust problem, and in adh it
+  is not one.
+
+  - [ ] **Build it: `Tool.IfAbsent`, surfaced where the capability is offered.**
 
 - Note, and one residue — **`adh init` seeds `.adh/tools.json`; checked against the
   never-edit-the-user's-files rule and it complies.** `superpowers` states it flatly: *"Everything ships through the harness's own
@@ -1789,25 +1803,26 @@ step read, and the four *no-gaps* verdicts are the honest output of that process
 One thing in its addendum is genuinely absent here and is recorded on its own merits rather
 than as a finding, because the report supplies no evidence for it beyond a corpus reference:
 
-- [ ] **A Critic finding says who can close it and not what to run.** `finding.Action`
-  carries `automatic` / `guided` / `human`, which is *who*; `coherence` emits a
-  `recommended_next_command` alongside, which is *what*. For a five-stage harness whose
-  whole output is consumed by an agent deciding its next move, the difference is real: an
-  agent handed "guided" has to infer the command, and inferring it is the step most likely
-  to go wrong quietly.
-  **Two objections have to be answered before this is built, and the second is the hard
-  one.**
-  - `skillet`'s backlog already refused `FixClass` as a duplicate axis of `Action`. This is
-    not that — a command string is not a classification — but it must not become a third
-    way of saying `automatic`.
-  - **A generated command an agent then executes is an execution surface.** gnosis §15's
-    rule is that anything an agent can name which later selects a file, a command, or a
-    check must be validated against a closed set rather than used. A
-    `recommended_next_command` assembled from a finding's own fields — a path, a rule id —
-    is exactly the shape that rule exists for. The defensible version emits a **closed
-    enumeration of remediation kinds** plus their arguments, and lets the caller render the
-    command, rather than emitting a string for something else to run.
-  Filed as a design question, not as a gap. If it is built, the enumeration is the design.
+- [x] **A Critic finding says who can close it and not what to run.** *Answered
+  2026-08-24 for the case that exists; the enumeration is deferred.* Recorded in
+  `SPEC-ADDITIONS.md` §19.2 and on `adh.Finding.Ref`.
+
+  **A confirmed finding already names its next action.** `Ref` is the artifact that
+  confirmed it, so `adh tool run <ref>` is derivable with no new field — `action` says
+  *who* may close it, `ref` says *what* settles it, and between them the common case is
+  covered. The entry's complaint is that an agent has to infer the command; it does not,
+  and saying so is free.
+
+  **No remediation vocabulary is introduced.** A third closed set beside `action` and
+  `FindingKind` would classify the same space twice — the mistake skillet refused with
+  `FixClass`, and the one §13.2 just avoided by reusing `FindingKind` instead of minting
+  an action taxonomy. Nobody has yet named a remediation that is not "re-run the ref", so
+  an enumeration would be designed against imagined cases.
+
+  If such cases accumulate, the entry's own conclusion stands and is the design: a closed
+  enumeration of remediation kinds plus arguments that the **caller** renders, never an
+  emitted command string — that is an execution surface an agent would be trusted to name,
+  which is what gnosis §15 exists to refuse.
 
 ## `Critic.Deny` Is a Dead Knob That Looks Like the Guarantee (2026-08-22)
 

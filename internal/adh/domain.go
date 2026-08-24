@@ -89,10 +89,15 @@ type KPI struct {
 // summary and the repository artifact (Kind + Ref) whose run would confirm it.
 // The Evaluation stage adjudicates it; the harness never blocks on its text.
 type Finding struct {
-	Summary string       `json:"summary"`
-	Kind    FindingKind  `json:"kind"`
-	Ref     string       `json:"ref,omitempty"`
-	Class   FindingClass `json:"class,omitempty"`
+	Summary string      `json:"summary"`
+	Kind    FindingKind `json:"kind"`
+	// Ref names the artifact that would confirm the finding, and for a confirmed one it
+	// is also the next action: re-running it is what settles the finding, so a caller
+	// has the command without inferring it. That is why no remediation vocabulary
+	// exists here -- a third closed set beside Class and FindingKind would classify the
+	// same space twice, and "re-run the ref" covers the case anyone has named.
+	Ref   string       `json:"ref,omitempty"`
+	Class FindingClass `json:"class,omitempty"`
 }
 
 // Arc is a unit of work driven through the loop.

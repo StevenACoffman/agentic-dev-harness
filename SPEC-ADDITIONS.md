@@ -321,6 +321,7 @@ result      = "json"             # structured result the harness can interpret
 verifies    = "reference-vs-native equivalence"
 adjudicates = ["oracle"]         # the FindingKinds this tool can settle (optional)
 repair_hint = "rebuild both targets; see docs/oracle.md"
+if_absent   = "compare the two outputs by hand and record the divergence as a finding"
 ```
 
 The built-in oracle, invariant, and device checks are re-expressed as registry
@@ -347,6 +348,21 @@ member. An absent `adjudicates` means *unclassified*, not *adjudicates nothing*,
 registry written before this existed keeps working and `doctor` can report a finding kind
 that no declared tool claims.
 
+`repair_hint` answers *how do I get this*; **`if_absent` answers *what do I do without
+it***, and those are different questions — the second is the one that matters in an
+environment where the capability cannot be installed. It is authored per tool, because
+whoever declared the capability knows what its absence costs, and it is worth writing
+only for a tool that `adjudicates` something: the useful case is *the check that would
+settle this finding kind is unavailable, so do this instead*.
+
+**The prompt still lists a declared tool whose binary is absent**, and that is deliberate
+— probing the environment before emitting would make prompt content depend on the machine,
+which forfeits reproducibility and the scripted-relay fixture. The risk it leaves is a
+model reporting a result it never obtained, and **§19.2 already contains the answer**: a
+fabricated tool result cannot confirm a finding, because adjudication re-runs the artifact
+itself. `if_absent` therefore saves a wasted cycle; it is not what makes the loop
+trustworthy.
+
 **Exit code 10** — a required tool is unavailable or returned an uninterpretable
 result.
 
@@ -357,6 +373,17 @@ ______________________________________________________________________
 **Closes:** hold the worker constant. The model-gate (§SPEC 5.1) is a floor; it
 does not requalify the environment when the worker changes. A model or agent
 change opens a new adoption epoch that must be requalified before normal runs.
+
+**adh is single-worker by construction, and that is a decision rather than an
+omission.** An `Arc` carries no assignee: there is no owner, no assignment, and
+therefore no capability routing. Holding one worker constant is what makes a baseline
+mean anything — the epoch, the ambition ceiling, the calibration report, and every KPI
+are measured against it. Plural workers with different capabilities make each of those
+per-worker or meaningless, so routing work by capability is not a missing axis on top of
+the current design, it replaces the design's measurement story. If an owner is ever
+recorded on an arc it should be **advisory** — who is driving, not who may — and any
+requirement label added later must be refused at creation when nothing can match it,
+which is already how a dangling integrity reference and an undeclared tool are handled.
 
 ### 14.1 Commands
 
@@ -837,6 +864,18 @@ the critic (§SPEC 1) runs that artifact.
 | confirmed — the named artifact ran and failed     | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
 | unconfirmed — the artifact ran and passed         | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
 | **unchecked — the artifact could not run**        | neither                            | does not block; reported separately, and excluded from the precision ledger                      |
+
+**A confirmed finding already names its own next action: `ref`.** The artifact that
+confirmed it is the artifact to re-run, so `adh tool run <ref>` is derivable from the
+finding without any new field, and a caller should not be inferring it. `action`
+(automatic / guided / human) says *who* may close a finding; `ref` says *what* settles
+it. Between them the common case is covered, and **no remediation vocabulary is
+introduced**: a third closed set beside `action` and `FindingKind` would be the
+duplicate-classification mistake refused in §13.2, and nobody has yet enumerated a
+remediation that is not "re-run the named artifact". If such cases accumulate, the
+defensible form is a closed enumeration of remediation kinds plus arguments that the
+caller renders — never an emitted command string, which is an execution surface an agent
+would be trusted to name.
 
 **Unchecked is a third outcome and was previously folded into unconfirmed.** The
 collapse was not merely imprecise. Unconfirmed feeds the precision ledger, where it
