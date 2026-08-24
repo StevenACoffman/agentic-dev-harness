@@ -293,38 +293,32 @@ not an adh component.
       output becoming a routable unit — is served today by `lesson --to context promote`;
       an `arc close --as investigation` → unit writer is a separate proof-path loop. The
       append-only evidence trail already exists (`sleep` evidence, the miss log).
-- [ ] **`Unit.Verified` holds a conclusion where OKF holds the evidence for it, and the
-      field name makes that invisible.** Found 2026-08-22 while `skillet` re-reviewed its
-      OKF trust-fields decision. `contextstore.Unit.Verified` is a `TrustTier` *string* —
-      `unverified` / `machine-confirmed` / `human-reviewed` — with `Valid()` checking enum
-      membership and `Rank()` ordering it for routing tie-breaks, and its own comment calls
-      it "the OKF `verified` dimension". OKF §5.2's `verified` is a **list of verification
-      events**, each `{by, at}`, and §5.3 derives the tier by folding over the actor prefix.
-      Same field name, same three tier names, same JSON key, different type: adh stores the
-      answer where the spec stores what the answer was computed from. Three things go with
-      it, and the first two are why §5.2 separates the fields at all. **Who confirmed it and
-      when** — the tier says a human reviewed the unit and cannot say which human or on what
-      date, an omission that is local to this field rather than a considered position, since
-      the autonomy ladder treats actor identity as load-bearing everywhere else. **Two
-      independent checks collapse into one** — §5.2's list exists precisely so a human
-      sign-off *and* an automated nightly pass are distinct events, and `human-reviewed`
-      cannot represent "reviewed by a person **and** re-confirmed by a process", which is
-      the state a compounding knowledge base reaches most often. And **`verified`
-      independent of `generated.at`** — OKF keeps them separate so *content changed without
-      re-confirmation* and *re-confirmed without regeneration* are separately
-      representable, where a stored tier makes the first silent: an edited unit keeps
-      whatever tier it had. The entry above is honest about this and the honesty is easy to
-      miss — it says "DONE for the OKF *dimensions*", not for the format, and its deferred
-      list names packaging, per-claim citations, and freshness. It does not name the type
-      substitution, which is the one that will bite, because a `verified` field that is a
-      string where the spec says list is the kind of divergence that reads as conformance.
+- [x] **`Unit.Verified` holds a conclusion where OKF holds the evidence for it, and the
+      field name makes that invisible.** DONE 2026-08-23. `contextstore.Trust` stores the
+      §5.2 event list and derives the tier per §5.3; `Verification` is `{by, at}`.
 
-      **The decision, stated so it can be made rather than re-observed:** keeping the tier
-      costs who confirmed it and when, permanently and silently; changing it is a migration
-      for a stored artifact plus a change to `Rank()`'s routing tie-break. The cheap middle
-      — store the events and keep `Rank()` folding over them — is probably right and is
-      still a migration. Nothing forces it today, which is what makes it a decision rather
-      than a defect.
+      **The entry priced this as a data migration and it is not one.** Nothing in the
+      repository has ever written the field — zero assignments outside tests — so there is
+      no writer to migrate, and the whole cost is *reading* both shapes. That was the
+      premise worth checking before planning: the expensive half did not exist.
+
+      Reading the legacy bare tier is **permanent, not transitional.** With no migration
+      event there is no point at which that branch could be removed, and the code says so
+      rather than leaving a reader to assume it is temporary. Both shapes keep asserting
+      exactly what they asserted before, so no store gains or loses standing on upgrade.
+      An unrecognised tier still survives parsing, because `context lint` and the wiki
+      index already report it as a taxonomy problem — rejecting it at parse time would
+      turn a lint finding into a load failure.
+
+      Only a human actor earns `human-reviewed`; an event with no actor confirms nothing
+      and is invalid, since that is the shape a fabricated event would take. Verified by
+      hand: a legacy string, a two-event human+machine record, and a machine-only record
+      all route in the right order, and `context show` reports the folded tier.
+
+      The design is the cheap middle this entry predicted, and it had a precedent in the
+      same package by the time it was built — the integrity log stores events and derives
+      freshness identically. Composes with it: recorded drift suppresses the derived tier
+      without destroying the events behind it.
       **Not necessarily a bug:** if adh never exchanges units with an OKF consumer, storing
       the tier is cheaper and `Rank()` is a real need OKF does not serve. The decision to
       make explicitly is **whether `Unit` claims OKF conformance or borrows its
@@ -2096,17 +2090,58 @@ rather than in any one repo's habits.
   itself.
 
   - [ ] **Still uncovered: payloads reachable only with an *argument*.** `arc show <id>`,
-    `context show <id>`, `proof verify <path>`. The registry walk enumerates invocations,
-    not their operands, so covering these means the table naming its own arguments — a
-    different maintained list, and worth a decision rather than a reflex.
-  - [ ] **Usage and precondition errors report `reason: "internal"`.** Found while
-    probing for payloads. `ReasonForError` is `adh.ErrorCode(err)`, which yields
-    `internal` for an untyped error, and these commands return bare `fmt.Errorf`:
-    `eval` ("arc arc-0001 is at strategy, not evaluation"), `context show` ("requires a
-    unit id"), `proof verify` ("requires a manifest path"), `worker`/`gate` ("unknown
-    verb"). `CodeForError` maps the same untyped errors to exit 1 rather than the usage
-    code. **`reason` is the token an agent branches on, and `internal` is what you emit
-    when adh itself broke** — so a caller with a sensible retry-on-internal policy will
-    retry a call that can never succeed. The fix is typed errors (`adh.EINVALID` /
-    `ECONFLICT`) at these return sites; the ratchet shape is a contract test asserting no
-    command reports `internal` for an invocation the usage line forbids.
+    `context show <id>`, `proof verify <path>`.
+
+    **Decision recorded 2026-08-23: do not add an operand table.** A second maintained
+    list — of arguments this time — goes stale exactly the way the first one did twice in
+    three passes. The seeded fixture already creates `arc-0001` and unit `u1`, so the
+    invocations can be *derived* from the fixture that made those ids exist rather than
+    maintained beside it. Cheap once the fixture grows a reason to know its own ids;
+    not worth inventing that plumbing for three commands today.
+  - [x] **Usage and precondition errors report `reason: "internal"`.** DONE 2026-08-23.
+    Seventy-four sites, classified by what the caller has to do: `EINVALID` for a
+    malformed invocation (which also selects the usage exit code, so reason and status
+    were one edit), `ECONFLICT` for an arc at the wrong stage — well-formed command,
+    wrong state — and `ENOTFOUND` for a missing entity. The twenty-six verb refusals
+    became `root.MissingVerbError`/`UnknownVerbError`, carrying the verb list as data so
+    each command names its verbs once instead of twice.
+
+    Structs rather than constructors, and the reason is worth recording: a composite
+    literal is not a cross-package call, so `wrapcheck` is satisfied without wrapping an
+    error that needed no wrapping. That is why `DryRunUnsupportedError` was a defined
+    type all along, which was not obvious until the linter explained it.
+
+    **Three defects the entry did not name, all the same shape:**
+    - `--dry-run` refusals also reported `internal`. The type keeps its identity (a test
+      matches it with `errors.As`) and gains a coded cause via `Unwrap`.
+    - **Three pre-dispatch refusals emitted no envelope at all** — unknown subcommand,
+      stray flag, parse failure all return before `runSelected`, so under `--jsonl` a
+      caller got a usage banner on stderr and *nothing* on stdout. Prose on stdout and
+      silence on stdout are the same defect wearing different clothes.
+    - `vcs` opened the git repository before dispatching its verb, so `vcs bogus` outside
+      a git tree reported a git failure as `internal` and never mentioned the typo. Found
+      by the new ratchet rather than by reading.
+
+  - [x] **Single-verb and flag-prefixed commands were never enumerated.** DONE. The
+    contract test parsed verbs out of the `<a|b|c>` usage group, which found a flag
+    placeholder for `arc [--label <l>]... <new|list|show>` and no alternation at all for
+    `gate <list>` — so `arc list`, `arc show`, `gate list` and `failures list` went
+    unchecked. It now asks each command what it dispatches, reading the list off its own
+    refusal: no prose to parse, no copy to drift, and single-verb commands work by
+    construction. It immediately caught `failures list` printing prose under `--jsonl`.
+
+    A second test asserts the usage line names the verbs the command actually dispatches,
+    keeping the remaining prose copy honest. **The three copies agreed when checked — that
+    is not the same as being kept in agreement**, and the enumeration used to depend on
+    one of them, so a drift narrowed coverage silently rather than failing.
+
+## Scoped, Not Started (2026-08-23)
+
+- **`consolidate.Harvest` (above) is buildable and the corpus is real.** The open question
+  was whether foreign sessions exist to mine; `~/.claude/projects/*.jsonl` is present on
+  this machine, so the answer is yes. The deterministic floor is retry-chain detection — a
+  prompt re-asked after negative feedback — which needs no model. It is a foreign-format
+  parser plus a mining pass plus a normalisation type, and starting it alongside four
+  other items is how it gets half-built.
+- **The relay test (above) is unchanged and large.** Its scoping note already records what
+  transfers from gnosis and what does not.
