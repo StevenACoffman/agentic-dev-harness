@@ -19,6 +19,18 @@ const DefaultRegistryFile = ".adh/tools.json"
 // Tool is one declared capability: how to run it, the shape of its result, what
 // it verifies, the hint printed when it fails, and any KPIs whose degradation
 // proposes a change to the tool (§16/§18).
+// **Verifies stays free prose and Adjudicates is the machine-matchable axis.** The
+// emitted prompts offer a capability by what it verifies, and the nuance is what makes it
+// selectable -- a model choosing between capabilities is better served by "reference
+// integrity (cardinality, ownership, cycles, dangling refs)" than by any token standing
+// in for it. So the stable layer (what it verifies) and the volatile layer (the command)
+// are already separated, and porting edits this registry rather than a prompt.
+//
+// What prose cannot do is let adh *require* a capability. Adjudicates reuses
+// adh.FindingKinds -- a closed set with one owner, already the axis the coverage and
+// noisy-kind ledgers are computed over -- rather than inventing a second vocabulary over
+// the same space, which would be the duplicate-classification mistake refused elsewhere
+// in this family and would have no principle for who may add a member.
 type Tool struct {
 	ID         string    `json:"id"`
 	Run        string    `json:"run"`

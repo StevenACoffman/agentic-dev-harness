@@ -319,6 +319,7 @@ id          = "oracle-diff"
 run         = "make oracle-diff"
 result      = "json"             # structured result the harness can interpret
 verifies    = "reference-vs-native equivalence"
+adjudicates = ["oracle"]         # the FindingKinds this tool can settle (optional)
 repair_hint = "rebuild both targets; see docs/oracle.md"
 ```
 
@@ -326,6 +327,25 @@ The built-in oracle, invariant, and device checks are re-expressed as registry
 entries so the surface is uniform and extensible. A stage selects a tool by what
 it `verifies`, not by a hardcoded command, and a failed invocation returns its
 `repair_hint` instead of an opaque error.
+
+`verifies` stays **free prose** and is what the emitted prompts offer — "select a
+capability by what it verifies" — because the nuance is what makes it selectable: a
+model choosing between capabilities is better served by *"reference integrity
+(cardinality, ownership, cycles, dangling refs)"* than by any token that could stand in
+for it. The stable layer (what a capability verifies) and the volatile layer (the command
+that runs it) are therefore already separated, and porting to different tooling edits the
+registry rather than any prompt.
+
+What free prose cannot do is let adh *require* a capability, so a tool may also declare
+**`adjudicates`**: the `FindingKind`s it can settle. That reuses the closed enumeration
+adh already maintains (`oracle`, `invariant`, `device`, `nfr`, `contract` — owned by one
+`FindingKinds()` list, and already the axis the coverage and noisy-kind ledgers are
+computed over) rather than introducing a second vocabulary describing the same space. A
+second axis over capabilities would be the duplicate-classification mistake refused
+elsewhere in this family, and a bespoke taxonomy has no principle for who may add a
+member. An absent `adjudicates` means *unclassified*, not *adjudicates nothing*, so a
+registry written before this existed keeps working and `doctor` can report a finding kind
+that no declared tool claims.
 
 **Exit code 10** — a required tool is unavailable or returned an uninterpretable
 result.

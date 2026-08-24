@@ -1617,6 +1617,36 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   the way it is satisfied are the same string, and porting to a harness with different
   tooling means editing prompts. Name the actions, keep `toolreg` as the resolver.
 
+  **Premise corrected 2026-08-24: the prompts do not name commands, and both layers
+  already exist the right way round.** `_guidance.tmpl` emits *"Available tools (§13) —
+  select a capability by what it verifies"* and lists `{ID}: verifies {Verifies} (run:
+  {Run})`. §13.2 already mandates it in prose: *"A stage selects a tool by what it
+  `verifies`, not by a hardcoded command."* The only hard-coded command in any template
+  is `adh context show <id>` — adh's own CLI, not the volatile third-party layer — and
+  porting already means editing `.adh/tools.json`, the one normalising seam. So the entry
+  as written would send its reader to restructure prompts that are already correct.
+
+  **What is actually missing is narrower: nothing expresses a stage's *requirement*.** The
+  prompt hands over the whole registry and lets the model choose; `critic.ForStage` is
+  about grounding, not tools. So adh cannot detect "this arc needed an NFR check and the
+  registry declares none", and L1513's `If absent` wording has no stable key to hang on.
+
+  **Decided 2026-08-24: reuse `adh.FindingKind` rather than invent an action vocabulary.**
+  Recorded in `SPEC-ADDITIONS.md` §13.2 and on `toolreg.Tool`. A tool may declare
+  `adjudicates []adh.FindingKind`; `verifies` stays free prose because the nuance is what
+  makes a capability selectable to a model. `FindingKinds()` is already closed, already
+  single-owner so a new member cannot be forgotten, and already the axis the coverage and
+  noisy-kind ledgers are computed over — a second vocabulary over the same space would be
+  the duplicate-classification mistake skillet refused with `FixClass` versus `Action`,
+  and a bespoke taxonomy has no principle for who may add a member. Absent `adjudicates`
+  means *unclassified*, not *adjudicates nothing*, so an existing registry keeps working.
+
+  **Explicitly not doing: changing the prompts.** They already name capabilities by what
+  they verify, which is this entry's actual ask.
+
+  - [ ] **Build it: `Tool.Adjudicates`, and a `doctor` check for a finding kind no
+    declared tool claims.** Small, and it is what gives L1513 its key.
+
 - [ ] **A capability that is absent needs authored fallback wording, not a repair hint.**
   `RepairHint` carries the install line, which answers *how do I get this*. It does not
   answer *what do I do without it*, and those are different questions — the second one
