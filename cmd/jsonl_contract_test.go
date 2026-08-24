@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -67,6 +68,7 @@ var payloadKeys = map[string][]string{
 	// Reachable only with state, and unasserted until the seeded run existed. Five of
 	// these were printing prose under --jsonl at the same time.
 	"arc list":         {"id", "stage", "status", "title"},
+	"failures list":    {"candidates", "confirmed"},
 	"context list":     {"freshness", "id", "kind", "labels", "verified"},
 	"loop list":        {"goal", "id"},
 	"tool list":        {"id", "verifies"},
@@ -281,23 +283,49 @@ func TestJSONLStdoutIsAlwaysJSON(t *testing.T) {
 // subcommands, each of those — so the table covers what the CLI actually exposes.
 func registeredInvocations(t *testing.T) [][]string {
 	t.Helper()
+	// Probing runs each command bare, so keep it out of the repository. Subtests
+	// chdir to their own directories afterwards.
+	t.Chdir(t.TempDir())
 	r := root.New(func(string) string { return "" }, strings.NewReader(""), nil, nil)
 	cmd.RegisterForTest(r)
 
 	var out [][]string
-	for _, cmd := range r.Command.Subcommands {
-		if notData[cmd.Name] {
+	for _, c := range r.Command.Subcommands {
+		if notData[c.Name] {
 			continue
 		}
-		out = append(out, []string{cmd.Name})
-		for _, sub := range cmd.Subcommands {
-			out = append(out, []string{cmd.Name, sub.Name})
+		out = append(out, []string{c.Name})
+		for _, sub := range c.Subcommands {
+			out = append(out, []string{c.Name, sub.Name})
 		}
-		for _, verb := range verbsFromUsage(cmd.Usage) {
-			out = append(out, []string{cmd.Name, verb})
+		for _, verb := range dispatchedVerbs(t, c.Name) {
+			out = append(out, []string{c.Name, verb})
 		}
 	}
 	return out
+}
+
+// dispatchedVerbs asks a command which verbs it dispatches, by invoking it bare and
+// reading the list off its own refusal.
+//
+// Twelve commands dispatch on args[0] rather than registering ff subcommands, so the
+// registry walk cannot see their verbs. This used to parse them out of the `<a|b|c>`
+// group in the usage line, which failed two ways: a command declaring a flag first put
+// a placeholder there (`arc [--label <l>]... <new|list|show>` reads `<l>`), and a
+// single-verb command has no alternation to find (`gate <list>`) — so `arc list`, `arc
+// show`, `gate list` and `failures list` were never enumerated and never checked.
+//
+// Asking the command is not a workaround for that, it is the right source. The refusal
+// carries the verb list as data, so there is no prose to parse and no third copy to
+// drift.
+func dispatchedVerbs(t *testing.T, name string) []string {
+	t.Helper()
+	_, err := run(t, name)
+	var missing root.MissingVerbError
+	if errors.As(err, &missing) {
+		return missing.Verbs
+	}
+	return nil
 }
 
 // verbGroup finds the alternation group in a usage line — the first <a|b|c>.
@@ -390,6 +418,92 @@ func TestJSONLStdoutIsAlwaysJSONWithState(t *testing.T) {
 			t.Chdir(t.TempDir())
 			seedFixture(t)
 			checkInvocation(t, args, true)
+		})
+	}
+}
+
+// TestUsageLineNamesTheVerbsItDispatches keeps the third copy of each verb list honest.
+//
+// Every verb-dispatching command states its verbs twice in code -- now once, via
+// MissingVerbError -- and once more as prose in its usage line. The prose copy is what a
+// person reads to learn what the command does, and nothing made it agree with the code.
+// It agreed when this was written; that is not the same as being kept in agreement, and
+// the enumeration above used to depend on it, so a drift narrowed the contract's coverage
+// silently rather than failing.
+//
+// A command whose usage line has no alternation group is skipped, not failed: `gate
+// <list>` and `failures <list>` cannot spell a one-item alternation, and demanding they
+// invent one would be the test dictating prose.
+func TestUsageLineNamesTheVerbsItDispatches(t *testing.T) {
+	t.Chdir(t.TempDir())
+	r := root.New(func(string) string { return "" }, strings.NewReader(""), nil, nil)
+	cmd.RegisterForTest(r)
+	for _, c := range r.Command.Subcommands {
+		t.Run(c.Name, func(t *testing.T) {
+			dispatched := dispatchedVerbs(t, c.Name)
+			if len(dispatched) == 0 {
+				t.Skip("does not dispatch verbs")
+			}
+			stated := verbsFromUsage(c.Usage)
+			if len(stated) == 0 {
+				t.Skipf("usage line states no alternation: %q", c.Usage)
+			}
+			if !slices.Equal(stated, dispatched) {
+				t.Errorf("usage line says %v, the command dispatches %v\n\tusage: %q",
+					stated, dispatched, c.Usage)
+			}
+		})
+	}
+}
+
+// wantNotInternal asserts no line of out reports reason "internal".
+//
+// Extracted before the caller rather than after, which is the discipline this file keeps
+// having to relearn: an inline loop-plus-decode-plus-check pushed the test past the
+// complexity limit and read as machinery rather than as the claim it makes.
+func wantNotInternal(t *testing.T, out, scope string) {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var env struct {
+			Reason string `json:"reason"`
+			Code   int    `json:"code"`
+		}
+		if json.Unmarshal([]byte(line), &env) != nil {
+			continue
+		}
+		if env.Reason == "internal" {
+			t.Errorf("adh %s <bad verb> reported reason %q; a mistyped verb is not an "+
+				"adh fault, and internal is what a caller retries on", scope, env.Reason)
+		}
+	}
+}
+
+// TestUsageErrorsAreNotReportedAsInternal is the ratchet on the reason vocabulary.
+//
+// `reason` is the token an agent branches on, and `internal` is the one value that means
+// *adh itself broke* — retry, or escalate to a human. Every verb-dispatching command
+// reported it for a mistyped verb, because an untyped error has no code and
+// adh.ErrorCode defaults to EINTERNAL. So a caller with a sensible retry-on-internal
+// policy retried an invocation that could never succeed, and the exit code said 1 where
+// a usage error means 2.
+//
+// Derived from the same walk as the contract above, so a command added later inherits
+// the assertion rather than needing to be remembered.
+func TestUsageErrorsAreNotReportedAsInternal(t *testing.T) {
+	for _, args := range registeredInvocations(t) {
+		if len(args) != 1 {
+			continue
+		}
+		t.Run(args[0], func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			if len(dispatchedVerbs(t, args[0])) == 0 {
+				t.Skip("does not dispatch verbs")
+			}
+			out, _ := run(t, "--jsonl", args[0], "definitely-not-a-verb")
+			wantNotInternal(t, out, args[0])
 		})
 	}
 }
