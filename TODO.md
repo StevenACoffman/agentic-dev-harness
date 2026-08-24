@@ -320,26 +320,28 @@ not an adh component.
       freshness identically. Composes with it: recorded drift suppresses the derived tier
       without destroying the events behind it.
 
-      - [ ] **Nothing writes a verification event, so the shape is expressible and
-        unreachable.** Zero constructions of `Verification` outside tests. `context verify`
-        writes *integrity* records — a different log answering "has the content drifted",
-        not "who confirmed it" — so the OKF conformance is read-only. **An unreachable
-        field reads as a shipped feature**, which is worse than not having the shape, and
-        it is the same complaint this entry was originally making.
+      - [x] **Nothing writes a verification event, so the shape is expressible and
+        unreachable.** DONE 2026-08-24. `context --sign-off verify` records `{by, at}` for
+        each unit that passed, attributed to `identity.actor` from config.
 
-        **Decided 2026-08-23: the actor is config-derived, and the record is attributable
-        rather than authenticated.** Not a `--by` flag — a caller-supplied actor lets
-        anyone mint a `human:` event, which makes the fold worth defeating and is the same
-        reason an actorless event is invalid. Config-derived is still self-asserted: it
-        establishes who the harness was configured as, not who was at the keyboard, and
-        adh states that limit rather than implying more. Same narrowing already accepted
-        for content-addressing detecting accidents rather than tampering. Anything
-        stronger needs a signing identity adh does not have and should not invent.
-        Recorded in `SPEC-ADDITIONS.md` §10.4 and on `contextstore.Verification`.
+        adh had **no identity at all** — no config key, and both commit sites hard-code
+        `adh@localhost`. Git's `user.email` was the tempting source and was refused: it
+        names a person, and `Tier()` folds on the actor *class*, so an unprefixed identity
+        would have to be guessed into `human:` or `ci:` — and a CI runner holding a
+        developer's git identity would then mint human sign-offs. The class is declared,
+        validated at load, so nobody can later default a bare name to `human`.
 
-        What is left is the verb — whether recording a sign-off is its own command or a
-        flag on `context verify` — and that is a small shape question, not a decision
-        anyone needs to weigh in on.
+        Three refusals, each with a reason worth keeping: a run that found drift refuses
+        the **whole** sign-off rather than skipping the drifted units, because a partial
+        sign-off buried in a failing run is how a reviewer comes to believe they signed
+        something they did not; an unset identity refuses rather than recording an
+        anonymous event; and a unit still holding a bare tier is refused, because folding
+        a conclusion with no actor into an event list means inventing one, and only a
+        person knows who the original reviewer was.
+
+        `RecordVerification` edits the `verified` key alone, decoding to raw messages so a
+        unit carrying fields adh does not model keeps them. It is the first thing in adh
+        that writes a unit.
       **Not necessarily a bug:** if adh never exchanges units with an OKF consumer, storing
       the tier is cheaper and `Rank()` is a real need OKF does not serve. The decision to
       make explicitly is **whether `Unit` claims OKF conformance or borrows its
@@ -1481,7 +1483,7 @@ which sharpen invariants adh already holds rather than adding new ones.
     gap instead of assuming its size. Needs a defect corpus and an end-to-end runner. The
     number it produces is what a decision about blocking on silence should be designed
     against.
-  - [ ] **Cheap and independent of the above: audit which parts of the arc already meet
+  - [x] **Cheap and independent of the above: audit which parts of the arc already meet
     the rule and say so where they do.** Proof verification re-hashes at close; `context
     verify` runs integrity tools; the differential oracle needs no narration. Finding
     disposition now has its half stated. The value is that a reader can tell which
@@ -1667,7 +1669,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   **Explicitly not doing: changing the prompts.** They already name capabilities by what
   they verify, which is this entry's actual ask.
 
-  - [ ] **Build it: `Tool.Adjudicates`, and a `doctor` check for a finding kind no
+  - [x] **Build it: `Tool.Adjudicates`, and a `doctor` check for a finding kind no
     declared tool claims.** Small, and it is what gives L1513 its key.
 
 - [x] **A capability that is absent needs authored fallback wording, not a repair hint.**
@@ -1688,7 +1690,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   prohibition (*"never invent a `Task` call"*) reads like a trust problem, and in adh it
   is not one.
 
-  - [ ] **Build it: `Tool.IfAbsent`, surfaced where the capability is offered.**
+  - [x] **Build it: `Tool.IfAbsent`, surfaced where the capability is offered.**
 
 - Note, and one residue — **`adh init` seeds `.adh/tools.json`; checked against the
   never-edit-the-user's-files rule and it complies.** `superpowers` states it flatly: *"Everything ships through the harness's own
@@ -1700,7 +1702,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   pair, with superpowers holding the better argument — an installer that edits user
   config cannot be cleanly uninstalled or reasoned about.
 
-  - [ ] **Write the rule down in `SPEC.md` before something reaches for a global config.**
+  - [x] **Write the rule down in `SPEC.md` before something reaches for a global config.**
     The compliance is currently accidental — nothing states that adh writes only inside the
     repository it was invoked in, so the first feature that wants a user-level default has
     no rule to violate. One sentence in the Non-Goals section.

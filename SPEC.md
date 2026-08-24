@@ -396,6 +396,33 @@ ______________________________________________________________________
   feature wanting a user-level default would have had nothing to violate. An installer
   that edits a user's files cannot be cleanly uninstalled or reasoned about.
 
+### 9.0 What Each Guarantee Rests On
+
+Every guarantee below is either **artifact-backed** — a check the repository can re-run —
+or **reply-backed**, resting on what an agent said. Both exist, and the table is here so a
+reader can tell which is which without reading four packages. §19.2 states the rule this
+audits: *artifacts decide what blocks; narration decides what gets examined.*
+
+| Guarantee | Rests on | Where |
+| --------- | -------- | ----- |
+| NO-PROOF-NO-CLOSE, for artifact resolutions | **artifact** — digests re-hashed at the moment of closing, not trusted from when written | `closecmd.verifyProof` → `proof.Verify` |
+| NO-PROOF-NO-CLOSE, for a `decision` | **artifact** — the ADR is parsed and must be structurally complete | `verifyDecisionProof` → `adr.Valid` |
+| A context unit has not drifted | **artifact** — the unit's declared §13 tool is run | `context verify` |
+| A unit's trust tier | **artifact-derived** — folded from recorded verification events; recorded drift suppresses it | `contextstore.Trust`, `EffectiveTier` |
+| Reference and native engines agree | **artifact** — differential oracle over generated inputs | `oracle diff` |
+| The gate has teeth | **artifact** — a planted harmful edit must be rejected | `oracle selftest` |
+| A finding is real enough to block | **artifact** — only a `Confirmed` finding blocks, and confirming re-runs the named artifact | `Verdict.ReturnsToExecution` |
+| Harness integrity | **artifact** — every declared reference is resolved against the repository | `doctor` |
+| **Which findings exist at all** | **reply** — the critic reports what it looked at and found | §19.2 |
+| **That there was nothing to find** | **reply** — silence advances the arc, bounded by the NFR guards, which are adjudicated whether or not the critic mentioned them | §19.2, §10.5 |
+| **That a verification happened** | **reply** — `--sign-off` is attributable to the configured identity, not authenticated | §10.4 |
+
+The three reply-backed rows are the honest limit, and each is narrowed by something: a
+finding only matters once an artifact confirms it, silence is bounded by guards, and a
+verification names an actor that can be audited even though it cannot be proved. **The
+gap nobody has measured is the second one** — how much a guard-less repository would miss
+if the critic simply said nothing. Seeded-defect arcs are the measurement.
+
 ### 9.1 Named Refusals
 
 The three above are the harness's shape. What follows are decisions **not** to build
