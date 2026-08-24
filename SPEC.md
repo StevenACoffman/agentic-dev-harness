@@ -388,6 +388,13 @@ ______________________________________________________________________
   oracle or invariant test can decide correctness instead.
 - It does not remove human authority over irreversible actions at any autonomy
   level.
+- **It writes only inside the repository it was invoked in.** `adh init` scaffolds
+  `.adh/` and every store, log, and staging directory lives under it; nothing is written
+  to a user-level config, a home directory, or a shared location. The harness owns what
+  it loads, and its install artifact is the only thing it gets to write. This is stated
+  because the compliance was previously accidental — no rule said so, and the first
+  feature wanting a user-level default would have had nothing to violate. An installer
+  that edits a user's files cannot be cleanly uninstalled or reasoned about.
 
 ### 9.1 Named Refusals
 
