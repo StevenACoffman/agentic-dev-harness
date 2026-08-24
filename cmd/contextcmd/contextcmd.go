@@ -17,6 +17,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
@@ -50,6 +51,9 @@ type Config struct {
 	*root.Config
 	Flags   *ff.FlagSet
 	Command *ff.Command
+
+	// SignOff records a verification event for each unit that verified clean.
+	SignOff bool
 }
 
 // integrityResult is one unit's anti-drift verdict: ok (the check passed), drift
@@ -75,6 +79,8 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("context").SetParent(parent.Flags)
+	cfg.Flags.BoolVar(&cfg.SignOff, 0, "sign-off",
+		"on verify, record a verification event for each unit that passed")
 	cfg.Command = &ff.Command{
 		Name:      "context",
 		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses|eval|index> [id|arc|labels...]",
@@ -83,7 +89,9 @@ func New(parent *root.Config) *Config {
 			"show one unit's text and provenance, route a working set by labels, lint the " +
 			"store, verify that routed units have not drifted from their canonical source, " +
 			"check a routed set for cross-unit contradictions, list routing misses and the " +
-			"route proposals they have earned, or eval routing quality against fixtures.",
+			"route proposals they have earned, or eval routing quality against fixtures. " +
+			"`verify --sign-off` additionally records a verification event (OKF §5.2) for " +
+			"each unit that passed, attributed to the configured identity.",
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -157,10 +165,16 @@ func (cfg *Config) list(units []contextstore.Unit) error {
 		// between units needs to know which ones the integrity log has condemned, and
 		// that is not readable from the authored tier alone.
 		for i := range units {
+			// Empty rather than null, matching the other payloads: a caller should not
+			// have to tell an absent list from an empty one to learn the same fact.
+			labels := units[i].Labels
+			if labels == nil {
+				labels = []string{}
+			}
 			if err := cfg.EmitOK(map[string]any{
 				"id":        units[i].ID,
 				"kind":      units[i].Kind,
-				"labels":    units[i].Labels,
+				"labels":    labels,
 				"verified":  units[i].Verified.Tier(),
 				"freshness": units[i].Fresh,
 			}); err != nil {
@@ -435,6 +449,9 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 	if err := cfg.recordIntegrity(results); err != nil {
 		return err
 	}
+	if err := cfg.signOff(results, drift); err != nil {
+		return err
+	}
 	return cfg.reportVerify(results, drift)
 }
 
@@ -473,6 +490,53 @@ func (cfg *Config) targets(units []contextstore.Unit, args []string) ([]contexts
 		return nil, fmt.Errorf("context: %w", err)
 	}
 	return contextstore.Route(units, arc.Labels, arc.Paths, 0), nil
+}
+
+// signOff records a verification event for each unit that verified clean.
+//
+// **Refused when any unit drifted.** A sign-off on a run that just condemned something is
+// the one combination that must not be recordable — it would attest to a state the same
+// command disproved. The whole run is refused rather than the drifted units skipped,
+// because a partial sign-off buried in a failing run is how a reviewer ends up believing
+// they signed something they did not.
+//
+// The actor comes from config, never a flag: a caller-supplied actor would let anyone
+// mint a human: event, and the tier fold is only worth anything if that is impossible.
+// An unset identity refuses rather than recording an anonymous event, since an event with
+// no actor is invalid by construction.
+func (cfg *Config) signOff(results []integrityResult, drift bool) error {
+	if !cfg.SignOff {
+		return nil
+	}
+	if drift {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: "context: refusing --sign-off: this run found drift",
+		}
+	}
+	conf, err := config.Load(cfg.ConfigGetenv())
+	if err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	actor := conf.Identity.Actor
+	if actor == "" {
+		return &adh.Error{
+			Code: adh.EINVALID,
+			Message: "context: --sign-off needs identity.actor in config " +
+				"(e.g. actor = \"human:steve\" under [identity])",
+		}
+	}
+	event := contextstore.Verification{By: actor, At: time.Now().UTC().Format(time.RFC3339)}
+	for i := range results {
+		if results[i].Status != contextstore.ResultOK {
+			continue
+		}
+		path := contextstore.UnitPath(cfg.storeDir(), results[i].Unit)
+		if err := contextstore.RecordVerification(path, event); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+	}
+	return nil
 }
 
 // reportVerify emits the anti-drift results: under --jsonl one outcome carrying the
