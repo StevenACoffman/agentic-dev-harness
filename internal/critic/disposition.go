@@ -205,6 +205,16 @@ func Dispose(results []Adjudicated) Verdict {
 // finding is a deterministic Evaluation failure that returns the arc to Execution
 // (§19.2).
 //
+// **This one line is where "artifacts decide what blocks" is enforced**, so it is an
+// invariant rather than an implementation detail: Confirmed requires an artifact that
+// ran and failed, which is why a critic's assertion alone can never block an arc.
+// Widening this to any other slice would let narration block, and that is a change to a
+// stated rule (§19.2) rather than a change to a condition.
+//
+// The rule is narrow on purpose and the other direction is the known gap: a critic that
+// finds nothing leaves nothing to adjudicate, so silence advances the arc, bounded only
+// by the NFR guards that are adjudicated whether or not the critic mentioned them.
+//
 // **An unchecked finding does not block, and the decision is recorded rather than
 // emergent.** `vac-gate`'s rule — "'cannot regrade' is not 'regraded'" — argues the
 // honest refusal should fail the gate, and it is the right rule where the refusal is

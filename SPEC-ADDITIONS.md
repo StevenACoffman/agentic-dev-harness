@@ -788,6 +788,25 @@ second exception should be argued here before it is built rather than after.
 
 ### 19.2 Finding Disposition — Confirm Against the Repository
 
+**Artifacts decide what blocks; narration decides what gets examined.** That is the
+adopted form of the artifacts-only rule (grade what the agent left on disk, never its
+own account of its success), and it is stated narrowly because that is how far it holds.
+It holds in the blocking direction and only there: `Verdict.ReturnsToExecution` is
+`len(Confirmed) > 0`, and a finding is confirmed only when a deterministic artifact ran
+and failed, so a critic's assertion on its own can never block an arc. `HasStructural`
+and `BlockingKind` read the same slice; a refusal is reported and never blocks.
+
+**The passing direction is the limit, and it is named rather than implied.** A critic
+that finds nothing leaves nothing to adjudicate, and the arc advances — so adh does
+trust one account from the agent: not its claim that something is broken, but its claim
+that nothing is. `unexamined` below makes a *declared* gap visible; an undeclared one is
+not. What bounds the exposure is the NFR guards, which are adjudicated whether or not
+the critic mentioned them (§10) — the repository asserting what it will not trade away
+regardless. So the uncovered surface is exactly whatever no guard speaks for, and its
+size is a measurement nobody has taken rather than a number anyone can quote. Stating
+the rule as though it covered both directions would be the broader-than-it-holds failure
+this document refuses elsewhere: a reader would stop looking.
+
 A critic emits findings. Each finding names the repository artifact that would
 confirm it: an oracle divergence, an invariant, an on-device check (§SPEC 2.4),
 an NFR check (§10), or a named local contract. The Evaluation stage that follows

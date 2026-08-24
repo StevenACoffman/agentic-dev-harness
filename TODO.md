@@ -1420,6 +1420,49 @@ which sharpen invariants adh already holds rather than adding new ones.
   verification does; finding disposition partly does) and stating the rule where they do.
   The seeded-known-defect technique is also the natural extension of `oracle selftest`
   from "does the control discriminate" to "does the whole arc catch a planted defect".
+
+  **Premise corrected 2026-08-24, and the correction is the useful part: this entry would
+  have sent its reader to audit the wrong half.** It says the critic "still reads a
+  *reply*, and `evaluation` adjudicates findings the critic asserted" as though that were
+  the gap. Adjudication *is* the artifacts-only step. `Verdict.ReturnsToExecution` is
+  `len(Confirmed) > 0`, and a finding is confirmed only when a deterministic artifact ran
+  and failed; `HasStructural` and `BlockingKind` read the same slice, and a refusal is
+  reported without blocking. **So a critic's assertion on its own can never block an
+  arc** — adh already meets the rule in the blocking direction.
+
+  The residue is the opposite direction. **Silence advances the arc**: no findings means
+  nothing to adjudicate, so adh does trust one account from the agent — not its claim
+  that something is broken, but its claim that nothing is. `unexamined` shows a
+  *declared* gap; an undeclared one is invisible. What bounds it is the NFR guards, which
+  are adjudicated whether or not the critic mentioned them, so the exposed surface is
+  exactly whatever no guard speaks for.
+
+  **Decided 2026-08-24: adopt the rule in the narrow form that is true, and measure the
+  rest before closing it.** Recorded in `SPEC-ADDITIONS.md` §19.2 and on
+  `Verdict.ReturnsToExecution`, where the invariant is enforced — naming it there means a
+  future change letting narration block has to violate a stated rule rather than edit a
+  condition. The narrow wording is deliberate: claiming both directions would be the
+  broader-than-it-holds failure this repository refuses elsewhere, because a reader who
+  believes it stops looking.
+
+  **A hard block on silence was considered and refused for now.** Requiring every arc to
+  carry an adjudicated artifact would need a §12 applicability rule immediately — a
+  `decision`-resolution arc closes with an ADR and may have nothing runnable — so it
+  becomes "silence is permitted here, and the arc says so", which is right but larger
+  than it looks. And if guards already catch most planted defects it buys little. Measure
+  first, same as the harvest decision.
+
+  - [ ] **Seeded-defect arcs: extend the negative control from the gate to the whole
+    arc.** `oracle selftest` proves a planted harmful *edit* is rejected. This plants a
+    known defect, runs the arc, and requires it to be caught — which measures the silence
+    gap instead of assuming its size. Needs a defect corpus and an end-to-end runner. The
+    number it produces is what a decision about blocking on silence should be designed
+    against.
+  - [ ] **Cheap and independent of the above: audit which parts of the arc already meet
+    the rule and say so where they do.** Proof verification re-hashes at close; `context
+    verify` runs integrity tools; the differential oracle needs no narration. Finding
+    disposition now has its half stated. The value is that a reader can tell which
+    guarantees rest on an artifact and which rest on a reply.
 - [x] **Name the refusals in `SPEC.md`.** *§9.1, extending the existing Non-Goals
   section rather than creating a competing one.* `vac-protocol` §7 is titled "Explicitly refused
   in v0.1" and opens: **"Named refusals, so their absence reads as a decision rather than
