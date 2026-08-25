@@ -43,6 +43,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/run"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/selfeval"
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/sessionscmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/sleep"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/stagecmd"
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/status"
@@ -226,6 +227,7 @@ func register(r *root.Config) {
 	run.New(r)
 	lessoncmd.New(r)
 	failurescmd.New(r)
+	sessionscmd.New(r)
 	metricscmd.New(r)
 	kpicmd.New(r)
 	nfrcmd.New(r)
