@@ -1302,14 +1302,41 @@ from). adh is the tool most of it lands on. Checked against the code.
   nothing auto-routes). Refused because its failure mode — a queue nobody drains — leaves
   the original complaint standing while costing a store, a verb, and a review burden.
 
-  - [ ] **Increment 1: mine and report, wire nothing.** Retry-chain detection over the
-    session corpus, output a report — which classes recur, which are absent from the
-    lessons. **Nothing enters `Harvest`.** The reason to build this first is that nobody
-    knows the mining rule's false-positive rate on real sessions: measuring it is cheap
-    here and expensive after wiring, because by then a bad inference is already inside a
-    score somebody trusted.
+  - [x] **Increment 1: mine and report, wire nothing.** DONE 2026-08-24 —
+    `internal/session` + `adh sessions report`, whose only verb is `report`.
+
+    **The measurement came back negative, and that is the finding.** Over the real corpus
+    — 57 sessions, 13,677 spoken turns — retry-chain detection found **3 corrective
+    turns**. Roughly 0.02%. The rule as specified does not work here.
+
+    Sampling the 1,604 user turns that follow an assistant turn shows why, and it is not
+    a tuning problem: **these sessions are directive, not corrective.** They read "Please
+    make a detailed plan…", "Yes, do a, b, c, and then commit", "What are the outstanding
+    items?". Where a correction happens it is folded into the next instruction rather than
+    expressed as negative feedback, so there is no marker to match — and no threshold on
+    this rule recovers it.
+
+    **So the entry's premise is wrong for this corpus.** It assumes "the team's actual
+    corrective interactions happen in sessions that never entered the loop"; what actually
+    happens in them is direction, and the corrections are invisible by construction rather
+    than merely unmined. That is the sixth premise this backlog has had move under it, and
+    the first found by building the cheap half first rather than by reading.
+
+    Building it was still right: the cost was one package and one report-only command, and
+    the alternative was wiring a rule that finds nothing into the objective function.
+
+  - [ ] **Decide what increment 2 is now, since retry-chain detection is not it.** Three
+    directions, none yet investigated: mine *directive* turns for recurring intents rather
+    than corrections (the source's `heuristic_mine` claims both, and only the correction
+    half has been tested); look for corrections in the diff rather than the prose, since a
+    reverted or rewritten edit is a correction whether or not anyone said so; or conclude
+    that a directive corpus has little to teach the consolidation loop and close the whole
+    line. **The third is a real possibility and should not be argued away** — the report
+    exists now, so any successor rule can be measured the same way before it is trusted.
   - [ ] **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
-    Gated on increment 1 showing the mining is precise enough to be worth trusting.
+    Gated on increment 1 showing the mining is precise enough to be worth trusting — and
+    it did not: the rule found 3 corrective turns in 13,677. **Blocked until a successor
+    rule exists**, not merely unstarted.
   - [ ] **Increment 3 (may never be right): admit foreign signals to the splits.** Only
     with evidence from increments 1–2, and the honest default is no.
 
