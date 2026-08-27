@@ -1256,7 +1256,11 @@ below survived checking against the code, and the third is a retraction.
 Source: a survey of `~/Documents/agent-blue` (22 projects — the sources the practice came
 from). adh is the tool most of it lands on. Checked against the code.
 
-- [ ] **`consolidate.Harvest` only learns from work adh itself drove.** `Harvest(arcs
+- [x] **`consolidate.Harvest` only learns from work adh itself drove.** *Closed
+  2026-08-26: the observation was right and the proposed source was wrong. Every
+  sub-item below is settled, and the goal continues under "Learn from work adh did not
+  drive, from git rather than from sessions" — filed separately so this entry's failed
+  premise does not travel with it.* Original entry: `Harvest(arcs
   []adh.Arc)` reduces *closed arcs* to signals — so a correction only accretes if the work
   became an arc. The team's actual corrective interactions happen in Claude Code, Gemini,
   and Qwen sessions that never entered the loop, and those are exactly the interactions the
