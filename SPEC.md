@@ -423,6 +423,28 @@ verification names an actor that can be audited even though it cannot be proved.
 gap nobody has measured is the second one** — how much a guard-less repository would miss
 if the critic simply said nothing. Seeded-defect arcs are the measurement.
 
+### 9.0.1 What Each Suite Covers That the Others Do Not
+
+adh runs several checks that look redundant from outside. Each is annotated with its
+**coverage delta** — what it catches that nothing else does — so a redundant-looking test
+is defensible rather than deletable, and so a gap is visible as a gap.
+
+| Suite | Covers, that nothing else does | In CI |
+| ----- | ------------------------------ | ----- |
+| `go test ./...` | every unit and journey test, including the `--jsonl` contract over both a bare and a seeded tree | yes, with `-race` |
+| the differential oracle (`oracle diff`) | reference and native engines disagreeing on a generated input — a class no example-based test reaches, because the inputs are generated rather than authored | yes, via its package test |
+| the invariant checker (`oracle invariants`) | a property holding across many boards, where the oracle only shows two engines *agreeing* — they can agree and both be wrong | yes, via its package test |
+| `oracle selftest` | **whether the selection gate discriminates at all** — a planted harmful edit must be rejected. Everything above tests the subject; this tests the *instrument* | yes, via its package test |
+| the seeded-defect arcs | whether a defect survives a whole arc, and specifically what a **silent critic** lets through — the gate self-test covers the gate, not the arc around it | yes |
+| `doctor` / `context verify` | drift between the harness's declarations and the repository, which no test can catch because it is a property of the operator's tree rather than of the code | no — they run against a real repository, and there is no fixture of a drifted one |
+| `harness eval` / `sleep run` | the optimizer's own selection quality over a corpus | no — they need a corpus and a model relay, so they are operator-run |
+
+**The last two rows are the honest half.** They are not in CI, and a reader who assumes
+everything here is enforced on every push would be wrong about exactly the checks that
+concern the *repository's* state rather than the code's. Nothing else covers them, so
+their absence from CI is a gap, not a duplication — recorded rather than left to be
+discovered.
+
 ### 9.1 Named Refusals
 
 The three above are the harness's shape. What follows are decisions **not** to build

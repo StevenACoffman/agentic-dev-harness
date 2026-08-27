@@ -1359,7 +1359,10 @@ from). adh is the tool most of it lands on. Checked against the code.
   - [x] **Increment 3 (may never be right): admit foreign signals to the splits.**
     *Closed. "May never be right" turned out to be "not from this source".*
 
-- [ ] **Learn from work adh did not drive, from git rather than from sessions.** Filed
+- [x] **Learn from work adh did not drive, from git rather than from sessions.** *Closed
+  unbuilt 2026-08-26: the survey below found nothing to mine, which is the second source
+  to fail the same way. Kept in full because the reasoning is what a third proposal has
+  to answer.* Filed
   2026-08-26 as its own entry, **deliberately not as an increment of the item above.**
 
   The entry above assumes the corrections live in foreign *sessions*, and that premise
@@ -1371,10 +1374,23 @@ from). adh is the tool most of it lands on. Checked against the code.
   **Filing this as increment 2 would let a refuted assumption survive its own
   refutation**, which is why it is separate.
 
-  - [ ] **Measure before building, exactly as increment 1 did.** Nobody knows whether
-    this repository's history contains reverts and fixups at a useful rate. The last pass
-    is the argument: the cheap instrument cost one package and saved wiring a rule that
-    finds nothing. A `git log`-shaped survey answers it before any type is designed.
+  - [x] **Measure before building, exactly as increment 1 did.** DONE 2026-08-26 —
+    **and git history fails the same measurement sessions did.** Over 317 commits:
+    **0 explicit reverts**; 9 messages match a correction-shaped grep and reading them
+    shows almost all are false positives (`vcs: add a hermetic, path-scoped Revert`,
+    `reject: revert the change and return the arc`, `session: … mine them for
+    corrections` — the words appear as *feature names*); 19 of 261 files were touched
+    again within 3 commits, which is ordinary iterative work, `TODO.md` most of all.
+
+    **The pattern across the two sources is the finding, and it is stronger than either
+    result alone.** Sessions are directive; git history is curated. In both cases the
+    correction happens *before* the artifact exists — the workflow squashes it away, or
+    folds it into the next instruction. **A record written after the fact does not
+    contain the fact.** That argues the whole learn-from-undriven-work line is closable
+    rather than re-targetable a third time.
+
+    **Scope: n = 1.** One repository, one person's committing habits. What this does not
+    license is a third source proposed on the same premise without a measurement first.
   - Whatever it yields is still bound by `SPEC-ADDITIONS` §18 step 1: a signal carries
     provenance, the zero value is unknown, and only arc-derived signals enter the
     held-out splits. That rule was written for a second source and it does not care which
@@ -1549,12 +1565,31 @@ which sharpen invariants adh already holds rather than adding new ones.
   than it looks. And if guards already catch most planted defects it buys little. Measure
   first, same as the harvest decision.
 
-  - [ ] **Seeded-defect arcs: extend the negative control from the gate to the whole
-    arc.** `oracle selftest` proves a planted harmful *edit* is rejected. This plants a
-    known defect, runs the arc, and requires it to be caught — which measures the silence
-    gap instead of assuming its size. Needs a defect corpus and an end-to-end runner. The
-    number it produces is what a decision about blocking on silence should be designed
-    against.
+  - [x] **Seeded-defect arcs: extend the negative control from the gate to the whole
+    arc.** DONE 2026-08-26, and **far smaller than this entry assumed** — no defect
+    corpus and no arc runner were needed. `adh run` without `--relay` completes through
+    `model.Mock`, whose critic reply yields no findings: **that is a silent critic by
+    construction**, which is the exact condition the silence gap is about. Two arcs
+    answer the question, one with a guard covering the planted defect and one without.
+
+    **It found a real defect on its first run.** `evaluation.GuardFindings` had exactly
+    one caller — `cmd/evalcmd` — so `adh run` and `adh step` never adjudicated guards at
+    all. The §10.5 rule that a declared guard is adjudicated whether or not the critic
+    raised it held on one of three paths, and not on the two most likely to be automated.
+    **The audit I wrote in SPEC §9.0 two passes ago therefore overstated the bound**: it
+    said the silence gap is bounded by the guards, and on `run` and `step` there was no
+    bound at all.
+
+    Fixed structurally rather than by adding a third call: `Adjudicate` now takes the
+    specs and assembles the guards itself, so a caller cannot omit them — passing nil is
+    an explicit statement the compiler makes them make.
+
+    The uncovered case is a **characterisation test**: it asserts the documented limit so
+    the limit breaks if it ever moves, and its comment says not to "fix" it.
+
+    - The defect **corpus** is deferred with its reason: one covered and one uncovered
+      defect answer the question, whereas a corpus would measure a *rate*, and there is
+      no rate until adh runs on repositories with varying guard coverage.
   - [x] **Cheap and independent of the above: audit which parts of the arc already meet
     the rule and say so where they do.** Proof verification re-hashes at close; `context
     verify` runs integrity tools; the differential oracle needs no narration. Finding
@@ -1810,13 +1845,14 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   Copying gnosis's design across would build the wrong thing. What transfers unchanged is
   the discipline: assert on what the answerer sent.
 
-- [ ] **No map says what each suite covers that the others do not.** adh runs the
-  differential oracle, the invariant checker, and `gate.SelfTest`.
-  `superpowers/docs/testing.md` annotates every test with its coverage delta against the
-  other harness — *"drill covers the YAGNI subset; bash adds commit-count, task-tracking,
-  and token telemetry assertions"*, *"tests description-recall, not behavior"* — and
-  states plainly which suite is **not** in CI and why. Cheap, and it is what makes a
-  redundant-looking test defensible rather than deletable.
+- [x] **No map says what each suite covers that the others do not.** DONE 2026-08-26 —
+  `SPEC.md` §9.0.1, beside the guarantee audit, since that is where a reader already goes
+  to learn what rests on what. Each suite is annotated with its coverage delta, including
+  the one that is easiest to mistake for redundant: **`oracle selftest` tests the
+  instrument, not the subject.** The honest half is the two rows that are *not* in CI —
+  `doctor`/`context verify` and `harness eval`/`sleep run` — because they concern the
+  operator's repository rather than the code, and nothing else covers them, so their
+  absence is a gap rather than a duplication.
 
 - Note, not a work item: `superpowers` publishes *"This repo has a 94% PR rejection rate"*
   and requires every contribution to disclose model, harness, harness version, and installed
