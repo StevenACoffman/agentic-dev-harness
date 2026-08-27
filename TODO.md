@@ -1472,18 +1472,41 @@ from). adh is the tool most of it lands on. Checked against the code.
   checked against the repo, on every CI run. `doctor` checks harness integrity and
   `context verify` checks context drift; neither checks that an instruction's *commands*
   resolve. Same class as the §13 tool registry, pointed at prose instead of at findings.
-- [ ] **An NFR evaluation set, and a taxonomy to reconcile against.** `internal/nfr` is
-  Planguage-quantified and grounded (`agent-blue/nfrs-guide` is the source of that
-  discipline), but we have no ground truth for whether a *document* was correctly mined for
-  NFRs. `agent-blue/NFRLocator` carries labeled corpora — iTrust, CCHIT ambulatory criteria,
-  OpenEMR, PromiseData, RFPs, CFRs, DUAs — plus ARFF exports of labeled sentences and a
-  category listing, alongside a `SPEC.md` for a Go reimplementation.
-  **Take the corpora and the taxonomy; do not take the classifier.** The pipeline is
-  Stanford dependencies + WordNet + Weka SVM/Naive Bayes over lemmatized sentences (~19K LOC
-  Java, a WordNet dictionary, a 4GB heap) — a statistical classifier with no per-decision
-  provenance, which is the uncalibrated shape this family rejects. Its one transferable
-  design detail is `classification_attributes.json` (§6.5): the classification config
-  externalized as data, the same move recorded for skillsaw's rubric.
+- [x] **An NFR evaluation set, and a taxonomy to reconcile against.** *Taxonomy half
+  DONE 2026-08-26; evaluation-set half closed as premature, with the reason.*
+
+  **The corpora are real and on disk**: `agent-blue/NFRLocator/ID Study - ARFF Files/`,
+  11,876 requirement sentences from HIPAA, 45 CFR 170, 42 CFR, iTrust, OpenEMR,
+  PromiseData, RFPs and DUAs, hand-labelled across 16 categories as multi-label yes/no
+  attributes with a document id. That is genuine ground truth and it is worth knowing
+  where it is.
+
+  **The evaluation-set half evaluates a capability adh does not have.** `internal/nfr`
+  loads, validates and adjudicates specs; nothing mines NFRs from prose, and a grep for a
+  miner finds none. An eval set for a nonexistent miner is a scoreboard for a game nobody
+  plays — so it is closed rather than left open, and the corpus location above is the
+  thing to reopen it with if a miner is ever built.
+
+  **The taxonomy half was actionable and produced a defect.** Reconciled adh's nine
+  FURPS+/25010 categories against the corpus's fourteen nonfunctional ones: **21% of the
+  labels (728 of 3,437) name audit, legal or privacy, and adh had no home for any of
+  them.** Since `Valid` rejects a tag whose category it does not know, *a compliance
+  requirement could not be written down as an NFR at all* — in a taxonomy whose stated
+  purpose is that a category is standard rather than invented. Those three are now
+  admitted, verified by writing real HIPAA and PHI-audit specs and linting them clean;
+  the catch-all "other nonfunctional" is deliberately not adopted, since it would turn a
+  closed check back into free prose.
+
+  Also measured and worth keeping: **Compatibility, Portability and Functionality appear
+  in adh's list and are never labelled in this corpus.** That is not evidence they are
+  wrong — the corpus is healthcare-regulatory and n=1 — but it is the kind of asymmetry
+  worth noticing before treating a standards list as complete in either direction.
+
+  Not taken, as the entry instructed: the classifier (Stanford dependencies + WordNet +
+  Weka over lemmatised sentences, ~19K LOC of Java and a 4GB heap) is a statistical model
+  with no per-decision provenance. Its one transferable design detail —
+  `classification_attributes.json`, the classification config externalised as data —
+  remains recorded for whenever a miner is built.
 - [x] **Invariants as a second, independent net beside the differential oracle.**
   *Stale when written and confirmed so 2026-08-23: all three layers exist.*
   `oracle.InvariantsHold` (`oracle.go:104`) recomputes the runs itself and applies the
