@@ -33,7 +33,7 @@ func TestAppendThenLoad(t *testing.T) {
 
 func TestAppendOutcome(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tool-runs.json")
-	if err := toolrun.AppendOutcome(path, "chk", "2026-06", true, true, 42); err != nil {
+	if err := toolrun.AppendOutcome(path, "chk", "2026-06", true, true, 42, ""); err != nil {
 		t.Fatalf("AppendOutcome: %v", err)
 	}
 	records, err := toolrun.Load(path)
@@ -66,5 +66,43 @@ func TestAppendNothingIsNoop(t *testing.T) {
 	}
 	if _, err := toolrun.Load(path); err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+}
+
+// TestTheReasonReachesTheLog. Ran:false alone is a count, not a signal: a log that
+// records how often the deterministic path missed and never why cannot say whether the
+// misses are a broken environment, a critic naming artifacts that do not exist, or
+// findings naming nothing — and those call for entirely different responses.
+func TestTheReasonReachesTheLog(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), toolrun.RunFile)
+	if err := toolrun.AppendOutcome(
+		path, "chk", "2026-06", false, false, 3, "tool-failed",
+	); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	got, err := toolrun.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d records, want 1", len(got))
+	}
+	if got[0].Unrunnable != "tool-failed" {
+		t.Errorf("Unrunnable = %q, want the reason the check did not run", got[0].Unrunnable)
+	}
+}
+
+// TestARunThatSucceededCarriesNoReason, so an empty field means "it ran" rather than
+// "nobody recorded why it did not".
+func TestARunThatSucceededCarriesNoReason(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), toolrun.RunFile)
+	if err := toolrun.AppendOutcome(path, "chk", "2026-06", true, false, 3, ""); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	got, _ := toolrun.Load(path)
+	if len(got) == 1 && got[0].Unrunnable != "" {
+		t.Errorf("a successful run carries a reason: %q", got[0].Unrunnable)
 	}
 }

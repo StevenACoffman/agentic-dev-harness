@@ -7,6 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/peterbourgon/ff/v4"
+
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 )
 
 // ExitError is returned by commands that want a specific non-zero exit code
@@ -57,6 +59,15 @@ func (e ExitError) Error() string { return fmt.Sprintf("exit status %d", int(e))
 // Error renders the refusal in the standard "<cmd>: <reason>" form (SPEC §8).
 func (c DryRunUnsupportedError) Error() string {
 	return string(c) + ": --dry-run not supported (honored by approve, reject, close)"
+}
+
+// Unwrap gives the refusal a machine-readable code without giving up the defined type,
+// which a test matches with errors.As.
+//
+// Asking for --dry-run where it is not honored is a malformed invocation, not an adh
+// fault, and with no coded cause in the chain it was reported as reason "internal".
+func (c DryRunUnsupportedError) Unwrap() error {
+	return &adh.Error{Code: adh.EINVALID, Message: c.Error()}
 }
 
 // New returns a new root Config with the given I/O writers and environment

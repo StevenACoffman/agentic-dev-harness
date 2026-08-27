@@ -69,8 +69,13 @@ type Unit struct {
 	Claims       []Claim   `json:"claims,omitempty"`
 	KPIs         []adh.KPI `json:"kpis,omitempty"`
 	Integrity    string    `json:"integrity,omitempty"`
-	Verified     TrustTier `json:"verified,omitempty"`
+	Verified     Trust     `json:"verified,omitempty"`
 	SupersededBy string    `json:"superseded_by,omitempty"`
+
+	// Fresh is derived from the integrity log by ApplyFreshness, never persisted.
+	// json:"-" is load-bearing: it makes it impossible for a unit whose tier was
+	// suppressed by recorded drift to be written back with that suppression baked in.
+	Fresh Freshness `json:"-"`
 }
 
 // scored pairs a unit with its routing score for ranking.
@@ -107,6 +112,10 @@ func (t TrustTier) Rank() int {
 // labels or touched paths, most-specific (highest match count) first; ties break by
 // trust tier (a human-reviewed unit outranks an unverified one, §10.4), then by ID. A
 // superseded unit never routes — it has been replaced. It never mutates its inputs.
+//
+// The tier it compares is the *effective* one, so a unit the integrity log records as
+// drifted stops outranking a clean unit. Callers that have not run ApplyFreshness route
+// exactly as before: the zero freshness suppresses nothing.
 func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 	want := make(map[string]bool, len(labels))
 	for _, l := range labels {
@@ -134,14 +143,14 @@ func Route(units []Unit, labels, paths []string, maxUnits int) []Unit {
 	return out
 }
 
-// rankBefore orders two routed units: higher match score first, then higher trust
-// tier (§10.4), then lexical id — the total order Route sorts by.
+// rankBefore orders two routed units: higher match score first, then higher effective
+// trust tier (§10.4), then lexical id — the total order Route sorts by.
 func rankBefore(a, b *scored) bool {
 	switch {
 	case a.score != b.score:
 		return a.score > b.score
-	case a.unit.Verified.Rank() != b.unit.Verified.Rank():
-		return a.unit.Verified.Rank() > b.unit.Verified.Rank()
+	case a.unit.EffectiveTier().Rank() != b.unit.EffectiveTier().Rank():
+		return a.unit.EffectiveTier().Rank() > b.unit.EffectiveTier().Rank()
 	default:
 		return a.unit.ID < b.unit.ID
 	}

@@ -1,6 +1,16 @@
 Plan the work for arc {{.ID}}{{if .Title}} — {{.Title}}{{end}}.
 
-Choose the resolution this arc should aim for — change, investigation, experiment,
-or decision — and outline the concrete steps to reach it. Name the proof the
-resolution will have to carry to close.
+Begin your reply with the resolution line — it is required, and a reply without it
+is refused:
+
+  resolution: <change|investigation|experiment|decision>
+
+Choose deliberately. `investigation` answers a question without shipping code,
+`experiment` tests the riskiest assumption with an instrumented surface, and
+`decision` records a choice — often not to build — and closes on a written ADR.
+`change` is a legitimate answer arrived at quickly; it is not a legitimate default
+arrived at silently.
+
+Then outline the concrete steps to reach it, and name the proof the resolution will
+have to carry to close.
 {{with .Ground}}{{template "context" .}}{{template "tools" .}}{{end}}

@@ -10,6 +10,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
+	"github.com/StevenACoffman/skillet/finding"
 	"github.com/StevenACoffman/skillet/proof"
 )
 
@@ -30,6 +31,17 @@ type Grounding struct {
 	Tools         []toolreg.Tool      // capabilities available to the stage (§13)
 	Coverage      []string            // finding kinds recent critics under-covered (§19)
 	Noisy         []string            // finding kinds recent critics over-flagged (§19)
+
+	// Denied is the inputs config says the critic must not receive (§19.4). It is
+	// not something the critic sees; it is what the renderer asserts about what it
+	// built. Carried here so the assertion reaches the renderer without a policy
+	// argument threaded through Emit and Request.
+	Denied []adh.CriticInput
+
+	// PriorGaps is what the previous critic declared it did not examine (§19.2), so
+	// this one can start where that one stopped. See Inputs.PriorGaps for why this
+	// does not contaminate a cold review.
+	PriorGaps []finding.Unexamined
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -43,6 +55,23 @@ type Inputs struct {
 	Tools         []toolreg.Tool
 	Coverage      []string
 	Noisy         []string
+
+	// Denied is `[critic] deny` (§19.4), carried through to the Grounding so the
+	// renderer can check the view it builds against it. Policy rather than a
+	// grounding fact, and it travels here for the reason the type exists: the
+	// alternative is a sixth parameter on Request and a seventh on Emit, threaded
+	// through two packages to reach one assertion.
+	Denied []adh.CriticInput
+
+	// PriorGaps is what the previous critic declared it did not examine (§19.2).
+	//
+	// **This is the one input the cold split lets through, and the exception is
+	// deliberate.** §19.1 withholds exactly one thing, the builder's transcript, and
+	// that is what makes the critic cold. A previous critic's *coverage* is neither
+	// the builder's reasoning nor a conclusion about the change — it is a record of
+	// angles already taken, so feeding it forward steers a fresh critic toward
+	// unexamined ground. That is the opposite of the contamination the split prevents.
+	PriorGaps []finding.Unexamined
 }
 
 // Ground assembles the working set from repository state already read: it routes
@@ -63,6 +92,8 @@ func Ground(
 		Tools:         in.Tools,
 		Coverage:      in.Coverage,
 		Noisy:         in.Noisy,
+		Denied:        in.Denied,
+		PriorGaps:     in.PriorGaps,
 	}
 	if pkt != nil {
 		g.Proof = pkt.Artifacts
@@ -82,7 +113,7 @@ func (g *Grounding) HasGrounding() bool {
 // units (not an error); an unreadable proof manifest propagates.
 func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Packet, error) {
 	const op = "critic.loadInputs"
-	units, err := contextstore.Load(storeDir)
+	units, err := contextstore.LoadFresh(storeDir)
 	if err != nil {
 		return nil, nil, &adh.Error{Op: op, Err: err}
 	}

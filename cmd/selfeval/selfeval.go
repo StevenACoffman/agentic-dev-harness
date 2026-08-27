@@ -47,6 +47,55 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		return fmt.Errorf("selfeval: %w", err)
 	}
 	summary := metrics.Summarize(records)
+	steps, err := cfg.stepClass()
+	if err != nil {
+		return err
+	}
+	notes, err := failures.Load(failures.RegistryFile)
+	if err != nil {
+		return fmt.Errorf("selfeval: %w", err)
+	}
+	classes := lesson.Distill(notes)
+
+	if cfg.JSONL {
+		// Gathered above the branch so both renderings answer from one computation:
+		// a JSON report that disagreed with the human one would be worse than either.
+		return cfg.emitJSON(summary, steps, classes)
+	}
+	cfg.writeHuman(summary, steps, classes)
+	return nil
+}
+
+// emitJSON reports the self-evaluation as one envelope.
+//
+// It exists because --jsonl used to print the human report, handing prose to a caller
+// that asked for JSON. The failure taxonomy travels as counts per class rather than as
+// the rendered lines, since a consumer wants the number and can render its own label.
+func (cfg *Config) emitJSON(
+	summary metrics.Summary, steps metrics.StepClass, classes []lesson.Lesson,
+) error {
+	taxonomy := make(map[string]int, len(classes))
+	for _, class := range classes {
+		taxonomy[class.Class] = len(class.Instances)
+	}
+	if err := cfg.EmitOK(map[string]any{
+		"arcs": summary.Arcs, "accepted": summary.Accepted,
+		"attention_per_accept": summary.AttentionPerAccept,
+		"compute_tokens":       summary.ComputeTokens,
+		"steps_deterministic":  steps.Deterministic,
+		"steps_model":          steps.Model,
+		"deterministic_ratio":  steps.Ratio(),
+		"failure_taxonomy":     taxonomy,
+	}); err != nil {
+		return fmt.Errorf("selfeval: %w", err)
+	}
+	return nil
+}
+
+// writeHuman renders the same report for a person.
+func (cfg *Config) writeHuman(
+	summary metrics.Summary, steps metrics.StepClass, classes []lesson.Lesson,
+) {
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"health:\n  arcs %d, accepted %d, attention/accept %.1f min, compute %d tokens\n",
 		summary.Arcs, summary.Accepted, summary.AttentionPerAccept, summary.ComputeTokens)
@@ -54,32 +103,19 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	// The effectiveness north-star (§16): the deterministic share of arc steps —
 	// accretion (routing rules, checks, lessons) should trend it upward as fewer
 	// steps need a relayed model turn. A coarse proxy classified from arc history.
-	steps, err := cfg.stepClass()
-	if err != nil {
-		return err
-	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"  steps: %d deterministic / %d model (%.0f%% deterministic — coarse proxy)\n",
 		steps.Deterministic, steps.Model, steps.Ratio()*100)
 
-	notes, err := failures.Load(failures.RegistryFile)
-	if err != nil {
-		return fmt.Errorf("selfeval: %w", err)
-	}
-	if len(notes) == 0 {
+	if len(classes) == 0 {
 		_, _ = fmt.Fprintln(cfg.Stdout, "failure taxonomy:\n  none recorded")
-		return nil
+		return
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, "failure taxonomy:")
-	for _, class := range lesson.Distill(notes) {
-		_, _ = fmt.Fprintf(
-			cfg.Stdout,
-			"  %s\t(%d instance(s))\n",
-			class.Class,
-			len(class.Instances),
-		)
+	for _, class := range classes {
+		_, _ = fmt.Fprintf(cfg.Stdout, "  %s\t(%d instance(s))\n",
+			class.Class, len(class.Instances))
 	}
-	return nil
 }
 
 // stepClass aggregates the deterministic-vs-model step classification across every

@@ -78,11 +78,22 @@ func Request(
 }
 
 // Apply records resp in the arc's history and advances the arc to the next stage
-// (SPEC §1). It mutates arc in place. Strategy chooses the resolution (§12); an
-// unset one defaults to a code change so a downstream close has a proof contract
-// to check. Apply's precondition is that the arc is not at ops — Request refuses
-// ops, so a pending turn never parks there — and the ok guard makes ops a safe
-// no-op advance rather than blanking the stage.
+// (SPEC §1). It mutates arc in place. Apply's precondition is that the arc is not at
+// ops — Request refuses ops, so a pending turn never parks there — and the ok guard
+// makes ops a safe no-op advance rather than blanking the stage.
+//
+// **The strategy default serves the mock drive only, and that is why it survives while
+// the relay path refuses.** `adh run` without --relay completes through model.Mock,
+// whose strategy reply is "mock strategy output"; nothing on that path parses a
+// resolution, because critic.ParseReply has one caller and it is relay.Resume. So this
+// default is not a policy about unanswered questions — it is the only place that path
+// gets a resolution at all, and without it a mock-driven arc reaches close with none and
+// is refused by CanClose.
+//
+// The relay path is where a human or agent actually chooses, and there an omitted
+// `resolution:` line is EINVALID rather than a silent code change (see
+// critic.parseStrategyReply). A reader seeing a refusal in one path and a default in the
+// other should read it as the two paths asking different questions, not as a bug in one.
 func Apply(arc *adh.Arc, resp model.Response) {
 	arc.History = append(arc.History, string(arc.Stage)+": "+resp.Text)
 	if arc.Stage == adh.StageStrategy && arc.Resolution == "" {

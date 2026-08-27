@@ -6,7 +6,6 @@ package approve
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
@@ -51,7 +50,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("approve: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "approve: requires an arc id",
+		}
 	}
 	id := args[0]
 	if cfg.Yes {
@@ -66,7 +68,14 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		return fmt.Errorf("approve: %w", err)
 	}
 	if arc.Status != adh.StatusBlocked {
-		return fmt.Errorf("approve: arc %s is not waiting at a gate (status %s)", id, arc.Status)
+		return &adh.Error{
+			Code: adh.ECONFLICT,
+			Message: fmt.Sprintf(
+				"approve: arc %s is not waiting at a gate (status %s)",
+				id,
+				arc.Status,
+			),
+		}
 	}
 	required := authority.RequiredApprovalPhrase(id)
 	if !authority.GateSatisfied(required, cfg.Phrase, cfg.DryRun) {

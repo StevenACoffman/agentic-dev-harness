@@ -78,7 +78,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("loop: expected a verb: list, run, tick, or retire")
+		return root.MissingVerbError{
+			Scope: "loop",
+			Verbs: []string{"list", "run", "tick", "retire"},
+		}
 	}
 	reg, err := looplib.Load(looplib.DefaultRegistryFile)
 	if err != nil {
@@ -94,13 +97,26 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "retire":
 		return cfg.retire(reg, args[1:])
 	default:
-		return fmt.Errorf("loop: unknown verb %q; want list, run, tick, or retire", args[0])
+		return root.UnknownVerbError{
+			Scope: "loop", Got: args[0],
+			Verbs: []string{"list", "run", "tick", "retire"},
+		}
 	}
 }
 
 func (cfg *Config) list(reg looplib.Registry) error {
 	if err := reg.Validate(); err != nil {
 		return fmt.Errorf("loop: %w", err)
+	}
+	if cfg.JSONL {
+		for i := range reg.Loops {
+			if err := cfg.EmitOK(map[string]any{
+				"id": reg.Loops[i].ID, "goal": reg.Loops[i].Goal,
+			}); err != nil {
+				return fmt.Errorf("loop: %w", err)
+			}
+		}
+		return nil
 	}
 	for i := range reg.Loops {
 		l := &reg.Loops[i]

@@ -42,6 +42,14 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 		return fmt.Errorf("metrics: %w", err)
 	}
 	s := metricslib.Summarize(records)
+	if cfg.JSONL {
+		// The summary is already the whole answer, so it is the payload. Emitting the
+		// formatted table under --jsonl handed prose to a caller that asked for JSON.
+		if err := cfg.EmitOK(s); err != nil {
+			return fmt.Errorf("metrics: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(
 		cfg.Stdout,
 		"arcs:                 %d\naccepted:             %d\nattention (min):      %d\ncompute (tokens):     %d\nattention/accept:     %.1f\n",

@@ -8,8 +8,8 @@ package evalcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/peterbourgon/ff/v4"
@@ -20,6 +20,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 )
 
@@ -46,7 +47,22 @@ type Config struct {
 type result struct {
 	Arc         string `json:"arc"`
 	Unconfirmed int    `json:"unconfirmed"`
-	Stage       string `json:"stage"`
+
+	// Unchecked is how many findings named an artifact that could not run. Reported
+	// beside Unconfirmed rather than added to it: an agent branching on a clean
+	// review needs to know the review was incomplete, and the two used to be one
+	// number (§19.2).
+	Unchecked int `json:"unchecked"`
+
+	// Refused is the subset of Unchecked whose artifact was a registered tool that
+	// would not start (§19.2). Carried so an agent can tell a broken environment from
+	// a critic naming artifacts that do not exist.
+	Refused int `json:"refused"`
+
+	// Reservations is how many findings passed while measuring worse than baseline.
+	// An agent reading a clean review needs to know the change cost something.
+	Reservations int    `json:"reservations"`
+	Stage        string `json:"stage"`
 }
 
 // New creates and registers the eval command with the given parent config.
@@ -70,7 +86,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("eval: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "eval: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("eval")
@@ -80,11 +99,8 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
-	if arc.Status != adh.StatusOpen {
-		return fmt.Errorf("eval: arc %s is not open (status %s)", arc.ID, arc.Status)
-	}
-	if arc.Stage != adh.StageEvaluation {
-		return fmt.Errorf("eval: arc %s is at %s, not evaluation", arc.ID, arc.Stage)
+	if err := evaluable(&arc); err != nil {
+		return err
 	}
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
@@ -100,9 +116,27 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		cfg.adjudicator = &adj
 	}
 
-	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, arc.Findings)
+	// Guards are adjudicated alongside the critic's findings, whether or not the
+	// critic mentioned them (§10.5). The critic says what it thought to look at; a
+	// guard says what the repository will not trade away regardless, and an objective
+	// without guards is hill-climbed by trading away everything unmeasured.
+	specs, err := nfr.Load(nfr.DefaultDir)
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, specs, arc.Findings)
+	if err != nil {
+		return fmt.Errorf("eval: %w", err)
+	}
+	// Before applying anything: the bar this arc was planned against, against the bar
+	// in force now. Reported and never blocking — a bar sometimes moves for a good
+	// reason, and refusing the legitimate case would make the check a wall. What it
+	// ends is the bar moving *deniably*.
+	if evaluation.BarMoved(&arc, conf.ProofContract(arc.Resolution)) {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: the acceptance bar changed since arc %s was planned; "+
+				"this verdict is not against the bar the plan was made under (§19.2)\n",
+			arc.ID)
 	}
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	stratum := contextstore.Stratum(time.Now())
@@ -147,9 +181,12 @@ func (cfg *Config) report(arc *adh.Arc, verdict *critic.Verdict) error {
 func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	if cfg.JSONL {
 		if err := cfg.EmitOK(result{
-			Arc:         arc.ID,
-			Unconfirmed: len(verdict.Unconfirmed),
-			Stage:       string(arc.Stage),
+			Arc:          arc.ID,
+			Unconfirmed:  len(verdict.Unconfirmed),
+			Unchecked:    len(verdict.Unchecked),
+			Refused:      len(verdict.Refused),
+			Reservations: len(verdict.Reservations),
+			Stage:        string(arc.Stage),
 		}); err != nil {
 			return fmt.Errorf("eval: %w", err)
 		}
@@ -158,6 +195,32 @@ func (cfg *Config) reportAdvanced(arc *adh.Arc, verdict *critic.Verdict) error {
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"eval: no findings confirmed; arc %s advanced to ops (%d lesson candidate(s))\n",
 		arc.ID, len(verdict.Unconfirmed))
+	// Reported separately and to stderr, because it is not part of the result: the
+	// arc advanced, and it advanced with findings nobody could check. Folding this
+	// into the lesson-candidate count is what let a broken tool read as a clean
+	// review for as long as it did.
+	if n := len(verdict.Unchecked); n > 0 {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: %d finding(s) could not be checked; their artifacts did not run: %s\n",
+			n, strings.Join(verdict.UncheckedNotes(), "; "))
+	}
+	// Named separately because it asks something different of the reader: a finding
+	// that named nothing is the critic's problem, and a registered tool that will not
+	// start is the environment's — and only the second is evidence the repository
+	// declared a check it cannot currently perform.
+	if n := len(verdict.Reservations); n > 0 {
+		// The arc advanced and it cost something. Reported beside the advance rather
+		// than folded into it: "no findings confirmed" is true and incomplete.
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: advanced with %d reservation(s) — measured worse than baseline "+
+				"while still clearing the bar: %s\n",
+			n, strings.Join(verdict.ReservationNotes(), "; "))
+	}
+	if n := len(verdict.Refused); n > 0 {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"eval: %d of those named a registered tool that would not start: %s\n",
+			n, strings.Join(verdict.RefusedNotes(), "; "))
+	}
 	return nil
 }
 
@@ -198,4 +261,24 @@ func exitFor(kind adh.FindingKind) int {
 	default:
 		return exitInvariant
 	}
+}
+
+// evaluable reports whether an arc is in a state eval can adjudicate.
+//
+// ECONFLICT rather than an untyped error: the invocation is well-formed and the state is
+// wrong, so a caller's next move is to advance the arc rather than to fix the command.
+func evaluable(arc *adh.Arc) error {
+	if arc.Status != adh.StatusOpen {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("eval: arc %s is not open (status %s)", arc.ID, arc.Status),
+		}
+	}
+	if arc.Stage != adh.StageEvaluation {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("eval: arc %s is at %s, not evaluation", arc.ID, arc.Stage),
+		}
+	}
+	return nil
 }

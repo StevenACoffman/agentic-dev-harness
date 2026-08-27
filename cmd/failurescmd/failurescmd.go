@@ -6,7 +6,6 @@ package failurescmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
@@ -21,6 +20,12 @@ type Config struct {
 	*root.Config
 	Flags   *ff.FlagSet
 	Command *ff.Command
+}
+
+// failureClass is one distilled class and how many notes it governs.
+type failureClass struct {
+	Class     string `json:"class"`
+	Instances int    `json:"instances"`
 }
 
 // New creates and registers the failures command with the given parent config.
@@ -42,13 +47,19 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("failures: expected a verb: list")
+		return root.MissingVerbError{
+			Scope: "failures",
+			Verbs: []string{"list"},
+		}
 	}
 	switch args[0] {
 	case "list":
 		return cfg.list()
 	default:
-		return fmt.Errorf("failures: unknown verb %q; want list", args[0])
+		return root.UnknownVerbError{
+			Scope: "failures", Got: args[0],
+			Verbs: []string{"list"},
+		}
 	}
 }
 
@@ -61,6 +72,18 @@ func (cfg *Config) list() error {
 	if err != nil {
 		return fmt.Errorf("failures: %w", err)
 	}
+	if cfg.JSONL {
+		// Both keys always present and always lists: "no failures recorded" is an
+		// empty confirmed set, and a caller should not have to tell that from a
+		// command that declined to answer.
+		if err := cfg.EmitOK(map[string]any{
+			"confirmed":  classes(confirmed),
+			"candidates": classes(candidates),
+		}); err != nil {
+			return fmt.Errorf("failures: %w", err)
+		}
+		return nil
+	}
 	if len(confirmed) == 0 && len(candidates) == 0 {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no failures recorded")
 		return nil
@@ -68,6 +91,20 @@ func (cfg *Config) list() error {
 	cfg.printClasses("confirmed failures", confirmed)
 	cfg.printClasses("lesson candidates", candidates)
 	return nil
+}
+
+// classes distils notes the same way printClasses renders them, so the two cannot
+// disagree about what a class is or how many instances it has.
+func classes(notes []string) []failureClass {
+	distilled := lesson.Distill(notes)
+	out := make([]failureClass, 0, len(distilled))
+	for i := range distilled {
+		out = append(out, failureClass{
+			Class:     distilled[i].Class,
+			Instances: len(distilled[i].Instances),
+		})
+	}
+	return out
 }
 
 // printClasses distills notes into governing classes and prints each with its

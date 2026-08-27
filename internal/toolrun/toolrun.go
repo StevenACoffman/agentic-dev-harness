@@ -27,6 +27,20 @@ type Record struct {
 	Ran        bool   `json:"ran"`
 	Failed     bool   `json:"failed"`
 	DurationMS int    `json:"duration_ms,omitempty"`
+
+	// Unrunnable is why the check did not run, meaningful only when Ran is false.
+	//
+	// **Ran:false alone is a count, not a signal.** A log that records how often the
+	// deterministic path missed and never why cannot say whether the misses are a
+	// broken environment, a critic naming artifacts that do not exist, or findings
+	// naming nothing at all — and those three call for entirely different responses.
+	// The reason is computed at adjudication (adh.Unrunnable) and used to be discarded
+	// once the verdict was reported.
+	//
+	// The load-bearing analogue is a surveyed router's `KeywordsNotFound`: what makes
+	// its miss log actionable rather than a tally is that it records *which*
+	// deterministic layer missed and on what.
+	Unrunnable string `json:"unrunnable,omitempty"`
 }
 
 // Load reads the tool-run log at path. A missing file is empty, not an error; a
@@ -52,13 +66,16 @@ func Load(path string) ([]Record, error) {
 // field mapping, so every tool-run site — `adh tool run`, `context verify`, adjudication
 // — turns its result into telemetry the same way. Best-effort at the call site: the
 // returned error is for surfacing, never for failing the run.
-func AppendOutcome(path, tool, stratum string, ran, failed bool, durationMS int) error {
+func AppendOutcome(
+	path, tool, stratum string, ran, failed bool, durationMS int, unrunnable string,
+) error {
 	return Append(path, Record{
 		Tool:       tool,
 		Stratum:    stratum,
 		Ran:        ran,
 		Failed:     failed,
 		DurationMS: durationMS,
+		Unrunnable: unrunnable,
 	})
 }
 

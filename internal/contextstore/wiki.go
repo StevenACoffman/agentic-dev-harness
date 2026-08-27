@@ -141,10 +141,8 @@ func Index(units []Unit) string {
 
 // writeIndexRow renders one catalog line, defaulting an unset trust tier to unverified.
 func writeIndexRow(b *strings.Builder, unit *Unit) {
-	trust := unit.Verified
-	if trust == "" {
-		trust = Unverified
-	}
+	// Tier already defaults to unverified, so the empty case needs no branch here.
+	trust := unit.Verified.Tier()
 	_, _ = fmt.Fprintf(b, "- %s (%s) [%s]", unit.ID, unit.Kind, trust)
 	if len(unit.Labels) > 0 {
 		_, _ = fmt.Fprintf(b, " %s", strings.Join(unit.Labels, ","))

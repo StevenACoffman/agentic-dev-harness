@@ -388,3 +388,99 @@ ______________________________________________________________________
   oracle or invariant test can decide correctness instead.
 - It does not remove human authority over irreversible actions at any autonomy
   level.
+- **It writes only inside the repository it was invoked in.** `adh init` scaffolds
+  `.adh/` and every store, log, and staging directory lives under it; nothing is written
+  to a user-level config, a home directory, or a shared location. The harness owns what
+  it loads, and its install artifact is the only thing it gets to write. This is stated
+  because the compliance was previously accidental — no rule said so, and the first
+  feature wanting a user-level default would have had nothing to violate. An installer
+  that edits a user's files cannot be cleanly uninstalled or reasoned about.
+
+### 9.0 What Each Guarantee Rests On
+
+Every guarantee below is either **artifact-backed** — a check the repository can re-run —
+or **reply-backed**, resting on what an agent said. Both exist, and the table is here so a
+reader can tell which is which without reading four packages. §19.2 states the rule this
+audits: *artifacts decide what blocks; narration decides what gets examined.*
+
+| Guarantee | Rests on | Where |
+| --------- | -------- | ----- |
+| NO-PROOF-NO-CLOSE, for artifact resolutions | **artifact** — digests re-hashed at the moment of closing, not trusted from when written | `closecmd.verifyProof` → `proof.Verify` |
+| NO-PROOF-NO-CLOSE, for a `decision` | **artifact** — the ADR is parsed and must be structurally complete | `verifyDecisionProof` → `adr.Valid` |
+| A context unit has not drifted | **artifact** — the unit's declared §13 tool is run | `context verify` |
+| A unit's trust tier | **artifact-derived** — folded from recorded verification events; recorded drift suppresses it | `contextstore.Trust`, `EffectiveTier` |
+| Reference and native engines agree | **artifact** — differential oracle over generated inputs | `oracle diff` |
+| The gate has teeth | **artifact** — a planted harmful edit must be rejected | `oracle selftest` |
+| A finding is real enough to block | **artifact** — only a `Confirmed` finding blocks, and confirming re-runs the named artifact | `Verdict.ReturnsToExecution` |
+| Harness integrity | **artifact** — every declared reference is resolved against the repository | `doctor` |
+| **Which findings exist at all** | **reply** — the critic reports what it looked at and found | §19.2 |
+| **That there was nothing to find** | **reply** — silence advances the arc, bounded by the NFR guards, which are adjudicated whether or not the critic mentioned them | §19.2, §10.5 |
+| **That a verification happened** | **reply** — `--sign-off` is attributable to the configured identity, not authenticated | §10.4 |
+
+The three reply-backed rows are the honest limit, and each is narrowed by something: a
+finding only matters once an artifact confirms it, silence is bounded by guards, and a
+verification names an actor that can be audited even though it cannot be proved. **The
+gap nobody has measured is the second one** — how much a guard-less repository would miss
+if the critic simply said nothing. Seeded-defect arcs are the measurement.
+
+### 9.0.1 What Each Suite Covers That the Others Do Not
+
+adh runs several checks that look redundant from outside. Each is annotated with its
+**coverage delta** — what it catches that nothing else does — so a redundant-looking test
+is defensible rather than deletable, and so a gap is visible as a gap.
+
+| Suite | Covers, that nothing else does | In CI |
+| ----- | ------------------------------ | ----- |
+| `go test ./...` | every unit and journey test, including the `--jsonl` contract over both a bare and a seeded tree | yes, with `-race` |
+| the differential oracle (`oracle diff`) | reference and native engines disagreeing on a generated input — a class no example-based test reaches, because the inputs are generated rather than authored | yes, via its package test |
+| the invariant checker (`oracle invariants`) | a property holding across many boards, where the oracle only shows two engines *agreeing* — they can agree and both be wrong | yes, via its package test |
+| `oracle selftest` | **whether the selection gate discriminates at all** — a planted harmful edit must be rejected. Everything above tests the subject; this tests the *instrument* | yes, via its package test |
+| the seeded-defect arcs | whether a defect survives a whole arc, and specifically what a **silent critic** lets through — the gate self-test covers the gate, not the arc around it | yes |
+| `doctor` / `context verify` | drift between the harness's declarations and the repository, which no test can catch because it is a property of the operator's tree rather than of the code | no — they run against a real repository, and there is no fixture of a drifted one |
+| `harness eval` / `sleep run` | the optimizer's own selection quality over a corpus | no — they need a corpus and a model relay, so they are operator-run |
+
+**The last two rows are the honest half.** They are not in CI, and a reader who assumes
+everything here is enforced on every push would be wrong about exactly the checks that
+concern the *repository's* state rather than the code's. Nothing else covers them, so
+their absence from CI is a gap, not a duplication — recorded rather than left to be
+discovered.
+
+### 9.1 Named Refusals
+
+The three above are the harness's shape. What follows are decisions **not** to build
+something specific, each recorded with the alternative that was considered, so an
+absence reads as a decision rather than as an omission. The list exists because two
+commissioned reviews re-proposed things this project had already declined, and an
+unwritten refusal cannot be cited.
+
+- **An unchecked finding does not block the arc** (§19.2). `vac-gate`'s rule — *"'cannot
+  regrade' is not 'regraded'"* — argues the honest refusal should fail the gate, and it
+  is right wherever the refusal is trustworthy. adh now distinguishes a registered tool
+  that would not start from a critic naming an artifact that never existed, so the
+  distinction exists; whether an arc may be *wedged* by the first is a separate call and
+  has not been made.
+- **adh does not filter a critic's grounding** (§19.4). `[critic] deny` accepts only
+  `transcript`, the one input the renderer withholds structurally. Accepting a name it
+  cannot honour would be a decoration that reads as a control, which is what the field
+  was before it was enforced.
+- **An ungrounded critic is allowed** (§19.1). Refusing an arc with no declared
+  footprint, or a repository with no context store, would make adh unusable before a
+  store exists. It is reported, not refused.
+- **A guard is a property of the repository, not of an arc** (§10.5). A per-arc guard
+  list would be more expressive and would let the author of a change choose which
+  guards apply to it. Both of the failures that motivated guards were a loop editing
+  its own criteria, so the expressiveness is the hazard.
+- **A moved acceptance bar is reported, not blocked** (§19.2). A bar sometimes moves
+  for a good reason; refusing the legitimate case would make the check a wall and
+  teach people to route around it. What ends is the bar moving *deniably*.
+- **No peer-agent coordination layer.** Its own source reports coordination paying off
+  at three or more concurrent agents; adh drives one arc at a time.
+- **No multi-model synthesis.** Cross-model verification needs a model-invocation seam
+  adh deliberately does not have — the relay is the seam, and a human or an agent is on
+  the other side of it.
+- **No reporting or dashboard surface.** The signal a session-mining loop produces is
+  worth having and is recorded elsewhere; delivering it is not adh's job.
+
+A refusal here is not permanent. Each names what would have to change, and the point of
+writing it down is that the next person to propose one of these starts from the
+argument rather than from the beginning.

@@ -130,6 +130,20 @@ type SplitScore struct {
 
 // Signal is one harvested closed arc's learnable content: the misses to avoid
 // and the affirmative outcomes to reinforce.
+//
+// **Provenance is planned and deliberately absent today**, so the shape is recorded here
+// rather than left to whoever adds the second source. Mining sessions the harness never
+// governed is a heuristic, and its output would reach Mine, which builds the held-out
+// splits -- so a wrong inference would not add noise, it would move the objective the
+// gate hill-climbs. When a second source arrives, Signal gains a provenance field whose
+// **zero value means unknown**: a signal that does not say where it came from must not be
+// read as arc-derived, so a consumer added later gets the conservative reading by
+// forgetting rather than the permissive one. Only arc-derived signals may enter the
+// splits; other provenance feeds Reflect and the §11 lesson candidates, where the
+// temporal and human gates already stand between a false positive and a change.
+//
+// A separate type for foreign signals was the alternative, and this is the cheaper half
+// of the same guarantee: one accretion path, one place that says no.
 type Signal struct {
 	Arc        string   `json:"arc"`
 	Resolution string   `json:"resolution,omitempty"`
@@ -197,6 +211,10 @@ func (c Config) effectiveBudget() int {
 }
 
 // Harvest reduces closed arcs to their learnable signals; open arcs are skipped.
+//
+// Closed arcs are the only source, which bounds what the loop can learn to work the
+// harness itself drove. Widening it is planned and gated -- see Signal on why a second
+// source must carry provenance before it reaches Mine.
 func Harvest(arcs []adh.Arc) []Signal {
 	signals := make([]Signal, 0, len(arcs))
 	for i := range arcs {

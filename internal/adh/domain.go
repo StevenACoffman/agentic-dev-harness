@@ -1,5 +1,7 @@
 package adh
 
+import "github.com/StevenACoffman/skillet/finding"
+
 // Stage values in canonical pipeline order (SPEC §1).
 const (
 	StageStrategy   Stage = "strategy"
@@ -87,10 +89,15 @@ type KPI struct {
 // summary and the repository artifact (Kind + Ref) whose run would confirm it.
 // The Evaluation stage adjudicates it; the harness never blocks on its text.
 type Finding struct {
-	Summary string       `json:"summary"`
-	Kind    FindingKind  `json:"kind"`
-	Ref     string       `json:"ref,omitempty"`
-	Class   FindingClass `json:"class,omitempty"`
+	Summary string      `json:"summary"`
+	Kind    FindingKind `json:"kind"`
+	// Ref names the artifact that would confirm the finding, and for a confirmed one it
+	// is also the next action: re-running it is what settles the finding, so a caller
+	// has the command without inferring it. That is why no remediation vocabulary
+	// exists here -- a third closed set beside Class and FindingKind would classify the
+	// same space twice, and "re-run the ref" covers the case anyone has named.
+	Ref   string       `json:"ref,omitempty"`
+	Class FindingClass `json:"class,omitempty"`
 }
 
 // Arc is a unit of work driven through the loop.
@@ -120,6 +127,34 @@ type Arc struct {
 	// Evaluation stage (§19.2). Set when the critic turn resumes; cleared once
 	// Evaluation has disposed of them.
 	Findings []Finding `json:"findings,omitempty"`
+	// Unexamined is what the critic declared it did not look at (§19.2). It is the
+	// critic's own testimony, never a derived fact — a mechanically-known gap, such
+	// as a review that ran with no routed context, is reported by the harness and
+	// deliberately not written here.
+	//
+	// Advisory always: nothing may block because an entry is present, or a critic
+	// learns to declare none and the corpus loses both the gap and the finding.
+	// Cleared wherever Findings is cleared; a stale gap would be declared against a
+	// review that never made it.
+	Unexamined []finding.Unexamined `json:"unexamined,omitempty"`
+	// Bar is identity.Hash of the acceptance bar the arc was planned against,
+	// recorded when Strategy completes (§19.2).
+	//
+	// **It is a pre-registration, not a copy.** The bar itself is derived from config
+	// by resolution and is recoverable at any time; what is not recoverable is what it
+	// said when the plan was made. Two things can move it between Strategy and
+	// Evaluation — an edit to the config, and a change to the arc's Resolution, which
+	// selects the contract — and neither leaves a trace today.
+	//
+	// The discipline it buys is `ruflo`'s: it rejected changes carrying large
+	// favourable metrics because a *named* guard moved, under a hypothesis marked
+	// "frozen before evaluation began; not modified after seeing results." A bar that
+	// can move after the numbers arrive is a note, not a pre-registration.
+	//
+	// Empty means an arc planned before this shipped, or one that never reached
+	// Strategy. It must read as **unknown**, never as changed — reporting drift on
+	// every pre-existing arc would teach a reader to ignore the report.
+	Bar string `json:"bar,omitempty"`
 	// Reworks counts the times Evaluation confirmed a finding and returned this arc
 	// to Execution (SPEC §4.1). It bounds the rework loop: once it reaches the
 	// evaluation budget the arc fails terminally (StatusFailed) rather than looping.

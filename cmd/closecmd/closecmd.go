@@ -7,7 +7,6 @@ package closecmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,7 +57,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("close: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "close: requires an arc id",
+		}
 	}
 	id := args[0]
 	store := state.Default()
@@ -206,17 +208,29 @@ func loadMetrics() ([]metricslib.Record, error) {
 // arc must be approved first; only an open arc at ops may ship.
 func readyToClose(arc *adh.Arc) error {
 	if arc.Stage != adh.StageOps {
-		return fmt.Errorf("close: arc %s is at %s, not the ops gate", arc.ID, arc.Stage)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("close: arc %s is at %s, not the ops gate", arc.ID, arc.Stage),
+		}
 	}
 	switch arc.Status {
 	case adh.StatusOpen:
 		return nil
 	case adh.StatusBlocked:
-		return fmt.Errorf("close: arc %s is blocked; approve the ops gate first", arc.ID)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("close: arc %s is blocked; approve the ops gate first", arc.ID),
+		}
 	case adh.StatusClosed, adh.StatusFailed:
-		return fmt.Errorf("close: arc %s is %s, not open", arc.ID, arc.Status)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("close: arc %s is %s, not open", arc.ID, arc.Status),
+		}
 	default:
-		return fmt.Errorf("close: arc %s is %s, not open", arc.ID, arc.Status)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("close: arc %s is %s, not open", arc.ID, arc.Status),
+		}
 	}
 }
 

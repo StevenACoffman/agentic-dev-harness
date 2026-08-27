@@ -12,7 +12,6 @@ package sleep
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +29,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/verdict"
 	"github.com/StevenACoffman/skillet/atomicfile"
+	"github.com/StevenACoffman/skillet/calibration"
 	gate "github.com/StevenACoffman/skillet/ratchet"
 )
 
@@ -66,6 +66,14 @@ type manifest struct {
 	Replication verdict.Verdict `json:"replication,omitempty"`
 }
 
+// stagedProposal is one proposal awaiting adoption, as both renderings report it.
+type stagedProposal struct {
+	StagingID string  `json:"staging_id"`
+	Action    string  `json:"action"`
+	Baseline  float64 `json:"baseline"`
+	Candidate float64 `json:"candidate"`
+}
+
 // New creates and registers the sleep command with the given parent config.
 func New(parent *root.Config) *Config {
 	var cfg Config
@@ -95,7 +103,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: expected a verb: run, adopt, status, or schedule")
+		return root.MissingVerbError{
+			Scope: "sleep",
+			Verbs: []string{"run", "adopt", "status", "schedule"},
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("sleep")
@@ -110,7 +121,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "schedule":
 		return cfg.schedule(ctx, args[1:])
 	default:
-		return fmt.Errorf("sleep: unknown verb %q; want run, adopt, status, or schedule", args[0])
+		return root.UnknownVerbError{
+			Scope: "sleep", Got: args[0],
+			Verbs: []string{"run", "adopt", "status", "schedule"},
+		}
 	}
 }
 
@@ -119,14 +133,12 @@ func (cfg *Config) run() error {
 	// a planted non-improving candidate must be rejected (§18.4), mirroring
 	// SkillOpt's harmful-edit probe.
 	if err := harness.SelfTest(); err != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "gate self-test failed: %s\n", err)
-		return root.ExitError(15)
+		return cfg.gateUntrustworthy("gate self-test failed", err)
 	}
 	// A blind grader is as dangerous as a toothless gate: prove the rubric
 	// discriminates a strong artifact from a weak one before trusting the loop (§18.2).
 	if err := harness.GraderSelfTest(); err != nil {
-		_, _ = fmt.Fprintf(cfg.Stderr, "grader self-test failed: %s\n", err)
-		return root.ExitError(15)
+		return cfg.gateUntrustworthy("grader self-test failed", err)
 	}
 	artifact, arcs, rejected, err := cfg.inputs()
 	if err != nil {
@@ -229,16 +241,20 @@ func (cfg *Config) inputs() (string, []adh.Arc, map[string]bool, error) {
 // self-explains and remembers a rejected candidate.
 func (cfg *Config) settle(cycle *consolidate.Cycle, rejected map[string]bool) error {
 	if cycle.Proposed == "" {
-		if cycle.StagingID != "" && cycle.Decision.Action == gate.Reject {
-			if err := saveRejected(rejectedFile, rejected, cycle.StagingID); err != nil {
-				return err
-			}
-		}
-		_, _ = fmt.Fprintf(cfg.Stdout, "no proposal staged: %s\n", note(cycle))
-		return nil
+		return cfg.settleDeclined(cycle, rejected)
 	}
 	if err := writeStaging(cfg.Artifact, cycle); err != nil {
 		return err
+	}
+	if cfg.JSONL {
+		// Blocked rather than ok: exit 14 means a human has to adopt this, and the
+		// envelope's status is what an agent branches on before it reads a field.
+		if err := cfg.EmitBlocked(14, "adoption-pending", fmt.Sprintf(
+			"staged %s; adopt with `adh sleep adopt %s`",
+			cycle.StagingID, cycle.StagingID)); err != nil {
+			return fmt.Errorf("sleep: %w", err)
+		}
+		return root.ExitError(14)
 	}
 	long := cycle.Longitudinal
 	_, _ = fmt.Fprintf(
@@ -257,9 +273,59 @@ func (cfg *Config) settle(cycle *consolidate.Cycle, rejected map[string]bool) er
 	return root.ExitError(14)
 }
 
+// settleDeclined reports a cycle the gate looked at and did not stage.
+//
+// It is a success, not a failure: the loop ran and declined, which is the gate
+// working. The note is the whole content -- an agent told only "ok" cannot tell a
+// rejected candidate from an empty corpus, and those call for different next steps.
+//
+// Split from settle when a fourth branch pushed it past the complexity limit, and the
+// split is the better shape: the two outcomes share no logic beyond the decision that
+// separates them.
+func (cfg *Config) settleDeclined(
+	cycle *consolidate.Cycle, rejected map[string]bool,
+) error {
+	if cycle.StagingID != "" && cycle.Decision.Action == gate.Reject {
+		if err := saveRejected(rejectedFile, rejected, cycle.StagingID); err != nil {
+			return err
+		}
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"staged": false, "reason": note(cycle),
+		}); err != nil {
+			return fmt.Errorf("sleep: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintf(cfg.Stdout, "no proposal staged: %s\n", note(cycle))
+	return nil
+}
+
+// gateUntrustworthy reports a self-test failure (§18.4).
+//
+// Both self-tests answer the same question -- can this loop be trusted to judge its own
+// changes -- so they report identically. It is the most consequential thing sleep can
+// say, and under --jsonl it used to arrive as a bare exit code with the reason on
+// stderr, where a machine caller reading the data plane never saw it.
+func (cfg *Config) gateUntrustworthy(what string, cause error) error {
+	if cfg.JSONL {
+		if err := cfg.EmitError(15, "gate-untrustworthy",
+			what+": "+cause.Error()); err != nil {
+			return fmt.Errorf("sleep: %w", err)
+		}
+		return root.ExitError(15)
+	}
+	_, _ = fmt.Fprintf(cfg.Stderr, "%s: %s\n", what, cause)
+	return root.ExitError(15)
+}
+
 func (cfg *Config) adopt(args []string) error {
 	if len(args) == 0 {
-		return errors.New("sleep: adopt requires a staging id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "sleep: adopt requires a staging id",
+		}
 	}
 	id := args[0]
 	man, err := readManifest(id)
@@ -298,87 +364,142 @@ func (cfg *Config) adopt(args []string) error {
 }
 
 func (cfg *Config) status(ctx context.Context) error {
-	staged, err := cfg.printStagedProposals()
+	staged, err := cfg.stagedProposals()
 	if err != nil {
 		return err
 	}
-	if staged == 0 {
-		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
+	calib, hasCalib := cfg.calibration(ctx)
+	common := cfg.commonPatterns(ctx)
+
+	if cfg.JSONL {
+		return cfg.emitStatus(staged, calib, hasCalib, common)
 	}
-	cfg.printCalibration(ctx)
-	cfg.printCommonPatterns(ctx)
+	cfg.writeStatus(staged, calib, hasCalib, common)
 	return nil
 }
 
-// printStagedProposals lists each staged proposal and returns the count; an absent
-// staging directory is zero, not an error.
-func (cfg *Config) printStagedProposals() (int, error) {
+// emitStatus reports the three sections status gathers, as three keys.
+//
+// **Three keys rather than three commands**, and the choice is worth stating: splitting
+// the verb is a CLI change, and this is the smaller of the two. The sections stay
+// separate in the payload because they answer unrelated questions -- what is waiting,
+// how well the optimizer predicts itself, and what keeps recurring -- and flattening
+// them would invent a relationship none of them has.
+//
+// **A section with nothing to say is absent, not empty.** `calibration` is omitted when
+// there is no evidence log or no scored cycles in it, because an object of zeros reads
+// as "the optimizer is perfectly calibrated" when the truth is that nobody has measured.
+// That is the same distinction §19.2 draws between unchecked and clean.
+func (cfg *Config) emitStatus(
+	staged []stagedProposal, calib calibration.Report, hasCalib bool,
+	common []consolidate.CommonClass,
+) error {
+	data := map[string]any{"staged": staged, "common_patterns": common}
+	if hasCalib {
+		data["calibration"] = calib
+	}
+	if err := cfg.EmitOK(data); err != nil {
+		return fmt.Errorf("sleep: %w", err)
+	}
+	return nil
+}
+
+// writeStatus renders the same three sections for a person.
+func (cfg *Config) writeStatus(
+	staged []stagedProposal, calib calibration.Report, hasCalib bool,
+	common []consolidate.CommonClass,
+) {
+	for i := range staged {
+		p := &staged[i]
+		_, _ = fmt.Fprintf(cfg.Stdout, "%s  %s  %.3f -> %.3f\n",
+			p.StagingID, p.Action, p.Baseline, p.Candidate)
+	}
+	if len(staged) == 0 {
+		_, _ = fmt.Fprintln(cfg.Stdout, "no staged proposals")
+	}
+	if hasCalib {
+		_, _ = fmt.Fprintf(cfg.Stdout,
+			"calibration: %d cycles  ECE %.3f  MCE %.3f  Brier %.3f\n",
+			calib.Samples, calib.ECE, calib.MCE, calib.Brier)
+	}
+	for i := range common {
+		_, _ = fmt.Fprintf(cfg.Stdout, "common %s: %s (%.0f%% of arcs)\n",
+			common[i].Kind, common[i].Class, common[i].Coverage*100)
+	}
+}
+
+// stagedProposals reads what is waiting, without printing it.
+//
+// The gather-then-render split is why this returns a slice where its predecessor
+// returned a count and wrote to stdout as it went: two renderings cannot disagree
+// about a list they both read.
+func (cfg *Config) stagedProposals() ([]stagedProposal, error) {
 	entries, err := os.ReadDir(stagingRoot)
 	if os.IsNotExist(err) {
-		return 0, nil
+		// Empty rather than nil, so the payload says "nothing staged" rather than
+		// null. A consumer should not have to distinguish an absent list from an
+		// empty one to learn the same fact.
+		return []stagedProposal{}, nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("sleep: %w", err)
+		return nil, fmt.Errorf("sleep: %w", err)
 	}
-	staged := 0
+	out := make([]stagedProposal, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		man, manErr := readManifest(entry.Name())
 		if manErr != nil {
-			return 0, manErr
+			return nil, manErr
 		}
-		staged++
-		_, _ = fmt.Fprintf(cfg.Stdout, "%s  %s  %.3f -> %.3f\n",
-			man.StagingID, man.Decision.Action, man.Baseline, man.Candidate)
+		out = append(out, stagedProposal{
+			StagingID: man.StagingID, Action: string(man.Decision.Action),
+			Baseline: man.Baseline, Candidate: man.Candidate,
+		})
 	}
-	return staged, nil
+	return out, nil
 }
 
-// printCalibration reports how well past cycles' projected scores predicted what was
-// actually kept (consolidate.Calibration over the evidence log) — the reliability of
-// the optimizer's own judgment. It is a diagnostic add-on to status: silent when
-// there is no evidence log yet or no proposed-candidate cycles in it. The cycle count
-// is shown so a sparse (low-N) calibration is visible rather than over-read.
-func (cfg *Config) printCalibration(ctx context.Context) {
+// calibration reports how well past cycles' projected scores predicted what was
+// actually kept -- the reliability of the optimizer's own judgment -- and whether
+// there was anything to measure. The cycle count rides in the report so a sparse
+// calibration is visible rather than over-read.
+func (cfg *Config) calibration(ctx context.Context) (calibration.Report, bool) {
 	f, err := os.Open(evidenceFile)
 	if err != nil {
-		return // no evidence log yet — nothing to report
+		return calibration.Report{}, false // no evidence log yet
 	}
 	defer func() { _ = f.Close() }()
 	records, err := evidence.Read(f)
 	if err != nil {
 		cfg.Log.WarnContext(ctx, "sleep status: unreadable evidence log", "err", err)
-		return
+		return calibration.Report{}, false
 	}
 	rep := consolidate.Calibration(records)
-	if rep.Samples == 0 {
-		return
-	}
-	_, _ = fmt.Fprintf(cfg.Stdout,
-		"calibration: %d cycles  ECE %.3f  MCE %.3f  Brier %.3f\n",
-		rep.Samples, rep.ECE, rep.MCE, rep.Brier)
+	return rep, rep.Samples > 0
 }
 
-// printCommonPatterns reports the lesson classes that recur across more than half the
-// harvested arcs (consolidate.CommonClasses) — systemic failures and consistent
-// winning approaches, the evidence an operator's lessons draw on. Best-effort: a load
-// error is a diagnostic, not a status failure; silent when nothing is common.
-func (cfg *Config) printCommonPatterns(ctx context.Context) {
+// commonPatterns reports the lesson classes recurring across more than half the
+// harvested arcs -- systemic failures and consistent winning approaches. Best-effort:
+// a load error is a diagnostic, not a status failure.
+func (cfg *Config) commonPatterns(ctx context.Context) []consolidate.CommonClass {
 	arcs, err := state.Default().List()
 	if err != nil {
 		cfg.Log.WarnContext(ctx, "sleep status: list arcs", "err", err)
-		return
+		return []consolidate.CommonClass{}
 	}
+	// Normalised here rather than in CommonClasses, which returns nil for an empty
+	// corpus and has other callers that do not serialise it. The payload boundary is
+	// where "no common patterns" has to read as a list rather than as null.
 	common := consolidate.CommonClasses(
 		consolidate.Harvest(arcs),
 		consolidate.DefaultCommonCoverage,
 	)
-	for i := range common {
-		_, _ = fmt.Fprintf(cfg.Stdout, "common %s: %s (%.0f%% of arcs)\n",
-			common[i].Kind, common[i].Class, common[i].Coverage*100)
+	if common == nil {
+		return []consolidate.CommonClass{}
 	}
+	return common
 }
 
 func writeStaging(livePath string, cycle *consolidate.Cycle) error {

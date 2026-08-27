@@ -6,7 +6,6 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,6 +22,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -83,7 +83,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("run: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "run: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("run")
@@ -128,7 +131,14 @@ func (cfg *Config) driveRelay(
 	recordLessons := conf.CriticUnconfirmed() == config.UnconfirmedLesson
 	maxReworks := conf.MaxReworks()
 	if cfg.Response != "" {
-		if err := cfg.resumeRelay(ctx, store, arc, renderer, judgment); err != nil {
+		if err := cfg.resumeRelay(
+			ctx,
+			store,
+			arc,
+			renderer,
+			judgment,
+			conf.ProofContract,
+		); err != nil {
 			return err
 		}
 	}
@@ -163,9 +173,13 @@ func (cfg *Config) resumeRelay(
 	arc *adh.Arc,
 	renderer stage.Prompter,
 	judgment authority.JudgmentRoles,
+	barFor func(adh.Resolution) string,
 ) error {
 	if arc.Pending == nil || arc.Pending.Stage != arc.Stage {
-		return fmt.Errorf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("run: arc %s has no pending %s turn to resume", arc.ID, arc.Stage),
+		}
 	}
 	text, err := cfg.readResponse()
 	if err != nil {
@@ -173,8 +187,14 @@ func (cfg *Config) resumeRelay(
 	}
 	wasExecution := arc.Stage == adh.StageExecution
 	wasCritic := arc.Stage == adh.StageCritic
+	wasStrategy := arc.Stage == adh.StageStrategy
 	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("run: %w", err)
+	}
+	if wasStrategy {
+		// Pre-register the bar the plan was made against, after Resume so the
+		// resolution the strategy reply chose is the one it selects (§19.2).
+		arc.Bar = evaluation.BarHash(barFor(arc.Resolution))
 	}
 	if wasExecution {
 		worktree.CaptureFootprint(cfg.repoDir(), arc)
@@ -250,11 +270,20 @@ func (cfg *Config) emitRelay(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
+	in := critic.Inputs{
+		AcceptanceBar: conf.ProofContract(arc.Resolution),
+		Tools:         reg.Tools,
+		// The previous review's declared gaps, so this critic starts where that one
+		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
+		// gap is only ever offered to the review that immediately follows it.
+		PriorGaps: arc.Unexamined,
+	}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)
 		in.Noisy = cfg.noisyKinds(ctx)
+		// The critic's deny list belongs to the critic; see the note in step.go.
+		in.Denied = conf.DeniedInputs()
 	}
 	out, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,
@@ -267,6 +296,14 @@ func (cfg *Config) emitRelay(
 	}
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("run: %w", err)
+	}
+	if out.Ungrounded {
+		// Same note step emits, for the same reason: the review is about to run on
+		// the model's own priors and whoever answers can still change that. Never a
+		// failure — critic.ForStage allows this state deliberately.
+		_, _ = fmt.Fprintln(cfg.Stderr,
+			"run: the critic is ungrounded — no routed context and no proof packet; "+
+				"this review runs on the model's own priors (§19.1)")
 	}
 	return cfg.reportAwaiting(arc, out.Prompt)
 }
@@ -456,7 +493,11 @@ func (cfg *Config) adjudicate(
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, arc.Findings)
+	specs, err := nfr.Load(filepath.Join(cfg.repoDir(), nfr.DefaultDir))
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, specs, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}

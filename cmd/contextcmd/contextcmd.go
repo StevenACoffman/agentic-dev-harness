@@ -7,7 +7,6 @@ package contextcmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,9 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
@@ -50,6 +51,9 @@ type Config struct {
 	*root.Config
 	Flags   *ff.FlagSet
 	Command *ff.Command
+
+	// SignOff records a verification event for each unit that verified clean.
+	SignOff bool
 }
 
 // integrityResult is one unit's anti-drift verdict: ok (the check passed), drift
@@ -75,6 +79,8 @@ func New(parent *root.Config) *Config {
 	var cfg Config
 	cfg.Config = parent
 	cfg.Flags = ff.NewFlagSet("context").SetParent(parent.Flags)
+	cfg.Flags.BoolVar(&cfg.SignOff, 0, "sign-off",
+		"on verify, record a verification event for each unit that passed")
 	cfg.Command = &ff.Command{
 		Name:      "context",
 		Usage:     "agentic-dev-harness context <list|show|route|lint|verify|check|misses|eval|index> [id|arc|labels...]",
@@ -83,7 +89,9 @@ func New(parent *root.Config) *Config {
 			"show one unit's text and provenance, route a working set by labels, lint the " +
 			"store, verify that routed units have not drifted from their canonical source, " +
 			"check a routed set for cross-unit contradictions, list routing misses and the " +
-			"route proposals they have earned, or eval routing quality against fixtures.",
+			"route proposals they have earned, or eval routing quality against fixtures. " +
+			"`verify --sign-off` additionally records a verification event (OKF §5.2) for " +
+			"each unit that passed, attributed to the configured identity.",
 		Flags: cfg.Flags,
 		Exec:  cfg.exec,
 	}
@@ -91,14 +99,25 @@ func New(parent *root.Config) *Config {
 	return &cfg
 }
 
+// contextVerbs are the verbs context dispatches.
+//
+// A function rather than a package var (gochecknoglobals) and named once rather than
+// written into both refusals, which is where nine verbs listed twice inside one function
+// had pushed exec past the length limit. The usage line is still a third copy; that one
+// is authored prose and stays.
+func contextVerbs() []string {
+	return []string{
+		"list", "show", "route", "lint", "verify",
+		"check", "misses", "eval", "index",
+	}
+}
+
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New(
-			"context: expected a verb: list, show, route, lint, verify, check, misses, eval, or index",
-		)
+		return root.MissingVerbError{Scope: "context", Verbs: contextVerbs()}
 	}
 	storeDir := cfg.storeDir()
-	units, err := contextstore.Load(storeDir)
+	units, err := contextstore.LoadFresh(storeDir)
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
@@ -124,18 +143,46 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "eval":
 		return cfg.eval(units)
 	case "index":
+		if cfg.JSONL {
+			// Index renders a Markdown document; under --jsonl the answer is the
+			// units it was built from, not the rendering. A caller wanting the
+			// document has the human form.
+			return cfg.emitIndex(units)
+		}
 		_, _ = fmt.Fprint(cfg.Stdout, contextstore.Index(units))
 		return nil
 	default:
-		return fmt.Errorf(
-			"context: unknown verb %q; want list, show, route, lint, verify, check, misses, eval, or index",
-			args[0],
-		)
+		return root.UnknownVerbError{
+			Scope: "context", Got: args[0], Verbs: contextVerbs(),
+		}
 	}
 }
 
 // list prints each unit's id, kind, and labels.
 func (cfg *Config) list(units []contextstore.Unit) error {
+	if cfg.JSONL {
+		// One line per unit, and it carries the derived freshness: a caller choosing
+		// between units needs to know which ones the integrity log has condemned, and
+		// that is not readable from the authored tier alone.
+		for i := range units {
+			// Empty rather than null, matching the other payloads: a caller should not
+			// have to tell an absent list from an empty one to learn the same fact.
+			labels := units[i].Labels
+			if labels == nil {
+				labels = []string{}
+			}
+			if err := cfg.EmitOK(map[string]any{
+				"id":        units[i].ID,
+				"kind":      units[i].Kind,
+				"labels":    labels,
+				"verified":  units[i].Verified.Tier(),
+				"freshness": units[i].Fresh,
+			}); err != nil {
+				return fmt.Errorf("context: %w", err)
+			}
+		}
+		return nil
+	}
 	for i := range units {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\n",
 			units[i].ID, units[i].Kind, strings.Join(units[i].Labels, ","))
@@ -148,7 +195,10 @@ func (cfg *Config) list(units []contextstore.Unit) error {
 // outcome carrying the metadata, provenance, and content.
 func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []string) error {
 	if len(args) == 0 {
-		return errors.New("context: show requires a unit id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "context: show requires a unit id",
+		}
 	}
 	id := args[0]
 	for i := range units {
@@ -162,7 +212,10 @@ func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []strin
 		}
 		return cfg.reportUnit(unit, content)
 	}
-	return fmt.Errorf("context: no such unit %q", id)
+	return &adh.Error{
+		Code:    adh.ENOTFOUND,
+		Message: fmt.Sprintf("context: no such unit %q", id),
+	}
 }
 
 // reportUnit emits a unit and its content, as one outcome under --jsonl else text.
@@ -171,7 +224,7 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 		if err := cfg.EmitOK(map[string]any{
 			"id": unit.ID, "kind": unit.Kind, "owner": unit.Owner,
 			"provenance": unit.Provenance, "sources": unit.Sources,
-			"verified": string(unit.Verified), "superseded_by": unit.SupersededBy,
+			"verified": string(unit.Verified.Tier()), "superseded_by": unit.SupersededBy,
 			"content": content,
 		}); err != nil {
 			return fmt.Errorf("context: %w", err)
@@ -183,8 +236,8 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 	} else {
 		_, _ = fmt.Fprintf(cfg.Stdout, "# %s (%s)\n", unit.ID, unit.Kind)
 	}
-	if unit.Verified != "" {
-		_, _ = fmt.Fprintf(cfg.Stdout, "> trust: %s\n", unit.Verified)
+	if tier := unit.Verified.Tier(); tier != contextstore.Unverified {
+		_, _ = fmt.Fprintf(cfg.Stdout, "> trust: %s\n", tier)
 	}
 	for _, src := range unit.Sources {
 		_, _ = fmt.Fprintf(cfg.Stdout, "> source: %s\n", src)
@@ -202,67 +255,119 @@ func (cfg *Config) reportUnit(unit *contextstore.Unit, content string) error {
 // promised content resolves, and ids are unique across the store (a duplicate id
 // makes routing ambiguous, §10.4). It exits lintCode when any check fails.
 func (cfg *Config) lint(storeDir string, units []contextstore.Unit) error {
-	bad := 0
-	for i := range units {
-		unit := &units[i]
-		if unit.ID == "" || unit.Kind == "" {
-			bad++
-			_, _ = fmt.Fprintf(cfg.Stderr, "unit missing id or kind: %+v\n", unit)
-			continue
+	problems := cfg.lintProblems(storeDir, units)
+	if cfg.JSONL {
+		// The defects are the answer, so they travel as data. They went to stderr
+		// one at a time before, which left --jsonl with a count and no content.
+		if err := cfg.EmitOK(map[string]any{
+			"units": len(units), "problems": problems,
+		}); err != nil {
+			return fmt.Errorf("context: %w", err)
 		}
-		// The content the routing preview promises must exist and stay in the store.
-		if _, err := contextstore.Content(storeDir, unit); err != nil {
-			bad++
-			_, _ = fmt.Fprintf(
-				cfg.Stderr,
-				"unit %s: content_path does not resolve: %v\n",
-				unit.ID,
-				err,
-			)
+		if len(problems) > 0 {
+			return root.ExitError(lintCode)
 		}
+		return nil
 	}
-	for _, id := range contextstore.DuplicateIDs(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "duplicate unit id: %s\n", id)
+	for i := range problems {
+		_, _ = fmt.Fprintf(cfg.Stderr, "%s\n", problems[i].Detail)
 	}
-	bad += cfg.wikiLint(units)
-	if bad > 0 {
+	if len(problems) > 0 {
 		return root.ExitError(lintCode)
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d context units, all valid\n", len(units))
 	return nil
 }
 
-// wikiLint reports the compounding-wiki defects (§10.4) — orphan units that can
-// never route, dangling supersession references, and unknown trust tiers — and
-// returns how many it found.
-func (cfg *Config) wikiLint(units []contextstore.Unit) int {
-	bad := 0
+// lintProblems collects every defect in the store (§10.4).
+//
+// Requires: storeDir is the context store; units are its loaded contents.
+// Ensures: one Problem per defect, in a stable order — structural defects per unit
+// first, then the wiki-level ones. Empty means checked and clean, never "did not
+// check". Pure with respect to units; it reads content paths and provenance sources
+// through cfg's filesystem helpers.
+//
+// **Collecting rather than printing is the change, and JSON was only what forced it.**
+// Each defect used to go to stderr as it was found and a count to stdout at the end, so
+// the two came from different code paths and could disagree — and --jsonl could report
+// only the count. One slice renders both.
+//
+// It reuses harnesscheck.Problem rather than a local type, because `doctor` already
+// renders that shape and a context-unit defect is the same kind of thing. A second
+// vocabulary for "what is wrong with a unit" is the drift this family keeps refusing.
+func (cfg *Config) lintProblems(
+	storeDir string, units []contextstore.Unit,
+) []harnesscheck.Problem {
+	problems := make([]harnesscheck.Problem, 0)
+	for i := range units {
+		unit := &units[i]
+		if unit.ID == "" || unit.Kind == "" {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindUnitFields, Ref: unit.ContentPath,
+				Detail: fmt.Sprintf("unit missing id or kind: %+v", unit),
+			})
+			continue
+		}
+		// The content the routing preview promises must exist and stay in the store.
+		if _, err := contextstore.Content(storeDir, unit); err != nil {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindDanglingSource, Ref: unit.ID,
+				Detail: "unit " + unit.ID + ": content_path does not resolve: " + err.Error(),
+			})
+		}
+	}
+	for _, id := range contextstore.DuplicateIDs(units) {
+		problems = append(problems, harnesscheck.Problem{
+			Kind: harnesscheck.KindDuplicateUnit, Ref: id,
+			Detail: "duplicate unit id: " + id,
+		})
+	}
+	return append(problems, cfg.wikiProblems(units)...)
+}
+
+// wikiProblems reports the compounding-wiki defects (§10.4) — orphan units that can
+// never route, dangling supersession references, unknown trust tiers, and provenance
+// that does not resolve.
+func (cfg *Config) wikiProblems(units []contextstore.Unit) []harnesscheck.Problem {
+	problems := make([]harnesscheck.Problem, 0)
+	add := func(kind, ref, detail string) {
+		problems = append(problems, harnesscheck.Problem{Kind: kind, Ref: ref, Detail: detail})
+	}
 	for _, id := range contextstore.Orphans(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "orphan unit %s: no labels or paths, never routes\n", id)
+		add(harnesscheck.KindUnitFields, id,
+			"orphan unit "+id+": no labels or paths, never routes")
 	}
 	for _, id := range contextstore.DanglingSupersessions(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: superseded_by names a nonexistent unit\n", id)
+		add(harnesscheck.KindDanglingSupersede, id,
+			"unit "+id+": superseded_by names a nonexistent unit")
 	}
 	for _, id := range contextstore.InvalidTrust(units) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s: unknown trust tier\n", id)
+		add(harnesscheck.KindInvalidTrust, id, "unit "+id+": unknown trust tier")
 	}
 	for _, dangling := range contextstore.DanglingSources(units, cfg.sourceExists) {
-		bad++
-		_, _ = fmt.Fprintf(cfg.Stderr, "unit %s (provenance source not found)\n", dangling)
+		add(harnesscheck.KindDanglingSource, dangling,
+			"unit "+dangling+" (provenance source not found)")
 	}
 	for _, unverified := range contextstore.UnverifiedClaims(units, cfg.sourceRead) {
-		bad++
-		_, _ = fmt.Fprintf(
-			cfg.Stderr,
-			"unit %s (claim quote not found in cited source)\n",
-			unverified,
-		)
+		add(harnesscheck.KindUnverifiedClaim, unverified,
+			"unit "+unverified+" (claim quote not found in cited source)")
 	}
-	return bad
+	return problems
+}
+
+// emitIndex reports the units the index lists — those not superseded, which is the
+// same selection Index renders.
+func (cfg *Config) emitIndex(units []contextstore.Unit) error {
+	live := make([]contextstore.Unit, 0, len(units))
+	for i := range units {
+		if units[i].SupersededBy == "" {
+			live = append(live, units[i])
+		}
+	}
+	if err := cfg.EmitOK(map[string]any{"units": live}); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	return nil
 }
 
 // sourceExists reports whether a repo-relative provenance source resolves under the
@@ -288,6 +393,9 @@ func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Dura
 		filepath.Join(cfg.repoDir(), toolrun.RunFile),
 		id, contextstore.Stratum(time.Now()),
 		ran, ran && code != 0, int(took.Milliseconds()),
+		// Same reason as `tool run`: this invokes a declared check directly, so an
+		// unstarted one is the environment refusing, not a misnamed artifact.
+		unrunnableFor(ran),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "context: could not record integrity run: %v\n", err)
@@ -338,7 +446,36 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 		}
 		results = append(results, result)
 	}
+	if err := cfg.recordIntegrity(results); err != nil {
+		return err
+	}
+	if err := cfg.signOff(results, drift); err != nil {
+		return err
+	}
 	return cfg.reportVerify(results, drift)
+}
+
+// recordIntegrity persists what verify observed, so routing can stop trusting a unit
+// the tool just condemned.
+//
+// Without this the run's whole finding lives in one terminal's scrollback: a drifted
+// unit still outranked a clean one at the next route, because the authored trust tier
+// is immortal and nothing else spoke for the unit. The record is the event; the tier
+// suppression is derived from it at load time and the authored field is never touched.
+func (cfg *Config) recordIntegrity(results []integrityResult) error {
+	records := make([]contextstore.IntegrityRecord, 0, len(results))
+	for i := range results {
+		records = append(records, contextstore.IntegrityRecord{
+			Unit:   results[i].Unit,
+			Tool:   results[i].Tool,
+			Result: results[i].Status,
+		})
+	}
+	path := contextstore.IntegrityLogFor(cfg.storeDir())
+	if err := contextstore.AppendIntegrity(path, records...); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	return nil
 }
 
 // targets is the unit set verify acts on: the units routed to an arc when an arc id
@@ -353,6 +490,53 @@ func (cfg *Config) targets(units []contextstore.Unit, args []string) ([]contexts
 		return nil, fmt.Errorf("context: %w", err)
 	}
 	return contextstore.Route(units, arc.Labels, arc.Paths, 0), nil
+}
+
+// signOff records a verification event for each unit that verified clean.
+//
+// **Refused when any unit drifted.** A sign-off on a run that just condemned something is
+// the one combination that must not be recordable — it would attest to a state the same
+// command disproved. The whole run is refused rather than the drifted units skipped,
+// because a partial sign-off buried in a failing run is how a reviewer ends up believing
+// they signed something they did not.
+//
+// The actor comes from config, never a flag: a caller-supplied actor would let anyone
+// mint a human: event, and the tier fold is only worth anything if that is impossible.
+// An unset identity refuses rather than recording an anonymous event, since an event with
+// no actor is invalid by construction.
+func (cfg *Config) signOff(results []integrityResult, drift bool) error {
+	if !cfg.SignOff {
+		return nil
+	}
+	if drift {
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: "context: refusing --sign-off: this run found drift",
+		}
+	}
+	conf, err := config.Load(cfg.ConfigGetenv())
+	if err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
+	actor := conf.Identity.Actor
+	if actor == "" {
+		return &adh.Error{
+			Code: adh.EINVALID,
+			Message: "context: --sign-off needs identity.actor in config " +
+				"(e.g. actor = \"human:steve\" under [identity])",
+		}
+	}
+	event := contextstore.Verification{By: actor, At: time.Now().UTC().Format(time.RFC3339)}
+	for i := range results {
+		if results[i].Status != contextstore.ResultOK {
+			continue
+		}
+		path := contextstore.UnitPath(cfg.storeDir(), results[i].Unit)
+		if err := contextstore.RecordVerification(path, event); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+	}
+	return nil
 }
 
 // reportVerify emits the anti-drift results: under --jsonl one outcome carrying the
@@ -551,4 +735,17 @@ func (cfg *Config) repoDir() string {
 // storeDir is the context store under the repo root.
 func (cfg *Config) storeDir() string {
 	return filepath.Join(cfg.repoDir(), contextstore.DefaultStoreDir)
+}
+
+// unrunnableFor names why a directly-invoked check did not run.
+//
+// Both call sites start a declared tool themselves, so there is only one way it can
+// fail to run: the tool would not start. The adjudicator's other two reasons — a
+// finding naming nothing, or naming a tool the registry does not declare — cannot
+// arise here, because the tool was resolved before it was invoked.
+func unrunnableFor(ran bool) string {
+	if ran {
+		return ""
+	}
+	return string(adh.UnrunnableToolFailed)
 }

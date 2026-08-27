@@ -152,7 +152,30 @@ func deterministicScore(key string, md *markdown.Doc) (float64, string) {
 		if len(skilllens.BlacklistSections(md)) > 0 {
 			return 1.0, "boundary / counter-example section present"
 		}
-		return 0.0, "no boundary / counter-example section"
+		// Absent, and whether that is a defect depends on the artifact -- the same
+		// category error KeyFailure guards against one case above, which nobody wrote
+		// here. skilllens states the exposure and it is not symmetric: for a skill
+		// whose failure is *the output has the wrong shape*, a prohibition list is not
+		// merely absent evidence, it is the form its own head-to-head reports as
+		// **worse than no guidance at all**. Docking that skill recommends the change
+		// that harms it.
+		//
+		// The detectors were validated on the discipline skill -- the failure being
+		// "skips a rule under pressure" -- and a document that executes nothing has no
+		// rule-under-pressure to skip. HasCodeBlock is the same signal KeyFailure
+		// already trusts for the same reason, so this adds no new heuristic.
+		//
+		// **It is a weak proxy and that is stated rather than hidden.** It cannot tell
+		// a discipline skill from a wrong-shape skill that also runs commands, so the
+		// harmful case skilllens names is only partly closed. What it does close is the
+		// clear error: a selection or judgement document docked 15% for lacking a
+		// prohibition list it should not have. Classifying the failure type would close
+		// the rest and skilllens refuses to, because a detector that guessed would put
+		// an uncalibrated heuristic under a scoring dimension.
+		if !md.HasCodeBlock {
+			return 1.0, "no boundary section, and the artifact executes nothing to constrain"
+		}
+		return 0.0, "the artifact executes commands but draws no boundary"
 	default:
 		return 1.0, "no deterministic check"
 	}

@@ -10,7 +10,6 @@ package step
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,6 +26,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -92,7 +92,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("step: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "step: requires an arc id",
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("step")
@@ -103,7 +106,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("step: %w", err)
 	}
 	if arc.Status != adh.StatusOpen {
-		return fmt.Errorf("step: arc %s is not open (status %s)", arc.ID, arc.Status)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("step: arc %s is not open (status %s)", arc.ID, arc.Status),
+		}
 	}
 	if arc.Stage == adh.StageOps {
 		return cfg.reportOpsGate(&arc)
@@ -112,11 +118,14 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	// critic's findings against repository artifacts, not by relaying another
 	// prompt. Point the operator at the command that does it.
 	if cfg.Relay && arc.Stage == adh.StageEvaluation {
-		return fmt.Errorf(
+		// ECONFLICT rather than untyped: the invocation is well formed and the arc's
+		// state is what needs to change, so a caller's next move is the named command
+		// rather than a different flag. An untyped error here reported reason
+		// "internal" — the token meaning adh itself broke.
+		return &adh.Error{Code: adh.ECONFLICT, Message: fmt.Sprintf(
 			"step: arc %s is at evaluation; adjudicate its findings with `adh eval %s`",
-			arc.ID,
-			arc.ID,
-		)
+			arc.ID, arc.ID,
+		)}
 	}
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
@@ -139,7 +148,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case !cfg.Relay:
 		return cfg.advance(ctx, store, model.Mock{}, renderer, &arc, judgment)
 	case cfg.Response != "":
-		return cfg.resume(ctx, store, renderer, &arc, judgment)
+		return cfg.resume(ctx, store, renderer, &arc, judgment, conf.ProofContract)
 	default:
 		return cfg.emit(ctx, store, &conf, renderer, &arc, judgment)
 	}
@@ -157,7 +166,11 @@ func (cfg *Config) disposeEval(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, arc.Findings)
+	specs, err := nfr.Load(filepath.Join(cfg.repoDir(), nfr.DefaultDir))
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, specs, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
@@ -233,10 +246,25 @@ func (cfg *Config) emit(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	in := critic.Inputs{AcceptanceBar: conf.ProofContract(arc.Resolution), Tools: reg.Tools}
+	in := critic.Inputs{
+		AcceptanceBar: conf.ProofContract(arc.Resolution),
+		Tools:         reg.Tools,
+		// The previous review's declared gaps, so this critic starts where that one
+		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
+		// gap is only ever offered to the review that immediately follows it.
+		PriorGaps: arc.Unexamined,
+	}
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)
+		// `[critic] deny` is the *critic's* list, so only the critic's grounding
+		// carries it. Handing it to every stage made the default config
+		// self-contradictory: it denies the transcript, every non-critic stage
+		// legitimately carries history, and the renderer correctly refuses a config
+		// asking it to strip -- so a relayed arc could not advance past its first
+		// stage. Gated here beside Diff and Coverage, which were already stage-scoped
+		// for the same reason.
+		in.Denied = conf.DeniedInputs()
 	}
 	outcome, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,
@@ -250,7 +278,27 @@ func (cfg *Config) emit(
 	if err := store.Save(arc); err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
+	cfg.warnUngrounded(&outcome)
 	return cfg.report(arc, statusAwaiting, outcome.Prompt)
+}
+
+// warnUngrounded notes a critic prompt built with nothing from the repository behind
+// it (§19.1).
+//
+// To stderr, and never a failure: this is the state critic.ForStage deliberately
+// allows — an arc with no declared footprint, or a repository with no context store —
+// and refusing it would make adh unusable before a store exists. What it is not is
+// something a reader should have to infer from an empty Context field afterwards.
+//
+// Emitted here rather than at eval because here it is actionable: whoever is about to
+// answer this prompt can still declare a label or add a context unit.
+func (cfg *Config) warnUngrounded(outcome *relay.Outcome) {
+	if !outcome.Ungrounded {
+		return
+	}
+	_, _ = fmt.Fprintln(cfg.Stderr,
+		"step: the critic is ungrounded — no routed context and no proof packet; "+
+			"this review runs on the model's own priors (§19.1)")
 }
 
 // reportOpsGate reports an arc that has reached the ops ship gate (§5.2): a
@@ -296,13 +344,20 @@ func (cfg *Config) resume(
 	renderer stage.Prompter,
 	arc *adh.Arc,
 	judgment authority.JudgmentRoles,
+	barFor func(adh.Resolution) string,
 ) error {
 	switch {
 	case arc.Pending == nil:
-		return fmt.Errorf("step: arc %s has no pending turn to resume", arc.ID)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("step: arc %s has no pending turn to resume", arc.ID),
+		}
 	case arc.Pending.Stage != arc.Stage:
-		return fmt.Errorf("step: pending turn is for %s but arc %s is at %s",
-			arc.Pending.Stage, arc.ID, arc.Stage)
+		return &adh.Error{
+			Code: adh.ECONFLICT,
+			Message: fmt.Sprintf("step: pending turn is for %s but arc %s is at %s",
+				arc.Pending.Stage, arc.ID, arc.Stage),
+		}
 	}
 	text, err := cfg.readResponse()
 	if err != nil {
@@ -313,8 +368,14 @@ func (cfg *Config) resume(
 	// because that needs the worktree.
 	wasExecution := arc.Stage == adh.StageExecution
 	wasCritic := arc.Stage == adh.StageCritic
+	wasStrategy := arc.Stage == adh.StageStrategy
 	if _, err := relay.Resume(ctx, arc, text, renderer, judgment); err != nil {
 		return fmt.Errorf("step: %w", err)
+	}
+	if wasStrategy {
+		// Pre-register the bar the plan was made against, after Resume so the
+		// resolution the strategy reply chose is the one it selects (§19.2).
+		arc.Bar = evaluation.BarHash(barFor(arc.Resolution))
 	}
 	if wasExecution {
 		worktree.CaptureFootprint(cfg.repoDir(), arc)

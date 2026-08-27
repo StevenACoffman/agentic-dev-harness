@@ -7,7 +7,6 @@ package stagecmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
@@ -83,7 +82,10 @@ func newOps(parent *root.Config) {
 
 func (c *stageCmd) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%s: requires an arc id", c.name)
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: fmt.Sprintf("%s: requires an arc id", c.name),
+		}
 	}
 	if c.DryRun {
 		return root.DryRunUnsupportedError(c.name)
@@ -94,10 +96,16 @@ func (c *stageCmd) exec(ctx context.Context, args []string) error {
 		return fmt.Errorf("%s: %w", c.name, err)
 	}
 	if arc.Status != adh.StatusOpen {
-		return fmt.Errorf("%s: arc %s is not open (status %s)", c.name, arc.ID, arc.Status)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("%s: arc %s is not open (status %s)", c.name, arc.ID, arc.Status),
+		}
 	}
 	if arc.Stage != c.stage {
-		return fmt.Errorf("%s: arc %s is at %s, not %s", c.name, arc.ID, arc.Stage, c.stage)
+		return &adh.Error{
+			Code:    adh.ECONFLICT,
+			Message: fmt.Sprintf("%s: arc %s is at %s, not %s", c.name, arc.ID, arc.Stage, c.stage),
+		}
 	}
 	conf, err := config.Load(c.ConfigGetenv())
 	if err != nil {
@@ -119,7 +127,10 @@ func (c *stageCmd) exec(ctx context.Context, args []string) error {
 
 func (c *opsCmd) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("ops: requires an arc id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "ops: requires an arc id",
+		}
 	}
 	arc, err := state.Default().Get(args[0])
 	if err != nil {

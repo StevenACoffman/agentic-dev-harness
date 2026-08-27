@@ -134,7 +134,25 @@ compaction.
   gate) — so a routed unit's weight reflects how it was earned and a §11 promotion /
   human approval moves it up the tier (the "agent proposes, a human confirms"
   design rule, recorded on the unit), and **freshness/lifecycle** (last-updated,
-  staleness, supersession) so the anti-drift check above can flag a stale unit. A
+  staleness, supersession) so the anti-drift check above can flag a stale unit.
+
+  `verified` holds the **events**, not the tier: a list of `{by, at}` verifications
+  from which the tier is derived, so a human sign-off and an automated re-confirmation
+  remain distinct records rather than collapsing into one adjective. A bare tier string
+  is still read, permanently — adh has never written the field, so there is no migration
+  after which that form could stop being valid input.
+
+  **The actor on a verification event is config-derived, and the record is attributable
+  rather than authenticated.** `by` is taken from the repository's configured identity,
+  not from a flag on the invocation: a `--by` a caller could type would let anyone mint
+  a `human:` event, which makes the human/machine fold worth defeating and is the same
+  reason an event with no actor at all is invalid. Config-derived is still
+  self-asserted — it establishes *who the harness was configured as*, not who was at the
+  keyboard — and adh states that limit rather than implying more. It is the same
+  narrowing already accepted for content-addressing detecting accidents rather than
+  tampering, and for checksums not being authentication: **a guarantee stated more
+  broadly than it holds is worse than a narrow one, because a reader stops looking.**
+  Anything stronger needs a signing identity adh does not have and should not invent. A
   navigable `index.md` (the routing preview) and an append-only `log.md` (the
   chronological evidence trail) are the store's two special files.
 
@@ -148,8 +166,11 @@ integrity, and consistency; it does not own how a unit's text is authored.
 An **NFR-check** unit (§10.2) is not free prose — "should be fast" cannot be
 tested or gated. An NFR is named by an agreed **taxonomy** (ISO/IEC 25010 or
 FURPS+ — usability, performance, reliability, availability, security,
-maintainability, portability, …) so its category is standard, not invented, and it
-is *quantified* in **Planguage** (Tom Gilb) so it becomes measurable and gateable:
+maintainability, portability, …) so its category is standard, not invented, plus
+**audit, legal and privacy**, which the standards omit and which 21% of the
+nonfunctional labels in a corpus of 11,876 real requirement sentences name. A
+taxonomy that cannot express "log every access to PHI" or a CFR citation refuses
+the requirement rather than standardising it. It is *quantified* in **Planguage** (Tom Gilb) so it becomes measurable and gateable:
 
 | Keyword    | Role in adh                                                                       |
 | ---------- | --------------------------------------------------------------------------------- |
@@ -301,13 +322,49 @@ id          = "oracle-diff"
 run         = "make oracle-diff"
 result      = "json"             # structured result the harness can interpret
 verifies    = "reference-vs-native equivalence"
+adjudicates = ["oracle"]         # the FindingKinds this tool can settle (optional)
 repair_hint = "rebuild both targets; see docs/oracle.md"
+if_absent   = "compare the two outputs by hand and record the divergence as a finding"
 ```
 
 The built-in oracle, invariant, and device checks are re-expressed as registry
 entries so the surface is uniform and extensible. A stage selects a tool by what
 it `verifies`, not by a hardcoded command, and a failed invocation returns its
 `repair_hint` instead of an opaque error.
+
+`verifies` stays **free prose** and is what the emitted prompts offer — "select a
+capability by what it verifies" — because the nuance is what makes it selectable: a
+model choosing between capabilities is better served by *"reference integrity
+(cardinality, ownership, cycles, dangling refs)"* than by any token that could stand in
+for it. The stable layer (what a capability verifies) and the volatile layer (the command
+that runs it) are therefore already separated, and porting to different tooling edits the
+registry rather than any prompt.
+
+What free prose cannot do is let adh *require* a capability, so a tool may also declare
+**`adjudicates`**: the `FindingKind`s it can settle. That reuses the closed enumeration
+adh already maintains (`oracle`, `invariant`, `device`, `nfr`, `contract` — owned by one
+`FindingKinds()` list, and already the axis the coverage and noisy-kind ledgers are
+computed over) rather than introducing a second vocabulary describing the same space. A
+second axis over capabilities would be the duplicate-classification mistake refused
+elsewhere in this family, and a bespoke taxonomy has no principle for who may add a
+member. An absent `adjudicates` means *unclassified*, not *adjudicates nothing*, so a
+registry written before this existed keeps working and `doctor` can report a finding kind
+that no declared tool claims.
+
+`repair_hint` answers *how do I get this*; **`if_absent` answers *what do I do without
+it***, and those are different questions — the second is the one that matters in an
+environment where the capability cannot be installed. It is authored per tool, because
+whoever declared the capability knows what its absence costs, and it is worth writing
+only for a tool that `adjudicates` something: the useful case is *the check that would
+settle this finding kind is unavailable, so do this instead*.
+
+**The prompt still lists a declared tool whose binary is absent**, and that is deliberate
+— probing the environment before emitting would make prompt content depend on the machine,
+which forfeits reproducibility and the scripted-relay fixture. The risk it leaves is a
+model reporting a result it never obtained, and **§19.2 already contains the answer**: a
+fabricated tool result cannot confirm a finding, because adjudication re-runs the artifact
+itself. `if_absent` therefore saves a wasted cycle; it is not what makes the loop
+trustworthy.
 
 **Exit code 10** — a required tool is unavailable or returned an uninterpretable
 result.
@@ -319,6 +376,17 @@ ______________________________________________________________________
 **Closes:** hold the worker constant. The model-gate (§SPEC 5.1) is a floor; it
 does not requalify the environment when the worker changes. A model or agent
 change opens a new adoption epoch that must be requalified before normal runs.
+
+**adh is single-worker by construction, and that is a decision rather than an
+omission.** An `Arc` carries no assignee: there is no owner, no assignment, and
+therefore no capability routing. Holding one worker constant is what makes a baseline
+mean anything — the epoch, the ambition ceiling, the calibration report, and every KPI
+are measured against it. Plural workers with different capabilities make each of those
+per-worker or meaningless, so routing work by capability is not a missing axis on top of
+the current design, it replaces the design's measurement story. If an owner is ever
+recorded on an arc it should be **advisory** — who is driving, not who may — and any
+requirement label added later must be refused at creation when nothing can match it,
+which is already how a dangling integrity reference and an undeclared tool are handled.
 
 ### 14.1 Commands
 
@@ -585,6 +653,26 @@ The cycle:
 
 1. **Harvest** closed arcs and their proof, reviews, and human corrections since
    the last cycle. Read-only; no network.
+
+   A signal carries **provenance**, and the *zero value is unknown* — a signal that
+   does not say where it came from is not assumed to be arc-derived. Only arc-derived
+   signals may enter step 2's held-out splits: mining sessions the harness never
+   governed is a heuristic, and a wrong inference there does not merely add noise, it
+   moves the objective the gate hill-climbs. Signals of other provenance feed
+   reflection and §11 lesson candidates, where a false positive costs a discarded
+   suggestion and the temporal (≥2 strata) and human gates already stand in the way.
+   The asymmetry is deliberate: **tolerant where a wrong signal wastes attention,
+   strict where it would corrupt the measure.**
+
+   A provenance that has not earned entry to the splits is recorded rather than
+   discarded, so a mining rule found to be imprecise can be excluded retroactively
+   instead of being untraceable.
+
+   The rule is written for *a* second source, not for a particular one. The first
+   candidate — mining foreign agent-session transcripts — was measured and abandoned:
+   those sessions turned out to be directive rather than corrective, so the corrections
+   the loop wants are not expressed in them. The rule stands unchanged for whatever
+   source arrives next.
 2. **Mine** recurring, checkable tasks from that history and assign each to a
    stable split. Real tasks are archived so later cycles can recall similar ones;
    recalled and synthetic tasks may enlarge the *training* set only, never enter
@@ -672,6 +760,38 @@ exactly one input, the Execution transcript. The working set is:
 - the context units routed for the arc's labels and paths (§10), including any
   NFR check that encodes a nonfunctional requirement.
 
+**The guarantee is that the transcript is not *supplied*. It is not that the critic did
+not *have* it.** adh emits a prompt and something external answers it; if the session
+that produced the change also answers the critic prompt, it holds the transcript in its
+own context even though the prompt does not contain it, and adh cannot see that.
+`model.Relay` carries a response and a capability tier — nothing about *who* answered or
+in what session — so there is no identity to compare against the builder's.
+
+The sentence above says adh denies exactly one input, and that is true of the prompt.
+Stated without this narrowing it reads as a claim about the reader, which adh cannot
+make. A guarantee stated more broadly than it holds is worse than a narrow one, because
+a reader stops looking — the same narrowing this project already accepted for
+content-addressing detecting accidents rather than tampering.
+
+Two things follow, both decided rather than deferred:
+
+- **A self-declared "this ran in a fresh context" field is refused.** It would be
+  testimony from the one party that benefits from misreporting it. That is what
+  separates it from §19.2's `unexamined`, where a critic gains nothing by lying; here
+  the incentive runs the wrong way, and a reader would treat an unverifiable claim as a
+  check.
+- **The fix, if it is ever wanted, is session identity on the relay** — refusing a
+  critic reply whose session matches the builder's. That is a feature and not a field:
+  the relay has no session concept today, and inventing one to close this is a larger
+  decision than the gap warrants while a human is choosing who answers.
+
+adh's critic also has **no degraded path**, and that is why there is no third
+disposition for *checked under reduced independence*. A surveyed judge elsewhere spawns
+a fresh-context subagent and, when the runtime cannot, runs inline and records the
+downgrade. adh spawns nothing and invokes no model, so the state cannot arise — and a
+field that could only ever be empty is worse than an absent one, because an empty
+downgrade field reads as evidence of an isolation nobody checked.
+
 "Cold" is an isolation boundary on the builder's reasoning (§SPEC 5.3), not a
 context boundary on the repository. A critic forced to reason from its own
 priors because the environment did not teach it records a routing gap (§10, exit
@@ -685,7 +805,79 @@ alone, which the prompt states plainly; this is not exit 12. `adh init`
 scaffolds a starter store so grounding is on by default, and Execution labels an
 arc by the areas it touched (§SPEC 5.4) so its context routes.
 
+**An ungrounded review is reported at emit.** The two non-gap cases above — an arc
+that declared no footprint, and a repository with no store — are allowed on purpose,
+and refusing them would make adh unusable before a context store exists. What is not
+acceptable is that they were *silent*: a review grounded in six routed units and one
+grounded in nothing reached Ops as the same artifact. The note is emitted with the
+prompt rather than at Evaluation, because that is when it is actionable — whoever is
+about to answer can still declare a label or add a unit.
+
+#### 19.1.1 The One Exception, and Why It Is Not a Leak
+
+Cold review withholds exactly one input, and that sentence has to stay exactly true to
+be worth anything. There is now one thing it deliberately lets through, and recording
+it here is what keeps a future reader from finding it in the code and reading it as a
+leak.
+
+**A critic is offered the previous review's declared gaps** (§19.2's `unexamined`):
+what the last critic said it did not look at, and why.
+
+It is not the builder's reasoning and it is not a conclusion about the change. It is a
+record of *angles already taken* — coverage, not content — so feeding it forward steers
+a fresh critic toward unexamined ground. That is the opposite of the contamination the
+cold split prevents, which is a critic inheriting the builder's account of what it
+already tried and why the code is the way it is.
+
+Two properties keep the exception narrow:
+
+- **It carries no verdict.** A gap says an aspect was not examined; it never says what
+  a previous critic concluded, and a critic that declared a *finding* passes nothing
+  forward. Coverage travels; judgment does not.
+- **It is offered, not scoped.** The prompt states that the gaps are angles the last
+  review left open and **not the scope of this one**, because the obvious failure is a
+  critic treating them as a checklist and examining only those. That wording is load-
+  bearing and has a test on it.
+
+Anything beyond coverage — the builder's transcript above all — stays withheld, and a
+second exception should be argued here before it is built rather than after.
+
 ### 19.2 Finding Disposition — Confirm Against the Repository
+
+**Artifacts decide what blocks; narration decides what gets examined.** That is the
+adopted form of the artifacts-only rule (grade what the agent left on disk, never its
+own account of its success), and it is stated narrowly because that is how far it holds.
+It holds in the blocking direction and only there: `Verdict.ReturnsToExecution` is
+`len(Confirmed) > 0`, and a finding is confirmed only when a deterministic artifact ran
+and failed, so a critic's assertion on its own can never block an arc. `HasStructural`
+and `BlockingKind` read the same slice; a refusal is reported and never blocks.
+
+**The passing direction is the limit, and it is named rather than implied.** A critic
+that finds nothing leaves nothing to adjudicate, and the arc advances — so adh does
+trust one account from the agent: not its claim that something is broken, but its claim
+that nothing is. `unexamined` below makes a *declared* gap visible; an undeclared one is
+not. What bounds the exposure is the NFR guards, which are adjudicated whether or not
+the critic mentioned them (§10) — the repository asserting what it will not trade away
+regardless. So the uncovered surface is exactly whatever no guard speaks for, and its
+size is a measurement nobody has taken rather than a number anyone can quote. Stating
+the rule as though it covered both directions would be the broader-than-it-holds failure
+this document refuses elsewhere: a reader would stop looking.
+
+**A strategy reply must name its resolution.** The first line is
+`resolution: <change|investigation|experiment|decision>`, and a relayed reply without it
+is EINVALID rather than a silent code change. adh's validation half is §12's resolution
+vocabulary, not a stage before Strategy: `investigation` answers a question without
+shipping code, `experiment` tests the riskiest assumption on an instrumented surface, and
+`decision` records a choice — often not to build — closing on a written ADR. What was
+missing was never the vocabulary but the obligation to use it. **Depth is negotiable and
+skipping is not**: answering `change` immediately is legitimate, arriving at `change` by
+not answering is not.
+
+`stage.Apply` still defaults an unset resolution to `change`, and that is not an
+inconsistency. `adh run` without `--relay` completes through a mock whose reply is fixed
+text; nothing on that path parses a resolution, so the default is that path's only source
+of one rather than a policy about unanswered questions. The two paths ask different
+questions — one asks nothing.
 
 A critic emits findings. Each finding names the repository artifact that would
 confirm it: an oracle divergence, an invariant, an on-device check (§SPEC 2.4),
@@ -694,8 +886,43 @@ the critic (§SPEC 1) runs that artifact.
 
 | Finding                                           | Adjudication                       | Effect                                                                                           |
 | ------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| confirmed — the named artifact fails              | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
-| unconfirmed — no artifact fails, or none is named | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+| confirmed — the named artifact ran and failed     | a deterministic Evaluation failure | returns the arc to Execution and records a failure-registry entry (§SPEC 4.1; exit 5–7)          |
+| unconfirmed — the artifact ran and passed         | a lesson candidate (§11)           | does not block the arc; recorded for promotion to a repository-owned check once the class recurs |
+| **unchecked — the artifact could not run**        | neither                            | does not block; reported separately, and excluded from the precision ledger                      |
+
+**A confirmed finding already names its own next action: `ref`.** The artifact that
+confirmed it is the artifact to re-run, so `adh tool run <ref>` is derivable from the
+finding without any new field, and a caller should not be inferring it. `action`
+(automatic / guided / human) says *who* may close a finding; `ref` says *what* settles
+it. Between them the common case is covered, and **no remediation vocabulary is
+introduced**: a third closed set beside `action` and `FindingKind` would be the
+duplicate-classification mistake refused in §13.2, and nobody has yet enumerated a
+remediation that is not "re-run the named artifact". If such cases accumulate, the
+defensible form is a closed enumeration of remediation kinds plus arguments that the
+caller renders — never an emitted command string, which is an execution surface an agent
+would be trusted to name.
+
+**Unchecked is a third outcome and was previously folded into unconfirmed.** The
+collapse was not merely imprecise. Unconfirmed feeds the precision ledger, where it
+means *a false positive*, and `NoisyKinds` condemns any finding kind whose
+false-positive rate is too high — holding the next critic to a higher bar for it. So a
+missing or unbuilt artifact taught the harness to distrust an entire category of real
+defect, and the more broken the environment the more it distrusted. A finding nobody
+could check is evidence about its kind in neither direction, so it appears in neither
+slice of the ledger; dropping it from the numerator alone would leave it in the
+denominator and understate the rate instead.
+
+**It does not block, and that is a decision rather than a default.** `vac-gate`'s rule
+— *"'cannot regrade' is not 'regraded'"* — argues the honest refusal should fail the
+gate, and it is right wherever the refusal is trustworthy. It is not yet here: a
+finding's artifact is named in a model's reply, so "could not run" covers both *the
+tool is broken* and *the critic named a tool that never existed*, and blocking on the
+second would let one bad critic wedge every arc. **The trigger for revisiting is the
+§13 tool registry** — once adjudication resolves a finding's ref against it, a
+registered-but-unrunnable artifact is a refusal worth blocking on and an unregistered
+one stays noise. Until then the state is reported rather than acted on, which is the
+part that was missing: `eval` now names the count and the findings instead of folding
+them into the lesson-candidate total.
 
 A finding never blocks on the critic's text alone. This is §9's non-goal applied
 to review: the harness does not grade a change with an LLM-as-judge where a
@@ -721,10 +948,29 @@ not a runtime gate.
 
 ```toml
 [critic]
-ground_from = ["diff", "proof", "acceptance_bar", "context"]  # §10 routed set
+# Descriptive: the set critic.Ground assembles. adh does not filter a critic's
+# grounding, so this records what the critic is grounded in and selects nothing.
+ground_from = ["diff", "proof", "acceptance_bar", "context",
+               "paths", "tools", "coverage", "noisy"]
 deny        = ["transcript"]   # the one input cold review withholds
 unconfirmed = "lesson"         # a finding with no failing artifact is a §11 candidate, never a blocker
 ```
+
+**`deny` is enforced; `ground_from` describes.** Both were free-form strings read by
+nothing until 2026-08-23, which mattered more for `deny`: a list naming `transcript`
+beside `ground_from` reads as *the* mechanism withholding the builder's history, and as
+configurable. Neither was true, so anyone hardening the critic would have edited it and
+believed they had succeeded.
+
+The guarantee is still structural — `prompt.Render` never populates the critic view's
+history — and an assertion running after the fact cannot stop a field being set, only
+notice. What `deny` now buys is that removing an entry weakens a real check.
+
+Both lists are validated against a closed vocabulary at load, so a typo is refused by
+name rather than ignored. `deny` additionally refuses any input adh cannot withhold:
+the grounding is assembled whole, and accepting `deny = ["context"]` would be the same
+decoration in a new place. When filtering exists, that restriction is the one thing
+that changes.
 
 This section adds no exit code. A confirmed finding surfaces through the existing
 Evaluation gates (exit 5–7); an unconfirmed one is a §11 lesson candidate, and

@@ -5,7 +5,6 @@ package arc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -61,7 +60,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("arc: expected a verb: new, list, or show")
+		return root.MissingVerbError{
+			Scope: "arc",
+			Verbs: []string{"new", "list", "show"},
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("arc")
@@ -75,14 +77,20 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "show":
 		return cfg.showArc(store, args[1:])
 	default:
-		return fmt.Errorf("arc: unknown verb %q; want new, list, or show", args[0])
+		return root.UnknownVerbError{
+			Scope: "arc", Got: args[0],
+			Verbs: []string{"new", "list", "show"},
+		}
 	}
 }
 
 func (cfg *Config) newArc(store *state.Store, args []string) error {
 	title := strings.TrimSpace(strings.Join(args, " "))
 	if title == "" {
-		return errors.New("arc: new requires a title")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "arc: new requires a title",
+		}
 	}
 	id, err := store.NextID()
 	if err != nil {
@@ -134,7 +142,10 @@ func (cfg *Config) listArcs(store *state.Store) error {
 
 func (cfg *Config) showArc(store *state.Store, args []string) error {
 	if len(args) == 0 {
-		return errors.New("arc: show requires an id")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "arc: show requires an id",
+		}
 	}
 	arc, err := store.Get(args[0])
 	if err != nil {

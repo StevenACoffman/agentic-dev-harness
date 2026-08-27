@@ -4,7 +4,6 @@ package workercmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -41,7 +40,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("worker: expected a verb: show or requalify")
+		return root.MissingVerbError{
+			Scope: "worker",
+			Verbs: []string{"show", "requalify"},
+		}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("worker")
@@ -52,7 +54,10 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	case "requalify":
 		return cfg.requalify()
 	default:
-		return fmt.Errorf("worker: unknown verb %q; want show or requalify", args[0])
+		return root.UnknownVerbError{
+			Scope: "worker", Got: args[0],
+			Verbs: []string{"show", "requalify"},
+		}
 	}
 }
 
@@ -60,6 +65,17 @@ func (cfg *Config) show() error {
 	epoch, err := workerlib.Load(workerlib.DefaultStateFile)
 	if err != nil {
 		return fmt.Errorf("worker: %w", err)
+	}
+	if cfg.JSONL {
+		// The same two facts the human lines carry: which epoch, and the per-role
+		// model bindings. An absent epoch is an empty id rather than an error --
+		// "not requalified yet" is a state, not a failure.
+		if err := cfg.EmitOK(map[string]any{
+			"epoch": epoch.ID, "models": epoch.Models,
+		}); err != nil {
+			return fmt.Errorf("worker: %w", err)
+		}
+		return nil
 	}
 	if epoch.ID == "" {
 		_, _ = fmt.Fprintln(cfg.Stdout, "no epoch recorded; run 'worker requalify'")
@@ -80,6 +96,14 @@ func (cfg *Config) requalify() error {
 	epoch := workerlib.EpochFor(conf.BaselineModels())
 	if err := workerlib.Save(workerlib.DefaultStateFile, epoch); err != nil {
 		return fmt.Errorf("worker: %w", err)
+	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{
+			"epoch": epoch.ID, "roles": len(epoch.Models),
+		}); err != nil {
+			return fmt.Errorf("worker: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(
 		cfg.Stdout,

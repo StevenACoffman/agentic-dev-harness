@@ -47,6 +47,25 @@ type Spec struct {
 	Fail      float64   `json:"fail"`
 	Goal      float64   `json:"goal"`
 	Stretch   float64   `json:"stretch,omitempty"`
+
+	// Guard marks a spec the change must not breach, as opposed to one it is trying
+	// to improve (§10.5, §19.2).
+	//
+	// An arc's acceptance bar names what the change is *for*. Nothing named what it
+	// must not cost, and **an objective without guards is hill-climbed by trading
+	// away everything unmeasured** — `ruflo`'s loop raised a harness score 40 → 55 by
+	// adding files a presence-counting metric rewarded, with no capability change,
+	// and doubled a promotion rate by relaxing the predicate from AND to OR.
+	//
+	// It is a property of the **repository**, not of an arc, and that is the point of
+	// putting it here rather than on the arc. A per-arc guard list would be more
+	// expressive and would let the author of a change choose which guards apply to
+	// it, which is the configurability that invites exactly the failure above: both
+	// of ruflo's were a loop editing its own criteria.
+	//
+	// False is an ordinary objective, so a spec nobody marked does not silently
+	// become a blocker.
+	Guard bool `json:"guard,omitempty"`
 }
 
 // Valid reports whether the spec is a well-formed Planguage requirement: a
@@ -88,6 +107,27 @@ func (s *Spec) Meets(value float64) bool {
 	return value <= s.Fail
 }
 
+// Regressed reports whether a measured value is worse than the spec's baseline.
+//
+// Requires: nothing.
+// Ensures: **false when Baseline is unset**, because a spec with no baseline has
+// nothing to have regressed from — and reporting every unbaselined spec as regressed
+// would make the signal noise on its first run. Direction-aware, and pure.
+//
+// It is distinct from Meets, and the gap between them is the point: Meets asks whether
+// the value clears the acceptance bar, and this asks whether it got worse. A change can
+// pass every bar and still cost something, which is the case that used to advance an arc
+// with nothing recorded.
+func (s *Spec) Regressed(value float64) bool {
+	if s.Baseline == 0 {
+		return false
+	}
+	if s.Direction == Higher {
+		return value < s.Baseline
+	}
+	return value > s.Baseline
+}
+
 // ordered reports whether Fail → Goal (→ Stretch) increases in quality for the
 // spec's direction. A zero Stretch means unset and is skipped.
 func (s *Spec) ordered() bool {
@@ -98,15 +138,43 @@ func (s *Spec) ordered() bool {
 }
 
 // knownCategory reports whether head is a recognized top-level quality-attribute
-// category (the FURPS+ and ISO/IEC 25010 union), so a Tag names an agreed taxonomy.
+// category — the FURPS+ and ISO/IEC 25010 union, plus three the standards omit and real
+// requirement corpora are full of — so a Tag names an agreed taxonomy.
 func knownCategory(head string) bool {
 	switch head {
 	case "Performance", "Reliability", "Usability", "Functionality", "Supportability",
-		"Security", "Maintainability", "Portability", "Compatibility":
+		"Security", "Maintainability", "Portability", "Compatibility",
+		// Audit, Legal and Privacy come from reconciling against a labelled corpus
+		// rather than from the standards, and the measurement is why they are here:
+		// across 11,876 requirement sentences from HIPAA, 45 CFR 170, 42 CFR, RFPs and
+		// DUAs, **21% of the nonfunctional labels name these three** (728 of 3,437) and
+		// the FURPS+/25010 union has no home for any of them. Security is not privacy,
+		// "log every access to PHI" is not maintainability, and a regulatory citation
+		// is not a quality attribute at all.
+		//
+		// Without them Valid rejects the tag, so a compliance requirement could not be
+		// written down as an NFR — in a taxonomy whose whole purpose is that a category
+		// is standard rather than invented.
+		"Audit", "Legal", "Privacy":
 		return true
 	default:
 		return false
 	}
+}
+
+// Guards returns the specs a change must not breach, in the order declared.
+//
+// Requires: nothing.
+// Ensures: empty rather than nil when none is marked, so a caller need not
+// distinguish "no guards declared" from "did not look". Pure.
+func Guards(specs []Spec) []Spec {
+	out := make([]Spec, 0, len(specs))
+	for i := range specs {
+		if specs[i].Guard {
+			out = append(out, specs[i])
+		}
+	}
+	return out
 }
 
 // ByID returns the spec with the given id, so a caller that already knows an NFR by

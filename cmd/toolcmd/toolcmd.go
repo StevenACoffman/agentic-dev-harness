@@ -7,7 +7,6 @@ package toolcmd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
@@ -58,7 +58,10 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tool: expected a verb: list, doctor, or run")
+		return root.MissingVerbError{
+			Scope: "tool",
+			Verbs: []string{"list", "doctor", "run"},
+		}
 	}
 	reg, err := toolreg.LoadRepo(cfg.repoDir())
 	if err != nil {
@@ -72,13 +75,28 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "run":
 		return cfg.run(ctx, reg, args[1:])
 	default:
-		return fmt.Errorf("tool: unknown verb %q; want list, doctor, or run", args[0])
+		return root.UnknownVerbError{
+			Scope: "tool", Got: args[0],
+			Verbs: []string{"list", "doctor", "run"},
+		}
 	}
 }
 
 // list prints each declared tool and what it verifies.
 func (cfg *Config) list(reg toolreg.Registry) error {
-	for _, tool := range reg.Tools {
+	if cfg.JSONL {
+		for i := range reg.Tools {
+			tool := &reg.Tools[i]
+			if err := cfg.EmitOK(map[string]any{
+				"id": tool.ID, "verifies": tool.Verifies,
+			}); err != nil {
+				return fmt.Errorf("tool: %w", err)
+			}
+		}
+		return nil
+	}
+	for i := range reg.Tools {
+		tool := &reg.Tools[i]
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\tverifies: %s\n", tool.ID, tool.Verifies)
 	}
 	return nil
@@ -91,6 +109,12 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool registry invalid: %s\n", verr)
 		return root.ExitError(codeRegistry)
 	}
+	if cfg.JSONL {
+		if err := cfg.EmitOK(map[string]any{"tools": len(reg.Tools), "valid": true}); err != nil {
+			return fmt.Errorf("tool: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d tools declared, registry valid\n", len(reg.Tools))
 	return nil
 }
@@ -102,7 +126,10 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 // outcome's data (one clean line); otherwise they stream live to the worker.
 func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string) error {
 	if len(args) == 0 {
-		return errors.New("tool: run requires a tool id (see `tool list`)")
+		return &adh.Error{
+			Code:    adh.EINVALID,
+			Message: "tool: run requires a tool id (see `tool list`)",
+		}
 	}
 	id := args[0]
 	tool, ok := reg.FindByID(id)
@@ -209,8 +236,24 @@ func (cfg *Config) logRun(id string, exit int, ran bool, took time.Duration) {
 		filepath.Join(cfg.repoDir(), toolrun.RunFile),
 		id, contextstore.Stratum(time.Now()),
 		ran, ran && exit != 0, int(took.Milliseconds()),
+		// `adh tool run` starts the tool directly, so a failure to start is the
+		// tool failing rather than a finding naming the wrong one.
+		unrunnableFor(ran),
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool: could not record run outcome: %v\n", err)
 	}
+}
+
+// unrunnableFor names why a directly-invoked check did not run.
+//
+// Both call sites start a declared tool themselves, so there is only one way it can
+// fail to run: the tool would not start. The adjudicator's other two reasons — a
+// finding naming nothing, or naming a tool the registry does not declare — cannot
+// arise here, because the tool was resolved before it was invoked.
+func unrunnableFor(ran bool) string {
+	if ran {
+		return ""
+	}
+	return string(adh.UnrunnableToolFailed)
 }

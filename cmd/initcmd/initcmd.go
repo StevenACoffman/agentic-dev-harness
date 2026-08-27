@@ -71,6 +71,17 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("init: %w", err)
 	}
+	if cfg.JSONL {
+		// Each field is what the human line reports, as data: a caller scripting init
+		// needs to know what was created and what was already there.
+		if err := cfg.EmitOK(map[string]any{
+			"config": wroteWord(wrote), "context_units": units,
+			"tools": wroteWord(wroteTools), "loops": wroteWord(wroteLoops),
+		}); err != nil {
+			return fmt.Errorf("init: %w", err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"initialized .adh: config %s, %d context unit(s), tools %s, loops %s\n",
 		wroteWord(wrote), units, wroteWord(wroteTools), wroteWord(wroteLoops))
