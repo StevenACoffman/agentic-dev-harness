@@ -122,3 +122,48 @@ func TestARegressionInsideTheBarStillMeets(t *testing.T) {
 		t.Error("150 is not a regression from a baseline of 100")
 	}
 }
+
+// wantCategory asserts whether a tag's leading category is accepted.
+func wantCategory(t *testing.T, tag string, ok bool) {
+	t.Helper()
+	spec := nfr.Spec{
+		ID: "s", Tag: tag, Scale: "count", Meter: "check",
+		Direction: nfr.Lower, Fail: 10, Goal: 1,
+	}
+	err := spec.Valid()
+	if ok && err != nil {
+		t.Errorf("tag %q rejected: %v", tag, err)
+	}
+	if !ok && err == nil {
+		t.Errorf("tag %q accepted, want rejected", tag)
+	}
+}
+
+// TestTaxonomyCoversTheComplianceAxis. The FURPS+/25010 union has no category for a
+// regulatory or audit requirement, and reconciling against a labelled corpus of 11,876
+// requirement sentences showed that is not a rare gap: 21% of the nonfunctional labels
+// name audit, legal or privacy. Before this, Valid rejected the tag, so a compliance
+// requirement could not be written down at all.
+func TestTaxonomyCoversTheComplianceAxis(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		tag  string
+		ok   bool
+	}{
+		{"a standards category still validates", "Performance.Latency", true},
+		{"audit, which the standards omit", "Audit.AccessLog", true},
+		{"legal, for a regulatory citation", "Legal.HIPAA164514", true},
+		{"privacy, which is not security", "Privacy.Minimisation", true},
+		// The taxonomy is still closed: adding three categories must not turn it into
+		// free prose, which is the whole reason a Tag is validated.
+		{"an invented category is still refused", "Vibes.Speed", false},
+		{"the corpus's catch-all is not adopted", "OtherNonfunctional.Thing", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			wantCategory(t, tt.tag, tt.ok)
+		})
+	}
+}

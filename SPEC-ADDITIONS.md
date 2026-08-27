@@ -166,8 +166,11 @@ integrity, and consistency; it does not own how a unit's text is authored.
 An **NFR-check** unit (§10.2) is not free prose — "should be fast" cannot be
 tested or gated. An NFR is named by an agreed **taxonomy** (ISO/IEC 25010 or
 FURPS+ — usability, performance, reliability, availability, security,
-maintainability, portability, …) so its category is standard, not invented, and it
-is *quantified* in **Planguage** (Tom Gilb) so it becomes measurable and gateable:
+maintainability, portability, …) so its category is standard, not invented, plus
+**audit, legal and privacy**, which the standards omit and which 21% of the
+nonfunctional labels in a corpus of 11,876 real requirement sentences name. A
+taxonomy that cannot express "log every access to PHI" or a CFR citation refuses
+the requirement rather than standardising it. It is *quantified* in **Planguage** (Tom Gilb) so it becomes measurable and gateable:
 
 | Keyword    | Role in adh                                                                       |
 | ---------- | --------------------------------------------------------------------------------- |

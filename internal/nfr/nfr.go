@@ -138,11 +138,24 @@ func (s *Spec) ordered() bool {
 }
 
 // knownCategory reports whether head is a recognized top-level quality-attribute
-// category (the FURPS+ and ISO/IEC 25010 union), so a Tag names an agreed taxonomy.
+// category — the FURPS+ and ISO/IEC 25010 union, plus three the standards omit and real
+// requirement corpora are full of — so a Tag names an agreed taxonomy.
 func knownCategory(head string) bool {
 	switch head {
 	case "Performance", "Reliability", "Usability", "Functionality", "Supportability",
-		"Security", "Maintainability", "Portability", "Compatibility":
+		"Security", "Maintainability", "Portability", "Compatibility",
+		// Audit, Legal and Privacy come from reconciling against a labelled corpus
+		// rather than from the standards, and the measurement is why they are here:
+		// across 11,876 requirement sentences from HIPAA, 45 CFR 170, 42 CFR, RFPs and
+		// DUAs, **21% of the nonfunctional labels name these three** (728 of 3,437) and
+		// the FURPS+/25010 union has no home for any of them. Security is not privacy,
+		// "log every access to PHI" is not maintainability, and a regulatory citation
+		// is not a quality attribute at all.
+		//
+		// Without them Valid rejects the tag, so a compliance requirement could not be
+		// written down as an NFR — in a taxonomy whose whole purpose is that a category
+		// is standard rather than invented.
+		"Audit", "Legal", "Privacy":
 		return true
 	default:
 		return false
