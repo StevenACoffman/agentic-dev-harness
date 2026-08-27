@@ -1816,8 +1816,31 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
 
 ### Testing the Seam `adh` Does Not Test
 
-- [ ] **The relay posture makes most testing easy and one case impossible, and there are
-  three methods, not two.** The Agent-Fuschia entry above concludes that adh's relay
+- [x] **The relay posture makes most testing easy and one case impossible, and there are
+  three methods, not two.** DONE 2026-08-26 via the scripted answerer, and **it found a
+  defect on the production path within minutes.**
+
+  `[critic] deny` was handed to *every* stage's grounding. The renderer correctly refuses
+  a config asking it to strip an input a stage legitimately carries — so since the default
+  config denies the transcript and every non-critic stage carries history, **`step --relay`
+  and `run --relay` could not advance an arc past its first stage**, failing with *"the
+  execution view carries transcript, which is denied"*. The relay path is the one a human
+  or an agent actually uses. It was broken in the shipped default and green in CI, because
+  every existing relay test hands `--response` a hardcoded string and none had driven a
+  real emitted prompt past strategy — **exactly the gap this entry describes**, now
+  demonstrated rather than argued.
+
+  A second `reason: "internal"` fell out of the same walk: step's at-evaluation refusal is
+  a precondition and was untyped. The earlier sweep missed it because it lives on a branch
+  no test reached.
+
+  The fixture derives every reply from the prompt and refuses when it cannot, which is
+  what makes it not a playback. A blinded-prompt control asserts the *fixture's* honesty —
+  without it an answerer that stopped reading the prompt would pass forever — and an
+  ordering test carries the third method's discipline: not only that the required step
+  happened, but that nothing later happened first.
+
+  Original entry: The Agent-Fuschia entry above concludes that adh's relay
   *"already achieves"* deterministic agent testing *"by never invoking a model — the mock
   is the human."* That is right about determinism and it leaves the same gap gnosis has:
   nothing establishes that an agent handed a **real emitted prompt** produces a reply the
