@@ -273,7 +273,6 @@ func (cfg *Config) emitRelay(
 	in := critic.Inputs{
 		AcceptanceBar: conf.ProofContract(arc.Resolution),
 		Tools:         reg.Tools,
-		Denied:        conf.DeniedInputs(),
 		// The previous review's declared gaps, so this critic starts where that one
 		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
 		// gap is only ever offered to the review that immediately follows it.
@@ -283,6 +282,8 @@ func (cfg *Config) emitRelay(
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)
 		in.Noisy = cfg.noisyKinds(ctx)
+		// The critic's deny list belongs to the critic; see the note in step.go.
+		in.Denied = conf.DeniedInputs()
 	}
 	out, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,

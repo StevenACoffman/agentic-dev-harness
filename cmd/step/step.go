@@ -118,11 +118,14 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	// critic's findings against repository artifacts, not by relaying another
 	// prompt. Point the operator at the command that does it.
 	if cfg.Relay && arc.Stage == adh.StageEvaluation {
-		return fmt.Errorf(
+		// ECONFLICT rather than untyped: the invocation is well formed and the arc's
+		// state is what needs to change, so a caller's next move is the named command
+		// rather than a different flag. An untyped error here reported reason
+		// "internal" — the token meaning adh itself broke.
+		return &adh.Error{Code: adh.ECONFLICT, Message: fmt.Sprintf(
 			"step: arc %s is at evaluation; adjudicate its findings with `adh eval %s`",
-			arc.ID,
-			arc.ID,
-		)
+			arc.ID, arc.ID,
+		)}
 	}
 	conf, err := config.Load(cfg.ConfigGetenv())
 	if err != nil {
@@ -246,7 +249,6 @@ func (cfg *Config) emit(
 	in := critic.Inputs{
 		AcceptanceBar: conf.ProofContract(arc.Resolution),
 		Tools:         reg.Tools,
-		Denied:        conf.DeniedInputs(),
 		// The previous review's declared gaps, so this critic starts where that one
 		// stopped (§19.2). Cleared with the findings once Evaluation disposes, so a
 		// gap is only ever offered to the review that immediately follows it.
@@ -255,6 +257,14 @@ func (cfg *Config) emit(
 	if arc.Stage == adh.StageCritic {
 		in.Diff = worktree.Diff(cfg.repoDir(), arc.Paths)
 		in.Coverage = cfg.underCovered(ctx)
+		// `[critic] deny` is the *critic's* list, so only the critic's grounding
+		// carries it. Handing it to every stage made the default config
+		// self-contradictory: it denies the transcript, every non-critic stage
+		// legitimately carries history, and the renderer correctly refuses a config
+		// asking it to strip -- so a relayed arc could not advance past its first
+		// stage. Gated here beside Diff and Coverage, which were already stage-scoped
+		// for the same reason.
+		in.Denied = conf.DeniedInputs()
 	}
 	outcome, err := relay.Emit(
 		arc, contextstore.DefaultStoreDir, &in, renderer, model.Relay{}.ModelClass(), judgment,
