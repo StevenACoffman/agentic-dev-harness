@@ -33,12 +33,21 @@ const (
 )
 
 // injected are openings of user turns the harness wrote, not a person: a task
-// notification, a system reminder, a skill preamble. They arrive on the user channel and
-// counting them as prompts would attribute the harness's own noise to the operator.
+// notification, a system reminder, a skill preamble, a resumed-session banner. They
+// arrive on the user channel and counting them as prompts would attribute the harness's
+// own noise to the operator.
+//
+// The list grew once already from measurement rather than from reading: a corpus survey
+// found `<local-command-caveat>` and `[request interrupted by user]` being counted as
+// human turns 47 and 37 times. **Expect it to be incomplete** — it is a denylist over
+// someone else's evolving output, so a turn it misses inflates the human-turn count
+// rather than corrupting anything, which is the failure direction to prefer.
 var injected = []string{ //nolint:gochecknoglobals // a fixed table, never mutated
 	"<task-notification>", "<system-reminder>", "<command-name>",
+	"<local-command-caveat>", "[request interrupted by user]",
 	"caveat: the messages below were generated",
 	"base directory for this skill:",
+	"this session is being continued from a previous",
 }
 
 // Turn is one conversational turn, reduced to who spoke and what they said.
