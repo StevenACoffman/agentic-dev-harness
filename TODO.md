@@ -1845,6 +1845,22 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   Copying gnosis's design across would build the wrong thing. What transfers unchanged is
   the discipline: assert on what the answerer sent.
 
+  **Method decided 2026-08-26: the scripted answerer (row 2).** The real-model row cannot
+  gate a merge, and the discipline that makes it valuable is available without it. The
+  hand-written row is what exists and is what proves nothing about the prompt.
+
+  **And adh's seam is a file, not a socket**, which decides the shape: `relay.Emit` parks
+  `arc.Pending.Prompt`, the operator reads it via `step --relay <id>` and answers via
+  `--response <file>`. So the answerer is **a function from the emitted prompt to a
+  reply**, run between two CLI calls — no server, no protocol, no port. A local server was
+  considered and refused because *adh has no protocol to speak*, not because it is harder;
+  recorded so nobody ports gnosis's design across.
+
+  The translation of "assert on what the agent sent" to a file seam is: **the answerer
+  must derive its reply from the prompt.** Then the reply only exists if the prompt
+  carried what the next stage needs, and a prompt regression breaks the test rather than
+  passing silently.
+
 - [x] **No map says what each suite covers that the others do not.** DONE 2026-08-26 —
   `SPEC.md` §9.0.1, beside the guarantee audit, since that is where a reader already goes
   to learn what rests on what. Each suite is annotated with its coverage delta, including
