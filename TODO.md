@@ -1325,20 +1325,61 @@ from). adh is the tool most of it lands on. Checked against the code.
     Building it was still right: the cost was one package and one report-only command, and
     the alternative was wiring a rule that finds nothing into the objective function.
 
-  - [ ] **Decide what increment 2 is now, since retry-chain detection is not it.** Three
-    directions, none yet investigated: mine *directive* turns for recurring intents rather
-    than corrections (the source's `heuristic_mine` claims both, and only the correction
-    half has been tested); look for corrections in the diff rather than the prose, since a
-    reverted or rewritten edit is a correction whether or not anyone said so; or conclude
-    that a directive corpus has little to teach the consolidation loop and close the whole
-    line. **The third is a real possibility and should not be argued away** — the report
-    exists now, so any successor rule can be measured the same way before it is trusted.
-  - [ ] **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
-    Gated on increment 1 showing the mining is precise enough to be worth trusting — and
-    it did not: the rule found 3 corrective turns in 13,677. **Blocked until a successor
-    rule exists**, not merely unstarted.
-  - [ ] **Increment 3 (may never be right): admit foreign signals to the splits.** Only
-    with evidence from increments 1–2, and the honest default is no.
+  - [x] **Decide what increment 2 is now, since retry-chain detection is not it.**
+    DECIDED 2026-08-26: **close the foreign-session line.** Three corrective turns in
+    13,677 is not a rule needing tuning; the corpus does not contain the thing. Keep
+    `internal/session` and `adh sessions report` — they cost one package, they are the
+    instrument that produced the answer, and any successor rule gets measured the same
+    way before it is trusted.
+
+    Two candidates were measured before deciding, and both measurements are the reason
+    the answer is not "tune it":
+
+    - **Recurring intents are abundant where corrections are absent.** 146 of 1,689 human
+      turns (8.6%) are the same instruction — *"please make a detailed, but temporary,
+      plan for…"* — plus "please retry" ×13 and "yes please" ×17. But **`Signal` is
+      `{Failures, Successes}` feeding the held-out splits**, and an intent is neither.
+      Wiring it in means distorting `Signal` or scoring the optimizer on how often
+      somebody asks for a plan. *The finding is real and belongs elsewhere: an instruction
+      typed 146 times is a missing command, not a lesson candidate.* Recorded as a note
+      below, not as work here.
+    - **The transcript's edit history cannot carry it.** `file-history-delta` exists (3,546
+      lines) but holds only a `trackingPath` and a `backupFileName` reference, not
+      content — so detecting a rewrite means reading a backup store that may not persist,
+      and "file edited twice" is ordinary iterative work rather than a correction.
+
+  - [x] **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
+    *Closed with the line above; there is no foreign-session signal worth carrying.* The
+    provenance rule in `SPEC-ADDITIONS` §18 step 1 stands and still governs whatever
+    second source arrives — it was never specific to sessions.
+  - [x] **Increment 3 (may never be right): admit foreign signals to the splits.**
+    *Closed. "May never be right" turned out to be "not from this source".*
+
+- [ ] **Learn from work adh did not drive, from git rather than from sessions.** Filed
+  2026-08-26 as its own entry, **deliberately not as an increment of the item above.**
+
+  The entry above assumes the corrections live in foreign *sessions*, and that premise
+  was measured and failed. Its goal — accreting from work the harness did not drive — is
+  still right, and git history is a better source for it on every axis that made sessions
+  bad: a revert, a fixup, or a file rewritten shortly after being written is evidence of
+  *work* rather than of *talk*; git's format does not rot the way a vendor's transcript
+  schema does; `internal/vcs` already exists; and no foreign schema is involved at all.
+  **Filing this as increment 2 would let a refuted assumption survive its own
+  refutation**, which is why it is separate.
+
+  - [ ] **Measure before building, exactly as increment 1 did.** Nobody knows whether
+    this repository's history contains reverts and fixups at a useful rate. The last pass
+    is the argument: the cheap instrument cost one package and saved wiring a rule that
+    finds nothing. A `git log`-shaped survey answers it before any type is designed.
+  - Whatever it yields is still bound by `SPEC-ADDITIONS` §18 step 1: a signal carries
+    provenance, the zero value is unknown, and only arc-derived signals enter the
+    held-out splits. That rule was written for a second source and it does not care which
+    one arrives.
+
+- Note, not a work item — **an instruction typed 146 times is a missing command.** The
+  session survey found 8.6% of human turns are the same request for a temporary plan.
+  That is a signal about adh's own CLI surface, not about the consolidation loop, and it
+  is recorded here only so the measurement is not lost with the line that produced it.
 
   **One thing increment 1 will answer on its own:** this repository has zero arcs. If that
   is typical, `Harvest` reading only closed arcs is not a coverage gap — it is the reason

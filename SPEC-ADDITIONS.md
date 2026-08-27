@@ -664,6 +664,12 @@ The cycle:
    A provenance that has not earned entry to the splits is recorded rather than
    discarded, so a mining rule found to be imprecise can be excluded retroactively
    instead of being untraceable.
+
+   The rule is written for *a* second source, not for a particular one. The first
+   candidate — mining foreign agent-session transcripts — was measured and abandoned:
+   those sessions turned out to be directive rather than corrective, so the corrections
+   the loop wants are not expressed in them. The rule stands unchanged for whatever
+   source arrives next.
 2. **Mine** recurring, checkable tasks from that history and assign each to a
    stable split. Real tasks are archived so later cycles can recall similar ones;
    recalled and synthetic tasks may enlarge the *training* set only, never enter
