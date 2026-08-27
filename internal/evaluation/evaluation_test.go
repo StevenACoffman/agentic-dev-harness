@@ -50,6 +50,7 @@ func TestAdjudicateSplitsConfirmed(t *testing.T) {
 	v, err := evaluation.Adjudicate(
 		context.Background(),
 		fakeAdjudicator{failKind: adh.FindingDevice},
+		nil, // no guards: this exercises finding disposition alone
 		findings,
 	)
 	if err != nil {

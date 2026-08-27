@@ -124,9 +124,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
-	toAdjudicate := append(evaluation.GuardFindings(specs), arc.Findings...)
-
-	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, toAdjudicate)
+	verdict, err := evaluation.Adjudicate(ctx, cfg.adjudicator, specs, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}

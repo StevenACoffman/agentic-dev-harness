@@ -218,11 +218,23 @@ func Decide(verdict *critic.Verdict, reworks, maxReworks int) Disposition {
 func Adjudicate(
 	ctx context.Context,
 	adjudicator Adjudicator,
+	specs []nfr.Spec,
 	findings []adh.Finding,
 ) (critic.Verdict, error) {
-	results := make([]critic.Adjudicated, 0, len(findings))
-	for i := range findings {
-		finding := findings[i]
+	// **Guards are assembled here, not by the caller.** The rule -- a declared guard is
+	// adjudicated whether or not the critic raised it (§10.5) -- lived in `adh eval`,
+	// and the other two callers, `run` and `step`, silently did not apply it. So a
+	// guard breach passed unnoticed on the paths most likely to be automated, and the
+	// stated bound on the silence gap did not hold there at all.
+	//
+	// specs is a parameter rather than something read from the adjudicator because a
+	// caller must *decide*: passing nil is an explicit statement that this call has no
+	// guards, which the compiler makes them make. That is the difference between a rule
+	// three callers have to remember and one they cannot omit.
+	all := append(GuardFindings(specs), findings...)
+	results := make([]critic.Adjudicated, 0, len(all))
+	for i := range all {
+		finding := all[i]
 		res, err := adjudicateOne(ctx, adjudicator, finding)
 		if err != nil {
 			return critic.Verdict{}, fmt.Errorf("adjudicating %s finding: %w", finding.Kind, err)

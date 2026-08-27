@@ -26,6 +26,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/relay"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -162,7 +163,11 @@ func (cfg *Config) disposeEval(
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
-	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, arc.Findings)
+	specs, err := nfr.Load(filepath.Join(cfg.repoDir(), nfr.DefaultDir))
+	if err != nil {
+		return fmt.Errorf("step: %w", err)
+	}
+	verdict, err := evaluation.Adjudicate(ctx, &adjudicator, specs, arc.Findings)
 	if err != nil {
 		return fmt.Errorf("step: %w", err)
 	}
