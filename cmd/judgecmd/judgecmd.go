@@ -13,7 +13,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	judgelib "github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 )
 
@@ -53,10 +52,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, _ []string) error {
 	if cfg.Checks == "" {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "judge: --checks is required",
-		}
+		return root.MissingFlagError{Scope: "judge", Flags: []string{"--checks"}}
 	}
 	checks, err := loadChecks(cfg.Checks)
 	if err != nil {

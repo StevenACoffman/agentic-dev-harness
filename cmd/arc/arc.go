@@ -87,10 +87,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 func (cfg *Config) newArc(store *state.Store, args []string) error {
 	title := strings.TrimSpace(strings.Join(args, " "))
 	if title == "" {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "arc: new requires a title",
-		}
+		return root.MissingOperandError{Scope: "arc new", Kind: root.OperandTitle}
 	}
 	id, err := store.NextID()
 	if err != nil {
@@ -104,6 +101,16 @@ func (cfg *Config) newArc(store *state.Store, args []string) error {
 	}
 	if err := store.Create(&arc); err != nil {
 		return fmt.Errorf("arc: %w", err)
+	}
+	if cfg.JSONL {
+		// The id alone, matching the human form: the caller's next call needs the id,
+		// and `arc show` is where the whole record lives. This branch was missing, so
+		// `arc new --jsonl` wrote a bare id to stdout -- prose to a caller that asked
+		// for JSON, and plausible enough to be mistaken for a value.
+		if err := cfg.EmitOK(map[string]any{"id": id}); err != nil {
+			return fmt.Errorf("arc: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, id)
 	return nil
@@ -142,10 +149,7 @@ func (cfg *Config) listArcs(store *state.Store) error {
 
 func (cfg *Config) showArc(store *state.Store, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "arc: show requires an id",
-		}
+		return root.MissingOperandError{Scope: "arc show", Kind: root.OperandArc}
 	}
 	arc, err := store.Get(args[0])
 	if err != nil {

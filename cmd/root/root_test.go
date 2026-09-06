@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/toerr/errors/errcode"
 )
 
 // newConfig builds a root.Config writing to out for envelope tests.
@@ -188,5 +191,61 @@ func TestEmitJSONLMultipleRecords(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &back); err != nil {
 			t.Errorf("line %q does not parse: %v", line, err)
 		}
+	}
+}
+
+// TestLibraryErrorsKeepTheirClassification is the guard on the errcode boundary.
+//
+// **Losing it is silent, and `internal` is the expensive answer to be wrong with.** adh's
+// domain package classifies its own *adh.Error and nothing else, because a root domain
+// package takes no third-party import. Everything skillet raises is coded by toerr's
+// errcode instead, and if ReasonForError stops bridging the two, every library failure
+// reports `internal` — the one token that means adh itself broke, and the one a caller
+// with a retry policy retries. A not-found would be retried forever.
+//
+// It asserts the reason and the exit code together because they are derived from the same
+// classification and must not disagree about a single error.
+func TestLibraryErrorsKeepTheirClassification(t *testing.T) {
+	cases := map[string]struct {
+		err        error
+		wantReason string
+		wantCode   int
+	}{
+		"not found": {
+			errcode.WithCode(errcode.StatusNotFound, "no packet", nil),
+			adh.ENOTFOUND,
+			1,
+		},
+		"invalid": {
+			errcode.WithCode(errcode.StatusInvalidArgument, "no artifacts", nil),
+			adh.EINVALID,
+			2,
+		},
+		"conflict": {
+			errcode.WithCode(errcode.StatusFailedPrecondition, "digest differs", nil),
+			adh.ECONFLICT,
+			1,
+		},
+		"wrapped": {
+			fmt.Errorf("proof: %w", errcode.WithCode(errcode.StatusNotFound, "gone", nil)),
+			adh.ENOTFOUND,
+			1,
+		},
+		"adh leaf": {
+			&adh.Error{Code: adh.ECONFLICT, Message: "wrong stage"},
+			adh.ECONFLICT,
+			1,
+		},
+		"untyped stays": {errors.New("boom"), adh.EINTERNAL, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := root.ReasonForError(tc.err); got != tc.wantReason {
+				t.Errorf("ReasonForError = %q, want %q", got, tc.wantReason)
+			}
+			if got := root.CodeForError(tc.err); got != tc.wantCode {
+				t.Errorf("CodeForError = %d, want %d", got, tc.wantCode)
+			}
+		})
 	}
 }

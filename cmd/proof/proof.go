@@ -12,7 +12,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 	prooflib "github.com/StevenACoffman/skillet/proof"
@@ -82,11 +81,14 @@ func (cfg *Config) addVerify() {
 // the arc, and prints where it landed. It verifies the packet it just wrote so a
 // bad manifest never advances past the generator.
 func (cfg *Config) create(args []string) error {
+	// Two checks where there was one. A single refusal naming both operands could not
+	// say which was missing, so a caller that supplied the arc id got the same message
+	// back and nothing told it what to add.
+	if len(args) == 0 {
+		return root.MissingOperandError{Scope: "proof create", Kind: root.OperandArc}
+	}
 	if len(args) < 2 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "proof: create requires an arc id and at least one artifact path",
-		}
+		return root.MissingOperandError{Scope: "proof create", Kind: root.OperandPath}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("proof create")
@@ -163,10 +165,7 @@ func provenanceNote(pkt *prooflib.Packet) string {
 
 func (cfg *Config) verify(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "proof: verify requires a manifest path",
-		}
+		return root.MissingOperandError{Scope: "proof verify", Kind: root.OperandManifest}
 	}
 	pkt, err := prooflib.Load(args[0])
 	if err != nil {

@@ -45,10 +45,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "reject: requires an arc id",
-		}
+		return root.MissingOperandError{Scope: "reject", Kind: root.OperandArc}
 	}
 	id := args[0]
 	store := state.Default()

@@ -11,7 +11,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 )
@@ -77,10 +76,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 
 func (cfg *Config) set(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "autonomy: set requires a level (L0-L4)",
-		}
+		return root.MissingOperandError{Scope: "autonomy set", Kind: root.OperandLevel}
 	}
 	next, err := authority.ParseLevel(args[0])
 	if err != nil {
@@ -104,6 +100,16 @@ func (cfg *Config) set(args []string) error {
 	}
 	if err := os.WriteFile(stateFile, []byte(next.String()+"\n"), 0o600); err != nil {
 		return fmt.Errorf("autonomy: %w", err)
+	}
+	if cfg.JSONL {
+		// `level` is the key `autonomy show` already uses for the same value, so a
+		// caller reads the level the same way whether it just set it or asked. The
+		// gating note stays on stderr: it is advice about the next raise, not the
+		// outcome of this one.
+		if err := cfg.EmitOK(map[string]any{"level": next.String()}); err != nil {
+			return fmt.Errorf("autonomy: %w", err)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "autonomy set to %s\n", next)
 	return nil

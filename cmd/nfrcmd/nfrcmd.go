@@ -121,6 +121,25 @@ func (cfg *Config) list(specs []nfr.Spec) error {
 	if cfg.GuardsOnly {
 		specs = nfr.Guards(specs)
 	}
+	if cfg.JSONL {
+		// One envelope per spec, as `arc list` and `tool list` do. `guard` travels as
+		// the bool rather than the display word: a caller branches on the property,
+		// and `role` exists to make the human column scannable by eye.
+		//
+		// This branch was missing. The contract test's seeded tree mints no spec, so
+		// `nfr list` answered from an empty store, printed nothing, and satisfied
+		// "empty or JSON" without reaching the loop -- the same too-poor-fixture blind
+		// spot that hid five other commands until the seeded tree existed.
+		for i := range specs {
+			if err := cfg.EmitOK(map[string]any{
+				"id": specs[i].ID, "tag": specs[i].Tag,
+				"scale": specs[i].Scale, "guard": specs[i].Guard,
+			}); err != nil {
+				return fmt.Errorf("nfr: %w", err)
+			}
+		}
+		return nil
+	}
 	for i := range specs {
 		_, _ = fmt.Fprintf(cfg.Stdout, "%s\t%s\t%s\t%s\n",
 			specs[i].ID, specs[i].Tag, specs[i].Scale, role(&specs[i]))
@@ -142,10 +161,7 @@ func role(s *nfr.Spec) string {
 // show prints one spec in full — the Planguage keywords a worker reasons over.
 func (cfg *Config) show(specs []nfr.Spec, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "nfr: show requires a spec id",
-		}
+		return root.MissingOperandError{Scope: "nfr show", Kind: root.OperandSpec}
 	}
 	id := args[0]
 	for i := range specs {

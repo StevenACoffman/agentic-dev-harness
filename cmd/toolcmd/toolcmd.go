@@ -126,10 +126,7 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 // outcome's data (one clean line); otherwise they stream live to the worker.
 func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "tool: run requires a tool id (see `tool list`)",
-		}
+		return root.MissingOperandError{Scope: "tool run", Kind: root.OperandTool}
 	}
 	id := args[0]
 	tool, ok := reg.FindByID(id)
