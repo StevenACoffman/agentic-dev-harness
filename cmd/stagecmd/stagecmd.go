@@ -82,10 +82,7 @@ func newOps(parent *root.Config) {
 
 func (c *stageCmd) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: fmt.Sprintf("%s: requires an arc id", c.name),
-		}
+		return root.MissingOperandError{Scope: c.name, Kind: root.OperandArc}
 	}
 	if c.DryRun {
 		return root.DryRunUnsupportedError(c.name)
@@ -121,20 +118,45 @@ func (c *stageCmd) exec(ctx context.Context, args []string) error {
 	if err := store.Save(&arc); err != nil {
 		return fmt.Errorf("%s: %w", c.name, err)
 	}
+	if c.JSONL {
+		// `arc`/`stage`/`status` are the keys `step` already emits for the same answer
+		// — where the arc ended up — so a caller reads a manual single stage and a
+		// driven one the same way.
+		//
+		// All three stage commands share this function, so all three were printing
+		// prose under --jsonl. Only `strategy` was observably wrong: a fresh arc sits
+		// at strategy, so `execute` and `critic` refuse for their stage and print
+		// nothing, which satisfies the contract without exercising it.
+		if err := c.EmitOK(map[string]any{
+			"arc": arc.ID, "stage": string(arc.Stage), "status": string(arc.Status),
+		}); err != nil {
+			return fmt.Errorf("%s: %w", c.name, err)
+		}
+		return nil
+	}
 	_, _ = fmt.Fprintf(c.Stdout, "%s now at %s (%s)\n", arc.ID, arc.Stage, arc.Status)
 	return nil
 }
 
 func (c *opsCmd) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "ops: requires an arc id",
-		}
+		return root.MissingOperandError{Scope: "ops", Kind: root.OperandArc}
 	}
 	arc, err := state.Default().Get(args[0])
 	if err != nil {
 		return fmt.Errorf("ops: %w", err)
+	}
+	if c.JSONL {
+		// Both prose branches say the same two things -- which stage the arc is at, and
+		// whether that is the ship gate -- so one payload carries both and the caller
+		// branches on `at_gate` instead of matching a sentence. `ops` reports rather
+		// than advances, so reaching the gate is an outcome, not an error.
+		if err := c.EmitOK(map[string]any{
+			"arc": arc.ID, "stage": string(arc.Stage), "at_gate": arc.Stage == adh.StageOps,
+		}); err != nil {
+			return fmt.Errorf("ops: %w", err)
+		}
+		return nil
 	}
 	if arc.Stage != adh.StageOps {
 		_, _ = fmt.Fprintf(

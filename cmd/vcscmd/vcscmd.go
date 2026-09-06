@@ -114,10 +114,7 @@ func (cfg *Config) status(repo *vcs.Git) error {
 
 func (cfg *Config) branch(repo *vcs.Git, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "vcs: branch requires a name",
-		}
+		return root.MissingOperandError{Scope: "vcs branch", Kind: root.OperandBranch}
 	}
 	if err := repo.CreateBranch(args[0]); err != nil {
 		return fmt.Errorf("vcs: %w", err)

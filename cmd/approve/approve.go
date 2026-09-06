@@ -50,10 +50,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(_ context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "approve: requires an arc id",
-		}
+		return root.MissingOperandError{Scope: "approve", Kind: root.OperandArc}
 	}
 	id := args[0]
 	if cfg.Yes {

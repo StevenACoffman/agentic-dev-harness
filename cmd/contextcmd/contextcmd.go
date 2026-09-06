@@ -127,11 +127,7 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	case "show":
 		return cfg.show(storeDir, units, args[1:])
 	case "route":
-		routed := contextstore.Route(units, args[1:], nil, contextstore.DefaultWorkingSet)
-		for i := range routed {
-			_, _ = fmt.Fprintln(cfg.Stdout, routed[i].ID)
-		}
-		return nil
+		return cfg.route(units, args[1:])
 	case "lint":
 		return cfg.lint(storeDir, units)
 	case "verify":
@@ -195,10 +191,7 @@ func (cfg *Config) list(units []contextstore.Unit) error {
 // outcome carrying the metadata, provenance, and content.
 func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "context: show requires a unit id",
-		}
+		return root.MissingOperandError{Scope: "context show", Kind: root.OperandUnit}
 	}
 	id := args[0]
 	for i := range units {
@@ -216,6 +209,41 @@ func (cfg *Config) show(storeDir string, units []contextstore.Unit, args []strin
 		Code:    adh.ENOTFOUND,
 		Message: fmt.Sprintf("context: no such unit %q", id),
 	}
+}
+
+// route prints the working set a selector would load — the unit ids, capped at
+// DefaultWorkingSet.
+//
+// **An empty selector is refused rather than answered.** Routing nothing is not an answer
+// to "what would you load", and returning an empty set for it made a typo'd label
+// indistinguishable from a label that matched nothing — the shape §19 refuses elsewhere,
+// where "cannot verify" must not read as "verified". It also kept this arm out of the
+// --jsonl contract test: the walk invokes every verb with no operand, so route answered
+// vacuously, printed nothing, and satisfied "empty or JSON" without ever reaching the
+// branch below. With a selector it printed bare ids to stdout under --jsonl, which is the
+// defect that hid there.
+func (cfg *Config) route(units []contextstore.Unit, selector []string) error {
+	if len(selector) == 0 {
+		return root.MissingOperandError{Scope: "context route", Kind: root.OperandLabel}
+	}
+	routed := contextstore.Route(units, selector, nil, contextstore.DefaultWorkingSet)
+	ids := make([]string, 0, len(routed))
+	for i := range routed {
+		ids = append(ids, routed[i].ID)
+	}
+	if cfg.JSONL {
+		// One outcome carrying the set, as `check` does, rather than one per unit as
+		// `list` does: a working set is capped, so its membership is the answer and a
+		// caller reading it a line at a time cannot tell a short set from a truncated one.
+		if err := cfg.EmitOK(map[string]any{"units": ids}); err != nil {
+			return fmt.Errorf("context: %w", err)
+		}
+		return nil
+	}
+	for _, id := range ids {
+		_, _ = fmt.Fprintln(cfg.Stdout, id)
+	}
+	return nil
 }
 
 // reportUnit emits a unit and its content, as one outcome under --jsonl else text.

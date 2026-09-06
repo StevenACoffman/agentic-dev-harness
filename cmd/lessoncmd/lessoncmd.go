@@ -114,10 +114,7 @@ func (cfg *Config) list() error {
 
 func (cfg *Config) promote(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "lesson: promote requires a class",
-		}
+		return root.MissingOperandError{Scope: "lesson promote", Kind: root.OperandClass}
 	}
 	owner := lessonlib.Owner(cfg.To)
 	if cfg.To == "" || !owner.Valid() {

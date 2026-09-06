@@ -17,7 +17,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harness"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/judge"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/skillsaw"
@@ -142,10 +141,7 @@ func (cfg *Config) addHash() {
 
 func (cfg *Config) eval(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "harness: eval requires an artifact path",
-		}
+		return root.MissingOperandError{Scope: "harness eval", Kind: root.OperandPath}
 	}
 	doc, err := os.ReadFile(args[0])
 	if err != nil {
@@ -209,10 +205,7 @@ func (cfg *Config) reportSkillsaw() error {
 // so the operator's check-sets are validated to discriminate as intended.
 func (cfg *Config) calibrate() error {
 	if cfg.Cases == "" {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "harness: calibrate requires --cases <file>",
-		}
+		return root.MissingFlagError{Scope: "harness calibrate", Flags: []string{"--cases"}}
 	}
 	data, err := os.ReadFile(cfg.Cases)
 	if err != nil {
@@ -251,9 +244,9 @@ func (cfg *Config) calibrate() error {
 // at both comparisons. Exit 0 on any accept, 1 on reject.
 func (cfg *Config) gate() error {
 	if cfg.Candidate == "" || cfg.Current == "" {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "harness: gate requires --candidate and --current",
+		return root.MissingFlagError{
+			Scope: "harness gate",
+			Flags: []string{"--candidate", "--current"},
 		}
 	}
 	candidate, err := parseScore("candidate", cfg.Candidate)
@@ -290,16 +283,23 @@ func (cfg *Config) gate() error {
 
 func (cfg *Config) hash(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "harness: hash requires an artifact path",
-		}
+		return root.MissingOperandError{Scope: "harness hash", Kind: root.OperandPath}
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {
 		return fmt.Errorf("harness: read artifact: %w", err)
 	}
-	_, _ = fmt.Fprintln(cfg.Stdout, identity.Hash(string(data)))
+	digest := identity.Hash(string(data))
+	if cfg.JSONL {
+		// The path travels beside the digest. A hash on its own is not attributable,
+		// and a caller hashing several artifacts in a loop has no other way to tell
+		// which line answered which file.
+		if err := cfg.EmitOK(map[string]any{"artifact": args[0], "hash": digest}); err != nil {
+			return fmt.Errorf("harness: %w", err)
+		}
+		return nil
+	}
+	_, _ = fmt.Fprintln(cfg.Stdout, digest)
 	return nil
 }
 

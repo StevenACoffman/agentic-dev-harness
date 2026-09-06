@@ -322,10 +322,7 @@ func (cfg *Config) gateUntrustworthy(what string, cause error) error {
 
 func (cfg *Config) adopt(args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "sleep: adopt requires a staging id",
-		}
+		return root.MissingOperandError{Scope: "sleep adopt", Kind: root.OperandStaging}
 	}
 	id := args[0]
 	man, err := readManifest(id)

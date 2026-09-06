@@ -86,10 +86,7 @@ func New(parent *root.Config) *Config {
 
 func (cfg *Config) exec(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "eval: requires an arc id",
-		}
+		return root.MissingOperandError{Scope: "eval", Kind: root.OperandArc}
 	}
 	if cfg.DryRun {
 		return root.DryRunUnsupportedError("eval")

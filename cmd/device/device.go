@@ -10,7 +10,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
-	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	devicelib "github.com/StevenACoffman/agentic-dev-harness/internal/device"
 )
 
@@ -38,16 +37,37 @@ func New(parent *root.Config) *Config {
 	return &cfg
 }
 
+// deviceVerbs is what exec dispatches, named once so the refusals below and the usage
+// line cannot disagree about it.
+func deviceVerbs() []string { return []string{"validate"} }
+
 func (cfg *Config) exec(ctx context.Context, args []string) error {
-	if len(args) == 0 || args[0] != "validate" {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "device: expected 'validate'",
-		}
+	// One prose refusal covered both the missing verb and the wrong one, which cost two
+	// things beyond the wording: the contract walk reads a command's verbs off
+	// MissingVerbError, so `device validate` was never enumerated and its output never
+	// checked; and a mistyped verb got the same message as no verb at all.
+	if len(args) == 0 {
+		return root.MissingVerbError{Scope: "device", Verbs: deviceVerbs()}
+	}
+	if args[0] != "validate" {
+		return root.UnknownVerbError{Scope: "device", Got: args[0], Verbs: deviceVerbs()}
 	}
 	report, err := devicelib.Mock{Healthy: true}.Validate(ctx)
 	if err != nil {
 		return fmt.Errorf("device: %w", err)
+	}
+	if cfg.JSONL {
+		// `ok` is the verdict a caller branches on and `detail` is the evidence for it.
+		// Printing only the detail left a machine consumer parsing a sentence for a
+		// boolean it could not otherwise recover, since a failed validation exits 7 but
+		// the envelope is still the outcome.
+		if err := cfg.EmitOK(map[string]any{"ok": report.OK, "detail": report.Detail}); err != nil {
+			return fmt.Errorf("device: %w", err)
+		}
+		if !report.OK {
+			return root.ExitError(7)
+		}
+		return nil
 	}
 	_, _ = fmt.Fprintln(cfg.Stdout, report.Detail)
 	if !report.OK {

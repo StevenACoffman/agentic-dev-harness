@@ -60,10 +60,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 		}
 	}
 	if len(args) < 2 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "sessions: report requires a directory of transcripts",
-		}
+		return root.MissingOperandError{Scope: "sessions report", Kind: root.OperandDir}
 	}
 	digests, err := loadDir(args[1])
 	if err != nil {

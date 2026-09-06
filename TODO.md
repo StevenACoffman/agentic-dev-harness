@@ -4,6 +4,24 @@ Tracks what remains after Phases 0–9 (see [`PLAN.md`](./PLAN.md)). Everything
 committed passes the phase gate: `golangci-lint run ./...` clean and
 `go test ./...` green.
 
+Checkbox vocabulary. The box stays a GFM tasklist boolean — `[x]` or `[ ]` — and a
+`{tag}` after it carries the disposition, because the state that matters here is not
+binary. An untagged `[ ]` claims the item can be picked up today.
+
+| Form                     | Meaning                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `[x]`                    | done, and built                                                                      |
+| `[x] {refused}`          | a standing rule rejects the whole class; it would be rejected again                  |
+| `[x] {closed-unbuilt}`   | assessed against a bar and failed it; a changed measurement could reopen it          |
+| `[x] {overtaken}`        | became moot because something else landed; nothing was built for it                  |
+| `[x] {premise-wrong}`    | the entry's stated premise turned out false — read the correction before trusting it |
+| `[ ]`                    | actionable now — no tag means nothing is holding it                                  |
+| `[ ] {await-trigger}`    | held on a condition stated in the entry                                              |
+| `[ ] {blocked}`          | waiting on another item in this backlog                                              |
+| `[ ] {blocked-external}` | waiting on something no item here will deliver                                       |
+| `[ ] {cross-repo}`       | actionable, but needs coordinated work in another repo                               |
+| `[ ] {decision-needed}`  | buildable; what is unresolved is a choice                                            |
+
 ## Harness-Engineering Improvements — Context/Tools Levers (§10, §11, §13, §18)
 
 Plan and rationale: [`harness_engineering_improvements.md`](./harness_engineering_improvements.md)
@@ -505,7 +523,7 @@ PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
       rework cycles on an edit that cannot close a design change, while fixable findings
       keep the return-to-Execution path. The critic prompt asks for the class. Verified:
       `Decide` structural→Fail case + `HasStructural`/`ParseFindings` class tables.
-- [ ] Optional / against-grain / larger (Tier 3): adaptive percentile + novelty
+- [ ] {decision-needed} Optional / against-grain / larger (Tier 3): adaptive percentile + novelty
       selection (`darwinian_evolver`'s sigmoid sharpness/midpoint + `1/(1+novelty·
       children)`) — an *alternative* to adh's deliberate strict-`>` gate, not a
       replacement; richer generated-artifact templates (checklist/anti-patterns/
@@ -696,15 +714,47 @@ around them is partial.
   relays) refuses `--dry-run` via `root.DryRunUnsupportedError` so the global flag never
   silently mutates state. `--yes` is a documented reserved convention (adh has no
   interactive prompt today) with the hard guarantee that it never satisfies a gate.
-  - [ ] Deferred — full `--dry-run` for the `run`/`step`/`sleep` relay loops: previewing
+  - [ ] {decision-needed} Deferred — full `--dry-run` for the `run`/`step`/`sleep` relay loops: previewing
     a whole multi-stage drive (not just the single gate/ship mutations) is a larger
     change; those commands refuse the flag today rather than fake a partial preview.
-- [ ] Deferred — `registry audit`: no artifact-registry model exists; auditing only
+- [ ] {await-trigger} Deferred — `registry audit`: no artifact-registry model exists; auditing only
   proof packets would be a partial interpretation of "orphans/missing-manifests/SHA
   mismatches". Needs the registry concept first.
-- [ ] Deferred — broad ff nesting for `arc`/`sleep`/`oracle`/`lesson`/`context`/
+- [ ] {decision-needed} Deferred — broad ff nesting for `arc`/`sleep`/`oracle`/`lesson`/`context`/
   `tool`: positional-verb dispatch works; converting is broad and low-payoff. Only
   the ratchet regroup (above) needed real nesting.
+
+## `internal/adh` Owns Its Error Type (2026-09-04)
+
+Source: skillet's `TODO.md` follow-up to retire `errs.Error`, which needed adh to stop
+composing a library struct.
+
+- [x] **`adh.Error` was `= skillet/errs.Error`, an alias, and is now adh's own struct.**
+      DONE 2026-09-04 in one file. All 203 `&adh.Error{}` literals and 11 test assertions
+      went through `internal/adh/error.go`, so nothing else moved. This is where the layout
+      rule puts an application's error type — the root domain package, beside the types it
+      classifies failures for — and it removes that package's only error-related third-party
+      import.
+      **The errcode bridge deliberately did not come with it.** The old alias understood
+      errors coded by toerr's `errcode`, because it lived in a library that had to read both
+      representations. Keeping that inside `internal/adh` would have swapped one third-party
+      import for another in the package that is supposed to have none. It went to `cmd/root`
+      instead, as `reasonForCodedError`, next to the `reason` vocabulary it feeds — measured
+      placement rather than assumed: `adh.ErrorCode` has three call sites, all in `cmd/`, and
+      no domain package classifies by code at all.
+      `CodeForError` now reads `ReasonForError` rather than `adh.ErrorCode`, so a library's
+      validation error still selects exit 2. The two derive from one classification and must
+      not disagree about a single error.
+      **`TestLibraryErrorsKeepTheirClassification` guards the boundary, and was confirmed to
+      fail without it** — every coded error reported `internal`, the token meaning adh itself
+      broke and the one a caller with a retry policy retries. **Parity with the alias is the
+      standard here, not new behaviour:** nothing in adh's current paths routes a *coded*
+      skillet error to the envelope (`proof verify` sets `reason: "proof"` at the call site,
+      and I/O errors were untyped before and after), so the bridge preserves a capability
+      rather than fixing a live defect. It becomes load-bearing the moment a coded error does
+      reach `ReasonForError`.
+      Follow-up, neither created by this nor owed: adh's 123 `Op`/`Err` wrappers could move to
+      `toerr.WrapWithMessage`. They are adh's own convention now, and nothing requires it.
 
 ## Config Wiring
 
@@ -751,12 +801,12 @@ around them is partial.
   grounding to `internal/worktree`), so `step` and `run` are thin shells over it.
   `run --relay [--response]` now drives the relay, chaining a resume through inline
   evaluation to the next emitted prompt in one call.
-- [ ] `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
+- [ ] {decision-needed} `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
   `Relay` are the only backends, selected by the `--relay` flag. (A `[models]
   driver` config to pick the default backend was considered and dropped — the
   driving agent passes `--relay` anyway, so it earned no keep. The API client
   itself stays deprioritized — the relay is the backend.)
-- [ ] `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
+- [ ] {blocked-external} `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
   port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
   status/branch/commit/diff/revert; `internal/vcs.Mock` is the test double. `close`
@@ -768,7 +818,7 @@ around them is partial.
   `.adh` workspace or unrelated work. Follow-up: merge of the arc branch to base
   (go-git merge is experimental → a `git` shell-out via
   `github.com/ldez/go-git-cmd-wrapper/v2`); returning to the base branch after ship.
-- [ ] No injected `Clock` (deterministic timestamps). **Deferred deliberately**:
+- [ ] {await-trigger} No injected `Clock` (deterministic timestamps). **Deferred deliberately**:
   the precondition is still unmet — no `time.Time` on `adh.Arc`/state. The `time.Now()`
   sites all isolate time to a one-line shell so the pure cores never see it:
   commit-authorship (go-git, never pinned by a test), `sleep.stamp`, and the
@@ -955,7 +1005,7 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       `internal/atomicfile` (Tailscale, BSD-3-Clause; temp file + fsync + rename).
       Still to offload: `gofrs/flock` (cross-process locking) once the parallel
       manager writes one workspace from many arcs.
-- [ ] `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
+- [ ] {blocked-external} `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
       counting → the official SDKs (`anthropic-sdk-go`, `openai-go`). Never a
       hand-rolled HTTP/retry layer. **Deferred**: needs API keys + network (no
       deterministic test here), and `model.Relay` is the skill-driven backend the
@@ -968,7 +1018,7 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       would discard the untracked `.adh` workspace. Only merge stays a `git`
       shell-out via `github.com/ldez/go-git-cmd-wrapper/v2` (go-git merge is
       experimental); branch-per-arc merge to base is the follow-up.
-- [ ] `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
+- [ ] {blocked-external} `device.Validator` (adb) → the `adb` CLI or `electricbubble/gadb`.
       **Deferred**: needs a device; a shell-out adapter is untestable in CI.
 - [x] `.adh/config.toml` + precedence → `internal/config` (SPEC §3 loader),
       decoding with `BurntSushi/toml` behind an explicit, pure precedence overlay
@@ -1175,7 +1225,7 @@ Source: a survey of `~/Documents/agent-red` (26 agent-tooling projects). Most of
 promising from READMEs turned out to be weaker than what adh already has; the two items
 below survived checking against the code, and the third is a retraction.
 
-- [x] **Evidence records have no staleness state.** *Closed 2026-08-23 as misdiagnosed,
+- [x] {premise-wrong} **Evidence records have no staleness state.** *Closed 2026-08-23 as misdiagnosed,
   and chasing the premise found a real defect one package over — built, see below.*
 
   Two things were wrong. **It conflates two unrelated subsystems:** `internal/evidence`
@@ -1207,7 +1257,7 @@ below survived checking against the code, and the third is a retraction.
   edit. The four states land where they earn their place — a unit declaring no integrity
   tool is `not_applicable`, not `unknown`.
   src: `agent-red/goalx` `cli/freshness_state.go`.
-- [x] **Capability routing is a missing axis, not a missing feature.** *Refused
+- [x] {refused} **Capability routing is a missing axis, not a missing feature.** *Refused
   2026-08-24, and the premise was stronger than the entry knew.* Recorded in
   `SPEC-ADDITIONS.md` §14.
 
@@ -1256,7 +1306,7 @@ below survived checking against the code, and the third is a retraction.
 Source: a survey of `~/Documents/agent-blue` (22 projects — the sources the practice came
 from). adh is the tool most of it lands on. Checked against the code.
 
-- [x] **`consolidate.Harvest` only learns from work adh itself drove.** *Closed
+- [x] {premise-wrong} **`consolidate.Harvest` only learns from work adh itself drove.** *Closed
   2026-08-26: the observation was right and the proposed source was wrong. Every
   sub-item below is settled, and the goal continues under "Learn from work adh did not
   drive, from git rather than from sessions" — filed separately so this entry's failed
@@ -1352,7 +1402,7 @@ from). adh is the tool most of it lands on. Checked against the code.
       content — so detecting a rewrite means reading a backup store that may not persist,
       and "file edited twice" is ordinary iterative work rather than a correction.
 
-  - [x] **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
+  - [x] {closed-unbuilt} **Increment 2: provenance on `Signal`, foreign signals to the lesson path only.**
     *Closed with the line above; there is no foreign-session signal worth carrying.* The
     provenance rule in `SPEC-ADDITIONS` §18 step 1 stands and still governs whatever
     second source arrives — it was never specific to sessions.
@@ -1405,7 +1455,7 @@ from). adh is the tool most of it lands on. Checked against the code.
   is typical, `Harvest` reading only closed arcs is not a coverage gap — it is the reason
   the accretion loop has had almost nothing to learn from, and the report would say so
   immediately.
-- [x] **Log why the deterministic path did not fire, every time judgment is relayed.**
+- [x] {premise-wrong} **Log why the deterministic path did not fire, every time judgment is relayed.**
   *Reframed: adh has no fallback layer, so there is no relay miss to log. The real
   distinction lives in adjudication, where `adh.Unrunnable` already computes why the
   deterministic path missed and the durable log discarded it. `toolrun.Record` now
@@ -1546,7 +1596,7 @@ which sharpen invariants adh already holds rather than adding new ones.
   passed" and "ran and failed", and the disposition rule for it should be stated rather
   than emergent. This is the same not-applicable state now required of `quotecheck` and of
   canonizer's `anchor-absent` — three consumers, which is why it is worth naming once.
-- [ ] **Grade the artifacts, not the account.** `agent-fuschia/agent-certlab` runs an agent
+- [ ] {await-trigger} **Grade the artifacts, not the account.** `agent-fuschia/agent-certlab` runs an agent
   against tasks with **seeded, known defects** and grades "only the artifacts it leaves on
   disk… **never the agent's own account of its success.**" adh's cold critic withholds the
   builder's transcript, which is most of the way there — but the critic still reads a
@@ -1653,7 +1703,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
 
 ### The Critic, and What It Records About Itself
 
-- [x] **A critic that could not run cold must say so, and there is no state for that
+- [x] {closed-unbuilt} **A critic that could not run cold must say so, and there is no state for that
   today.** *Closed unbuilt 2026-08-22: the state cannot occur. Reasoning below; the
   residue moved to the session-identity item, which has a trigger that can fire.* §19.1's grounding contract denies the builder's transcript, which is the
   right mechanism and is the whole basis for calling the critic independent.
@@ -1745,7 +1795,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
   advances or returns to Execution; there is no disposition for *advanced, with the
   regression recorded*, and the honest cases exist.
 
-- [x] **Freeze the hypothesis before the evaluation, mechanically.** *Built, and the
+- [x] {premise-wrong} **Freeze the hypothesis before the evaluation, mechanically.** *Built, and the
   entry's premise was wrong in a way worth keeping: adh does not write the bar at
   Strategy. It is derived from config by resolution and read fresh each time, so there
   is no arc-local bar to edit. What can move is the config file and `arc.Resolution` —
@@ -1758,7 +1808,7 @@ skill's wording and a harness's tools, which `toolreg` already half-owns.
 
 ### Actions, Tools, and What Degrades
 
-- [ ] **`toolreg` describes tools; nothing describes the *action* a stage needs.**
+- [x] {premise-wrong} **`toolreg` describes tools; nothing describes the *action* a stage needs.**
   `superpowers` runs one skill corpus across nine harnesses on a rule worth taking
   whole: **"Skills name actions, not tools."** A skill body says *dispatch a subagent*,
   *create a todo*, *read a file* — never a tool name — and a per-harness mapping
@@ -2429,15 +2479,85 @@ rather than in any one repo's habits.
   behaviour — which is a different failure from a wrong assertion and does not announce
   itself.
 
-  - [ ] **Still uncovered: payloads reachable only with an *argument*.** `arc show <id>`,
-    `context show <id>`, `proof verify <path>`.
+  - [x] **Still uncovered: payloads reachable only with an *argument*.** DONE 2026-09-03,
+    and the entry undercounted the gap by more than half. It named three payloads
+    (`arc show`, `context show`, `proof verify`); there were **sixteen**, and **eight
+    commands were printing prose to stdout under `--jsonl` inside the blind spot**:
+    `arc new` (a bare id), `context route <label>` (bare ids), `nfr list` (tab-separated
+    columns), `autonomy set`, `ops`, `harness hash` (a bare hash), `strategy`, and
+    `device validate`.
 
-    **Decision recorded 2026-08-23: do not add an operand table.** A second maintained
-    list — of arguments this time — goes stale exactly the way the first one did twice in
-    three passes. The seeded fixture already creates `arc-0001` and unit `u1`, so the
-    invocations can be *derived* from the fixture that made those ids exist rather than
-    maintained beside it. Cheap once the fixture grows a reason to know its own ids;
-    not worth inventing that plumbing for three commands today.
+    **The 2026-08-23 decision not to add an operand table was right, and the reason it was
+    right pointed at a different design than the one it proposed.** It suggested deriving
+    the invocations from the fixture that minted the ids. That removes the id literals but
+    leaves the hole the verb enumeration was rewritten to close: a new operand-bearing
+    payload is covered on the day somebody remembers this file. So the refusal carries the
+    requirement instead — `root.MissingOperandError{Scope, Kind}` over a closed
+    `OperandKind` vocabulary — which is the same correction `MissingVerbError` made one
+    level up, for the same stated reason: *asking the command is not a workaround, it is
+    the right source*. Twenty-two prose refusals became data. The test supplies an operand
+    only because the command asked for one by kind, and the fixture answers from what it
+    minted; there is no list of invocations or of operands on either side.
+
+    **One design claim in the plan was wrong, and finding out is what caught the seventh
+    violation.** The probe loop was written on the reasoning that a command refusing for a
+    missing operand had not done anything yet — true of every round but the last, which by
+    definition no longer refuses and therefore *runs the command*. `adh strategy <arc>`
+    advanced the fixture's arc during discovery, so the asserted invocation then refused
+    for its stage, printed nothing, and passed. Discovery moved to a throwaway tree with
+    placeholder operands, which works because every command checks its operand count
+    before it looks anything up — so the kinds a command names do not depend on the tree
+    it is asked in. That invariant is what lets one discarded tree answer for the whole
+    walk, and it is written where the code relies on it.
+
+    **The adoption ratchet found two defects that are not about operands at all.** It
+    asserts that a bare invocation refused as `EINVALID` carries a typed refusal, and
+    flagged five commands. `device` and `sleep schedule` were refusing in prose, which
+    cost more than wording: `dispatchedVerbs` reads a command's verbs off
+    `MissingVerbError`, so **`device validate` was never enumerated** — and once it was,
+    it turned out to be the eighth command printing prose under `--jsonl`. And `sleep
+    schedule <typo>` returned an untyped error, so it reported `reason: "internal"` at
+    exit 1 — adh blaming itself for a caller's typo, the one reason a sensible client
+    retries on. That is the exact defect `TestUsageErrorsAreNotReportedAsInternal` exists
+    to prevent, surviving one level below where it looks.
+
+    **The other three flagged commands got a third type rather than an exemption.**
+    `judge`, `harness gate` and `harness calibrate` refuse for a missing *flag*, which is
+    not positional and cannot be answered from a kind — a flag's value is the caller's
+    intent, and there is no vocabulary of those. Naming them in an exemption list would
+    have been an eighth of the work and the fourth maintained list in a file whose own
+    comments record two of the first three going stale, so they carry
+    `root.MissingFlagError{Scope, Flags}` and the ratchet has no exemptions.
+
+    Also fixed while adjacent, each on its own merits: `proof create` refused for both its
+    operands at once and so could not say which was missing; `context route` with no
+    selector answered vacuously, making a typo'd label indistinguishable from one that
+    matched nothing — the shape §19 refuses elsewhere, where "cannot verify" must not read
+    as "verified".
+
+    **`arc show`'s recorded key set is an `adh.Arc`**, so adding a field to the arc record
+    without `omitempty` fails this entry. That is the review moment `payloadKeys` exists
+    to create — a new field on the arc is a change to what every caller of `arc show`
+    receives — not a defect in the assertion.
+
+    **What is still not covered, with the reason rather than the count:**
+
+    - Three payloads sit behind required flags (`judge`, `harness gate`, `harness
+      calibrate`). Reaching them needs a vocabulary of flag values, which is the thing
+      that does not exist.
+    - Three operand kinds are deliberately unminted, and the test logs which and why on
+      every run: a **tool id** would make `tool run` execute a third-party binary and the
+      contract must not depend on what is installed; a **lesson class** and a **staging
+      id** are both evidence of a harvest over closed arcs, and minting one means faking
+      the corpus it is evidence of.
+    - **Nested verbs are enumerated one level deep**, so `sleep schedule`'s five verbs are
+      still unwalked. Recursing is not free: `sleep schedule run` is a blocking daemon, so
+      a walk that invokes everything it finds would hang. Worth doing deliberately, with
+      that command named, rather than as a side effect of this pass.
+    - `SPEC-ADDITIONS.md` documents `adh context route <arc-id>`; the code and the usage
+      line both take labels and paths. The three copies disagree and the spec is the odd
+      one out — a decision about what the verb should accept, not a typo to quietly pick a
+      side on.
   - [x] **Usage and precondition errors report `reason: "internal"`.** DONE 2026-08-23.
     Seventy-four sites, classified by what the caller has to do: `EINVALID` for a
     malformed invocation (which also selects the usage exit code, so reason and status
@@ -2477,11 +2597,25 @@ rather than in any one repo's habits.
 
 ## Scoped, Not Started (2026-08-23)
 
-- **`consolidate.Harvest` (above) is buildable and the corpus is real.** The open question
-  was whether foreign sessions exist to mine; `~/.claude/projects/*.jsonl` is present on
-  this machine, so the answer is yes. The deterministic floor is retry-chain detection — a
-  prompt re-asked after negative feedback — which needs no model. It is a foreign-format
-  parser plus a mining pass plus a normalisation type, and starting it alongside four
-  other items is how it gets half-built.
+- ~~**`consolidate.Harvest` (above) is buildable and the corpus is real.**~~ **Stale, and
+  corrected 2026-09-03: this was built and the line it belongs to is closed.** The bullet
+  was written 2026-08-23, when the open question was whether foreign sessions existed to
+  mine. Increment 1 shipped the next day — `206cc9d session: normalise foreign transcripts
+  and mine them for corrections` and `a9b0370 cmd: add sessions report` — and the
+  measurement closed the whole line on 2026-08-26 (`88c6cda`, `bfb0fb2`): retry-chain
+  detection found **3 corrective turns in 13,677**, because these sessions are directive
+  rather than corrective. `internal/session` and `adh sessions report` remain as the
+  instrument that produced that answer. See the closed sub-items under
+  "`consolidate.Harvest` only learns from work adh itself drove" for the full reasoning.
+
+  **It is left struck through rather than deleted, because the failure is the useful
+  part**: a scoping note that outlives the work it scopes reads as outstanding, and this
+  one survived four passes of this file. It sent a reader to rebuild a refuted premise as
+  recently as this session.
+
+  One thing did come out of it: the command that measured the corpus left its own machine
+  contract unasserted. `sessions report <dir>` emits `{by_marker, retries, sessions,
+  turns}` and nothing checked it, because the payload is reachable only with an operand —
+  now closed under the argument-reachable payload item above.
 - **The relay test (above) is unchanged and large.** Its scoping note already records what
   transfers from gnosis and what does not.

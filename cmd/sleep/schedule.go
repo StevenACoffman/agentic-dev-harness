@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/schedule"
 )
@@ -59,10 +60,7 @@ func (execRunner) Run(ctx context.Context, command []string) error {
 // schedule dispatches the `sleep schedule` verbs over the SQLite job store.
 func (cfg *Config) schedule(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return &adh.Error{
-			Code:    adh.EINVALID,
-			Message: "sleep: schedule expects a verb: add, list, remove, tick, or run",
-		}
+		return root.MissingVerbError{Scope: "sleep schedule", Verbs: scheduleVerbs()}
 	}
 	store, err := schedule.Open(ctx, cfg.scheduleDir())
 	if err != nil {
@@ -82,11 +80,20 @@ func (cfg *Config) schedule(ctx context.Context, args []string) error {
 	case "run":
 		return cfg.scheduleRun(ctx, store)
 	default:
-		return fmt.Errorf(
-			"sleep: unknown schedule verb %q; want add, list, remove, tick, or run",
-			args[0],
-		)
+		// An untyped error here reported reason "internal" and exit 1 -- adh blaming
+		// itself for the caller's typo, and the one reason a sensible client retries
+		// on. The top-level ratchet catches this shape for every command; nothing
+		// looked one level down, where `sleep schedule` dispatches its own verbs.
+		return root.UnknownVerbError{
+			Scope: "sleep schedule", Got: args[0], Verbs: scheduleVerbs(),
+		}
 	}
+}
+
+// scheduleVerbs is what schedule dispatches, named once so both refusals and the usage
+// line cannot disagree about it.
+func scheduleVerbs() []string {
+	return []string{"add", "list", "remove", "tick", "run"}
 }
 
 // scheduleRun is the blocking daemon: it ticks the due jobs, then sleeps until the

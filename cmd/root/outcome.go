@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/toerr/errors/errcode"
 )
 
 // Outcome status values (SPEC §8): the class of a command's result, the field an
@@ -77,8 +78,11 @@ func (c *Config) EmitError(code int, reason, message string) error {
 // reports when the call site set none: a validation error is a usage error (2),
 // everything else is generic (1). Domain gates (4, 5–8, 12) set their own code.
 // This specializes the stub climax generates, reading adh's error taxonomy.
+// It reads the reason rather than adh.ErrorCode directly, so a validation error
+// raised by a library selects the usage code too — the two must not disagree about
+// one error, and only ReasonForError knows both classifications.
 func CodeForError(err error) int {
-	if adh.ErrorCode(err) == adh.EINVALID {
+	if ReasonForError(err) == adh.EINVALID {
 		return codeUsage
 	}
 	return codeGeneric
@@ -88,5 +92,44 @@ func CodeForError(err error) int {
 // error code (e.g. "not_found", "invalid", "conflict"), or "internal" for an
 // untyped error. It lets an agent branch on the failure class under --jsonl.
 func ReasonForError(err error) string {
+	if reason := reasonForCodedError(err); reason != "" {
+		return reason
+	}
 	return adh.ErrorCode(err)
+}
+
+// reasonForCodedError translates an error coded by the toerr `errcode` package into
+// adh's reason vocabulary, and returns "" for anything else.
+//
+// **This is the boundary where a library's failure becomes an adh reason.** skillet
+// classifies with errcode; adh classifies with the five codes SPEC §8 publishes. Nothing
+// bridged the two inside adh once internal/adh stopped importing the shared error
+// package — and it stopped because a root domain package takes no third-party import.
+//
+// It lives here, at the one place the vocabulary is consumed, rather than in each of the
+// four packages that call into skillet. Those four wrap with fmt.Errorf and never
+// classify, so translating there would be four copies of one mapping serving a single
+// reader.
+//
+// **Getting this wrong is silent and expensive.** Without it every skillet error reports
+// `internal` — the token that means adh itself broke — so a caller with a
+// retry-on-internal policy retries a not-found that can never succeed.
+func reasonForCodedError(err error) string {
+	status := errcode.Status(err)
+	switch status {
+	case errcode.StatusInvalidArgument:
+		return adh.EINVALID
+	case errcode.StatusAlreadyExists, errcode.StatusFailedPrecondition:
+		return adh.ECONFLICT
+	case errcode.StatusNotFound:
+		return adh.ENOTFOUND
+	case errcode.StatusUnauthenticated, errcode.StatusPermissionDenied:
+		return adh.EUNAUTHORIZED
+	case errcode.StatusUnknown:
+		// Not an errcode-coded error; the caller falls back to adh's own classification.
+		return ""
+	default:
+		// Coded, but with no adh analogue: internal is the honest answer.
+		return adh.EINTERNAL
+	}
 }
