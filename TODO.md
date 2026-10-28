@@ -759,6 +759,17 @@ composing a library struct.
       reach `ReasonForError`.
       Follow-up, neither created by this nor owed: adh's 123 `Op`/`Err` wrappers could move to
       `toerr.WrapWithMessage`. They are adh's own convention now, and nothing requires it.
+- [ ] {await-trigger} **toerr v0.3.0's new codes read as `internal`.** `Aborted` is a
+      concurrency conflict and `OutOfRange` a request past a valid range, so they would be
+      answered more truly as `conflict` and `invalid`. `Unavailable`, `ResourceExhausted`
+      and `DataLoss` have no analogue among SPEC §8's five tokens. All five reach
+      `reasonForCodedError`'s `default` and report `internal`.
+      **Not mapped, because nothing raises them.** skillet, the only producer adh
+      classifies, raises `NotFound`, `InvalidArgument`, `FailedPrecondition`,
+      `AlreadyExists`, `PermissionDenied` and `Unauthenticated`, all already mapped. Arms
+      for the rest could only be tested with errors adh builds for itself.
+      **Trigger:** a dependency adh classifies starts raising one. Map that code then, with
+      a case in `TestLibraryErrorsKeepTheirClassification` built from the real error.
 
 ## The Verification Record Comes from Skillet (2026-09-07)
 
