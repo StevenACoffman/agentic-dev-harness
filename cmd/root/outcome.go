@@ -129,7 +129,9 @@ func reasonForCodedError(err error) string {
 		// Not an errcode-coded error; the caller falls back to adh's own classification.
 		return ""
 	default:
-		// Coded, but with no adh analogue: internal is the honest answer.
+		// Coded, but with no adh analogue: internal is the honest answer. toerr v0.3.0's
+		// Aborted and OutOfRange would read better as conflict and invalid, but nothing
+		// adh classifies raises them yet; TODO.md holds the trigger for mapping them.
 		return adh.EINTERNAL
 	}
 }

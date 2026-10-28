@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/skillet/verification"
 )
 
 // humanActor is the actor-class prefix that earns HumanReviewed when folding events.
@@ -16,28 +17,6 @@ import (
 // event with no actor at all confirms nothing -- it is the shape a fabricated event
 // would take, and treating it as evidence would make the fold worth defeating.
 const humanActor = "human"
-
-// Verification is one verification event: who confirmed a unit, and when.
-//
-// **By is config-derived, and the record is attributable rather than authenticated.**
-// Whatever writes this field must take the actor from the repository's configured
-// identity, never from a flag on the invocation: a caller-supplied actor would let anyone
-// mint a human: event, which makes the fold in Tier worth defeating and is the same
-// reason an actorless event is invalid below. Config-derived is still self-asserted -- it
-// establishes who the harness was configured as, not who was at the keyboard -- and that
-// limit is stated rather than implied, the same narrowing already accepted for
-// content-addressing detecting accidents rather than tampering. Anything stronger needs a
-// signing identity adh does not have and should not invent.
-//
-// OKF §5.2 stores these rather than the tier they imply, and the reason is what a stored
-// tier cannot say. "human-reviewed" cannot name which human or on what date, and it
-// cannot represent "reviewed by a person *and* re-confirmed by a nightly process" --
-// which is the state a compounding knowledge base reaches most often, since §5.2's list
-// exists precisely so a sign-off and an automated pass stay distinct events.
-type Verification struct {
-	By string `json:"by"`
-	At string `json:"at,omitempty"`
-}
 
 // Trust is a unit's verification record: the events, with the tier derived from them.
 //
@@ -49,7 +28,12 @@ type Verification struct {
 // being read with this type.
 type Trust struct {
 	// Events is the OKF §5.2 list. Empty when the stored form was a bare tier.
-	Events []Verification
+	//
+	// The element type is skillet's, shared with gnosis since v0.31.0. What is *not* shared
+	// is the fold below: Tier answers human-or-machine for a context unit, while gnosis
+	// closes its actor vocabulary to three kinds to count distinct humans. The record was
+	// promoted and the judgement deliberately was not.
+	Events []verification.Event
 	// Stated is a tier stored directly, including an unrecognised one: an unknown value
 	// has to survive parsing so Valid reports it as a taxonomy problem, which is what
 	// `context lint` and the wiki index already do with it. Rejecting it at parse time
@@ -121,7 +105,7 @@ func (t Trust) MarshalJSON() ([]byte, error) {
 func (t *Trust) UnmarshalJSON(data []byte) error {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) > 0 && trimmed[0] == '[' {
-		var events []Verification
+		var events []verification.Event
 		if err := json.Unmarshal(trimmed, &events); err != nil {
 			return err //nolint:wrapcheck // the caller is encoding/json itself
 		}
@@ -156,7 +140,20 @@ func actorClass(by string) string {
 // inventing an actor for it is exactly what Valid rejects, and dropping it would silently
 // discard a human's judgement. Converting is a person's decision, because only a person
 // knows who the original reviewer was.
-func RecordVerification(path string, event Verification) error {
+//
+// **By is config-derived, and the record is attributable rather than authenticated.** The
+// actor must come from the repository's configured identity, never from a flag on the
+// invocation: a caller-supplied actor would let anyone mint a `human:` event, which makes
+// the fold in Tier worth defeating and is the same reason an actorless event is invalid.
+// Config-derived is still self-asserted -- it establishes who the harness was configured
+// as, not who was at the keyboard -- and that limit is stated rather than implied, the same
+// narrowing already accepted for content-addressing detecting accidents rather than
+// tampering. Anything stronger needs a signing identity adh does not have and should not
+// invent.
+//
+// The policy lives here rather than on skillet's Event because it is a rule about who may
+// write the field, not a property of the record, and skillet has no view on it.
+func RecordVerification(path string, event verification.Event) error {
 	const op = "contextstore.RecordVerification"
 	data, err := os.ReadFile(path)
 	if err != nil {

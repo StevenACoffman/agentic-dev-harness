@@ -12,6 +12,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/skillet/proof"
 	"github.com/StevenACoffman/toerr/errors/errcode"
 )
 
@@ -206,28 +207,32 @@ func TestEmitJSONLMultipleRecords(t *testing.T) {
 // It asserts the reason and the exit code together because they are derived from the same
 // classification and must not disagree about a single error.
 func TestLibraryErrorsKeepTheirClassification(t *testing.T) {
+	// A real skillet error, beside the hand-built ones below: skillet is compiled against
+	// whatever toerr adh requires, so this is the case that notices if a toerr upgrade
+	// changes how skillet's own codes read here.
+	_, fromSkillet := proof.Create("", "", "", nil)
 	cases := map[string]struct {
 		err        error
 		wantReason string
 		wantCode   int
 	}{
 		"not found": {
-			errcode.WithCode(errcode.StatusNotFound, "no packet", nil),
+			errcode.New(errcode.StatusNotFound, "no packet"),
 			adh.ENOTFOUND,
 			1,
 		},
 		"invalid": {
-			errcode.WithCode(errcode.StatusInvalidArgument, "no artifacts", nil),
+			errcode.New(errcode.StatusInvalidArgument, "no artifacts"),
 			adh.EINVALID,
 			2,
 		},
 		"conflict": {
-			errcode.WithCode(errcode.StatusFailedPrecondition, "digest differs", nil),
+			errcode.New(errcode.StatusFailedPrecondition, "digest differs"),
 			adh.ECONFLICT,
 			1,
 		},
 		"wrapped": {
-			fmt.Errorf("proof: %w", errcode.WithCode(errcode.StatusNotFound, "gone", nil)),
+			fmt.Errorf("proof: %w", errcode.New(errcode.StatusNotFound, "gone")),
 			adh.ENOTFOUND,
 			1,
 		},
@@ -236,6 +241,7 @@ func TestLibraryErrorsKeepTheirClassification(t *testing.T) {
 			adh.ECONFLICT,
 			1,
 		},
+		"skillet's own": {fromSkillet, adh.EINVALID, 2},
 		"untyped stays": {errors.New("boom"), adh.EINTERNAL, 1},
 	}
 	for name, tc := range cases {

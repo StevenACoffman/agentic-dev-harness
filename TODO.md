@@ -259,6 +259,7 @@ single strict-`>` gate is insufficient.
       adh's deterministic task-check *is* the rollout. `sleep` surfaces it. **Follow-up
       (deferred):** *model-generated* rollouts (a live worker running K model attempts)
       remain a separate capability; the deterministic evaluator is the rollout today.
+      **Refused 2026-09-07 with the `model.Client` decision.**
 - [x] **Validate the graders and the splits (§18.2).** DONE. Splits:
       `verdict.ValidateSplits` is a pure leakage guard (a task id in two splits →
       EINVALID). Grader: `harness.GraderSelfTest` extends the negative control from the
@@ -271,6 +272,8 @@ single strict-`>` gate is insufficient.
       exits non-zero on any disagreement — so the operator's check-sets are validated to
       discriminate. **Follow-up:** calibrate a *model* judge's free-text verdicts once a
       live judge is wired (this calibrates the deterministic rule-judge adh owns).
+      **Refused 2026-09-07 with the `model.Client` decision — file it as its own opt-in
+      calibration item if it earns one.**
 - [x] **Routing eval for the context lever (§10, Loop A/E).** DONE. `contextstore.
       EvaluateRouting` (a pure core) scores routing fixtures — each `RoutingCase`
       asserts the units that should route for an arc's labels/paths (an empty `Want`
@@ -516,6 +519,7 @@ PR-not-direct-commit. The genuinely additive, deterministic, adh-aligned ideas:
       problem. Verified: `StrataCount`/`RootCauseCounts`/`ClassifyRootCause` tables +
       `Apply`-stamps-record + a strata-gate promote journey. **Follow-up:** richer causes
       (infra/auth/rate-limit) need a live model worker's diagnostics, still deferred.
+      **Refused 2026-09-07 with the `model.Client` decision.**
 - [x] **Fixable-vs-structural finding taxonomy (Tier 2, §12/§19.2).** DONE. `Finding`
       gained an optional `Class` (fixable | structural; empty defaults to fixable,
       validated by `ParseFindings`); a confirmed **structural** finding now fails the arc
@@ -755,6 +759,59 @@ composing a library struct.
       reach `ReasonForError`.
       Follow-up, neither created by this nor owed: adh's 123 `Op`/`Err` wrappers could move to
       `toerr.WrapWithMessage`. They are adh's own convention now, and nothing requires it.
+- [ ] {await-trigger} **toerr v0.3.0's new codes read as `internal`.** `Aborted` is a
+      concurrency conflict and `OutOfRange` a request past a valid range, so they would be
+      answered more truly as `conflict` and `invalid`. `Unavailable`, `ResourceExhausted`
+      and `DataLoss` have no analogue among SPEC §8's five tokens. All five reach
+      `reasonForCodedError`'s `default` and report `internal`.
+      **Not mapped, because nothing raises them.** skillet, the only producer adh
+      classifies, raises `NotFound`, `InvalidArgument`, `FailedPrecondition`,
+      `AlreadyExists`, `PermissionDenied` and `Unauthenticated`, all already mapped. Arms
+      for the rest could only be tested with errors adh builds for itself.
+      **Trigger:** a dependency adh classifies starts raising one. Map that code then, with
+      a case in `TestLibraryErrorsKeepTheirClassification` built from the real error.
+
+## The Verification Record Comes from Skillet (2026-09-07)
+
+Source: skillet's OKF trust-field decision, triggered partly by this repository's fold.
+
+- [x] **`contextstore.Verification` is one of two identical hand-written copies.** DONE
+      2026-09-08 against skillet **v0.31.0**. The local type is deleted and `Trust.Events` is
+      `[]verification.Event`, across `trust.go`, `cmd/contextcmd`, four test sites, and a doc
+      reference in `internal/config`.
+      **The plan said adh had no local reasoning to keep and was wrong.** The type's doc
+      carried *"By is config-derived, and the record is attributable rather than
+      authenticated"* — a rule about **who may write** the field, not a property of the
+      record, so skillet has no view on it. It moved to `RecordVerification`, the function
+      the rule constrains, with a line saying why it did not travel with the type. The other
+      half of the doc (why events beat a stored tier) is in skillet's `Event` and was deleted
+      here rather than duplicated.
+      **The wire format was the risk and it was already guarded.** adh persists
+      `{"by":…,"at":…}`, and `trust_test.go` decodes **literal JSON fixtures** — including
+      `[{"by":"human"}]` for the absent-`at` case — so a tag change breaks those directly.
+      skillet's `Event` was given adh's exact tags for this reason; 13 subtests pass.
+      **Pinned at v0.34.0, not v0.31.0:** the bump went on to the current kernel, where
+      `Event`'s tags are unchanged and the same 13 subtests pass.
+      **`internal/adh` gained no import**, verified, which is the rule restored when
+      `adh.Error` stopped being an alias: the root domain package takes no third-party
+      dependency, and `contextstore` is an implementation package where one is fine.
+      **`Trust.Tier()` is untouched** — the record is shared, the fold is adh's.
+      `internal/contextstore/trust.go:37` declares `{By, At}` with `json` tags; gnosis's
+      `bundle.Verification` declares the same two fields. skillet is taking the type.
+      **Skillet decided 2026-09-07: the verification *record* is promoted, the *fold* is not.**
+      `Verification{By, At}`, list-valued, moves to skillet; deriving a tier from it stays local
+      to each consumer. The trigger fired because two repos independently hand-wrote a type
+      literally named `Verification` with the same two fields, while their folds differ by
+      design — gnosis's actor enum is closed to three kinds to count distinct humans (SPEC
+      §10.6.4), adh's classifier answers human-or-machine for a context-unit tier. The
+      `Generated`/`Verified` *block* is still not promoted, for the recorded reason that YAML
+      cannot round-trip and a block struct would be decode-only.
+      **`Trust.Tier()` stays here.** It folds `[]Verification` through `actorClass` to
+      answer human-or-machine for a context unit, which is not what gnosis's three-kind
+      enum answers. Only the record moves; the derivation is adh's.
+      **Unlike gnosis this copy round-trips**, because it lives in adh's own JSON store
+      rather than in an OKF frontmatter block, so the shared element is read *and* write
+      here. That asymmetry is why the block itself is still not promoted.
 
 ## Config Wiring
 
@@ -801,11 +858,29 @@ composing a library struct.
   grounding to `internal/worktree`), so `step` and `run` are thin shells over it.
   `run --relay [--response]` now drives the relay, chaining a resume through inline
   evaluation to the next emitted prompt in one call.
-- [ ] {decision-needed} `model.Client`: no real *API* client yet (Anthropic/OpenAI); `Mock` and
-  `Relay` are the only backends, selected by the `--relay` flag. (A `[models]
-  driver` config to pick the default backend was considered and dropped — the
-  driving agent passes `--relay` anyway, so it earned no keep. The API client
-  itself stays deprioritized — the relay is the backend.)
+- [x] {refused} `model.Client`: no real *API* client, and **there will not be one.**
+  **DECIDED 2026-09-07: the relay is the backend, not a placeholder for an SDK.**
+  **Nothing was blocked on it, which is what decided it.** Three entries were read as
+  dependents — model-generated rollouts (§18.2), calibrating a model judge, and richer
+  failure causes — and all three are deferred *follow-up notes inside already-closed items*,
+  not open work. The rollouts entry closed **because** no live worker was needed: adh's
+  deterministic task-check *is* the rollout. So building the client would have unlocked
+  optional capability and moved no stalled work.
+  **What it would have cost is the guarantee.** An API client needs keys and network, so it
+  has no deterministic test, and every adh gate is deterministic by construction — SPEC's
+  `adh eval` is *"deterministic — no model"*. It would also reopen the `[models] driver`
+  precedence question that was already considered and dropped.
+  **The capability is already reachable without adh owning it.** An operator who wants a
+  live model drives adh from an agent that has one; that is what `--relay` is for. Building
+  the client moves the model *into* adh in exchange for its determinism, which is the trade
+  the §18 split exists to refuse: mechanism in code, judgment relayed.
+  **If model-judge calibration matters on its own**, file it as its own decision — an
+  opt-in call on the calibration path only, never on a gate — with its own justification. A
+  general-purpose client kept open to serve one command is the shape this repo refused when
+  it dropped `[models] driver`. Original entry: `Mock` and `Relay` are the only backends,
+  selected by the `--relay` flag. (A `[models] driver` config to pick the default backend
+  was considered and dropped — the driving agent passes `--relay` anyway, so it earned no
+  keep. The API client itself stays deprioritized — the relay is the backend.)
 - [ ] {blocked-external} `device.Validator`: only `Mock`; no adb adapter. Domain-specific (mobile
   port) — not core to a general repo (see the proof-contract note below).
 - [x] `VCS`/git adapter: `internal/vcs` (go-git v6) + the `vcs` command do
@@ -1005,11 +1080,12 @@ defect/lapse, autonomy ladder, NO-PROOF-NO-CLOSE, effectiveness) hand-rolled.
       `internal/atomicfile` (Tailscale, BSD-3-Clause; temp file + fsync + rename).
       Still to offload: `gofrs/flock` (cross-process locking) once the parallel
       manager writes one workspace from many arcs.
-- [ ] {blocked-external} `model.Client` (LLM): retries/backoff, streaming, tool-calls, token
-      counting → the official SDKs (`anthropic-sdk-go`, `openai-go`). Never a
-      hand-rolled HTTP/retry layer. **Deferred**: needs API keys + network (no
-      deterministic test here), and `model.Relay` is the skill-driven backend the
-      tool actually uses today.
+- [x] {refused} `model.Client` (LLM) → the official SDKs. **Refused 2026-09-07; see the
+      decision under "Effectful Seams Still Mocked", which is the same question.** This
+      entry and that one recorded one decision twice and disagreed about its state: this
+      said `{blocked-external}` (waiting on keys and network) while the other said
+      `{decision-needed}` (a choice). Both cannot be true, and the second was right — the
+      keys were never the obstacle, the determinism guarantee was.
 - [x] `VCS` (branch/commit/status/diff/revert) → `internal/vcs` over `go-git/v6` +
       the `vcs` command; `Mock` for tests. `close` commits a `change` arc onto its
       own branch `adh/<arc-id>` past the approval+proof gates, and `reject` reverts

@@ -24,6 +24,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
+	"github.com/StevenACoffman/skillet/verification"
 )
 
 // Exit codes for the context command (SPEC §7), kept distinct from the arc gates.
@@ -554,7 +555,7 @@ func (cfg *Config) signOff(results []integrityResult, drift bool) error {
 				"(e.g. actor = \"human:steve\" under [identity])",
 		}
 	}
-	event := contextstore.Verification{By: actor, At: time.Now().UTC().Format(time.RFC3339)}
+	event := verification.Event{By: actor, At: time.Now().UTC().Format(time.RFC3339)}
 	for i := range results {
 		if results[i].Status != contextstore.ResultOK {
 			continue

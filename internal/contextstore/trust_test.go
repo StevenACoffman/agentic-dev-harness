@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/skillet/verification"
 )
 
 // wantTier unmarshals a stored `verified` value and asserts the tier it derives, plus
@@ -121,7 +122,7 @@ func TestTrustJoinsWithFreshness(t *testing.T) {
 	units := []contextstore.Unit{{
 		ID:        "signed",
 		Integrity: "check",
-		Verified: contextstore.Trust{Events: []contextstore.Verification{
+		Verified: contextstore.Trust{Events: []verification.Event{
 			{By: "human:steve", At: "2026-07-01"},
 		}},
 	}}
@@ -147,7 +148,7 @@ func wantRecordRefused(t *testing.T, stored, wantIn string) {
 	if err := os.WriteFile(path, []byte(stored), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	err := contextstore.RecordVerification(path, contextstore.Verification{By: "human:s"})
+	err := contextstore.RecordVerification(path, verification.Event{By: "human:s"})
 	if err == nil {
 		t.Fatalf("RecordVerification(%s) succeeded, want a refusal", stored)
 	}
@@ -166,11 +167,11 @@ func TestRecordVerificationAppendsAndPreserves(t *testing.T) {
 	if err := os.WriteFile(path, []byte(stored), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	first := contextstore.Verification{By: "human:steve", At: "2026-07-01"}
+	first := verification.Event{By: "human:steve", At: "2026-07-01"}
 	if err := contextstore.RecordVerification(path, first); err != nil {
 		t.Fatalf("RecordVerification: %v", err)
 	}
-	second := contextstore.Verification{By: "ci:nightly", At: "2026-08-01"}
+	second := verification.Event{By: "ci:nightly", At: "2026-08-01"}
 	if err := contextstore.RecordVerification(path, second); err != nil {
 		t.Fatalf("RecordVerification: %v", err)
 	}
