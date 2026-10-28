@@ -756,6 +756,48 @@ composing a library struct.
       Follow-up, neither created by this nor owed: adh's 123 `Op`/`Err` wrappers could move to
       `toerr.WrapWithMessage`. They are adh's own convention now, and nothing requires it.
 
+## The Verification Record Comes from Skillet (2026-09-07)
+
+Source: skillet's OKF trust-field decision, triggered partly by this repository's fold.
+
+- [x] **`contextstore.Verification` is one of two identical hand-written copies.** DONE
+      2026-09-08 against skillet **v0.31.0**. The local type is deleted and `Trust.Events` is
+      `[]verification.Event`, across `trust.go`, `cmd/contextcmd`, four test sites, and a doc
+      reference in `internal/config`.
+      **The plan said adh had no local reasoning to keep and was wrong.** The type's doc
+      carried *"By is config-derived, and the record is attributable rather than
+      authenticated"* — a rule about **who may write** the field, not a property of the
+      record, so skillet has no view on it. It moved to `RecordVerification`, the function
+      the rule constrains, with a line saying why it did not travel with the type. The other
+      half of the doc (why events beat a stored tier) is in skillet's `Event` and was deleted
+      here rather than duplicated.
+      **The wire format was the risk and it was already guarded.** adh persists
+      `{"by":…,"at":…}`, and `trust_test.go` decodes **literal JSON fixtures** — including
+      `[{"by":"human"}]` for the absent-`at` case — so a tag change breaks those directly.
+      skillet's `Event` was given adh's exact tags for this reason; 13 subtests pass.
+      **Pinned at v0.34.0, not v0.31.0:** the bump went on to the current kernel, where
+      `Event`'s tags are unchanged and the same 13 subtests pass.
+      **`internal/adh` gained no import**, verified, which is the rule restored when
+      `adh.Error` stopped being an alias: the root domain package takes no third-party
+      dependency, and `contextstore` is an implementation package where one is fine.
+      **`Trust.Tier()` is untouched** — the record is shared, the fold is adh's.
+      `internal/contextstore/trust.go:37` declares `{By, At}` with `json` tags; gnosis's
+      `bundle.Verification` declares the same two fields. skillet is taking the type.
+      **Skillet decided 2026-09-07: the verification *record* is promoted, the *fold* is not.**
+      `Verification{By, At}`, list-valued, moves to skillet; deriving a tier from it stays local
+      to each consumer. The trigger fired because two repos independently hand-wrote a type
+      literally named `Verification` with the same two fields, while their folds differ by
+      design — gnosis's actor enum is closed to three kinds to count distinct humans (SPEC
+      §10.6.4), adh's classifier answers human-or-machine for a context-unit tier. The
+      `Generated`/`Verified` *block* is still not promoted, for the recorded reason that YAML
+      cannot round-trip and a block struct would be decode-only.
+      **`Trust.Tier()` stays here.** It folds `[]Verification` through `actorClass` to
+      answer human-or-machine for a context unit, which is not what gnosis's three-kind
+      enum answers. Only the record moves; the derivation is adh's.
+      **Unlike gnosis this copy round-trips**, because it lives in adh's own JSON store
+      rather than in an OKF frontmatter block, so the shared element is read *and* write
+      here. That asymmetry is why the block itself is still not promoted.
+
 ## Config Wiring
 
 - [x] `internal/config` precedence loader (SPEC §3): defaults → user config →

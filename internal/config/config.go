@@ -384,7 +384,7 @@ func allRoles() []adh.Stage {
 
 // validateIdentity rejects a configured actor with no class.
 //
-// `Verification.By` is folded on the part before its colon, so a bare "steve" would
+// `verification.Event.By` is folded on the part before its colon, so a bare "steve" would
 // become a class named "steve" — not human, not machine, and silently outside the
 // taxonomy the tier derives from. Rejecting it at load is what stops someone
 // "helpfully" defaulting an unprefixed name to human later, which is precisely the
