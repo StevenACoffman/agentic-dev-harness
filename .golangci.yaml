@@ -285,6 +285,12 @@ linters:
       extra-ignore-sigs:
         - .Errorf(
         - fmt.Errorf(
+        # root's terminal errors: ExitError carries an exit code the dispatcher
+        # unpacks with errors.As, and DryRunUnsupportedError names its command. A
+        # command returns either one as its outermost frame, so a wrap adds nothing.
+        # Both are conversions, which wrapcheck reports by type.
+        - github.com/StevenACoffman/agentic-dev-harness/cmd/root.ExitError int
+        - github.com/StevenACoffman/agentic-dev-harness/cmd/root.DryRunUnsupportedError string
 
     # ── depguard ─────────────────────────────────────────────────────────────
     # spec.md: climax uses its own command pattern; no third-party CLI frameworks.
