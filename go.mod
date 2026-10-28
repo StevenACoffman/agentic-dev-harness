@@ -10,7 +10,7 @@ require (
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/StevenACoffman/mango-ff v0.0.0-20260411205343-7f039223efef
-	github.com/StevenACoffman/toerr v0.1.0
+	github.com/StevenACoffman/toerr v0.3.0
 	github.com/betterleaks/betterleaks v1.8.1
 	github.com/go-git/go-billy/v6 v6.0.0-alpha.1
 	github.com/go-git/go-git/v6 v6.0.0-alpha.4
