@@ -87,7 +87,8 @@ strata**, so a one-day burst never mints a rule. Units carry a trust tier (unver
 starter store keyed by the repo's top-level directories, so a change under `internal/`
 routes to the `internal` unit out of the box. A tool registry
 (`adh tool {list,doctor,run}`) makes external capabilities legible, checkable, and
-runnable; `adh doctor` self-checks the whole harness (registries valid, unit ids
+runnable, and runs only as committed: a registry, loop file or prompt template that
+differs from `HEAD` is refused until a human commits it (SPEC-ADDITIONS §13.3); `adh doctor` self-checks the whole harness (registries valid, unit ids
 unique, cross-references and provenance resolve); `adh nfr {list,show,lint}` holds
 nonfunctional requirements as testable Planguage specs.
 
