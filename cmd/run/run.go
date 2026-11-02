@@ -307,6 +307,11 @@ func (cfg *Config) emitRelay(
 			"run: the critic is ungrounded — no routed context and no proof packet; "+
 				"this review runs on the model's own priors (§19.1)")
 	}
+	for _, w := range out.Withheld {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"run: withheld context unit %s from grounding: %s (see `adh context lint`)\n",
+			w.ID, w.Reason)
+	}
 	return cfg.reportAwaiting(arc, out.Prompt)
 }
 

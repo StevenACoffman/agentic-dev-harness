@@ -281,6 +281,11 @@ func (cfg *Config) emit(
 		return fmt.Errorf("step: %w", err)
 	}
 	cfg.warnUngrounded(&outcome)
+	for _, w := range outcome.Withheld {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"step: withheld context unit %s from grounding: %s (see `adh context lint`)\n",
+			w.ID, w.Reason)
+	}
 	return cfg.report(arc, statusAwaiting, outcome.Prompt)
 }
 

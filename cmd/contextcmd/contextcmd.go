@@ -19,6 +19,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
@@ -339,10 +340,22 @@ func (cfg *Config) lintProblems(
 			continue
 		}
 		// The content the routing preview promises must exist and stay in the store.
-		if _, err := contextstore.Content(storeDir, unit); err != nil {
+		body, err := contextstore.Content(storeDir, unit)
+		if err != nil {
 			problems = append(problems, harnesscheck.Problem{
 				Kind: harnesscheck.KindDanglingSource, Ref: unit.ID,
 				Detail: "unit " + unit.ID + ": content_path does not resolve: " + err.Error(),
+			})
+			continue
+		}
+		// The same test grounding applies (critic.WithholdHidden), so lint names every
+		// unit a stage will not be offered, and why.
+		_, withheld := critic.WithholdHidden([]contextstore.Unit{*unit},
+			map[string]string{unit.ID: body})
+		for _, w := range withheld {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindHiddenCharacters, Ref: unit.ID,
+				Detail: "unit " + unit.ID + ": " + w.Reason,
 			})
 		}
 	}

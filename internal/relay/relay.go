@@ -58,6 +58,11 @@ type Outcome struct {
 	// operator receiving the prompt can still add a context unit or declare a label.
 	// By eval the review has happened.
 	Ungrounded bool
+
+	// Withheld is the context units the stage's grounding left out because their
+	// content carries hidden codepoints (critic.Grounding.Withheld), for the shell to
+	// report.
+	Withheld []critic.Withheld
 }
 
 // Emit renders the arc's current stage prompt and parks it as a pending turn,
@@ -93,6 +98,7 @@ func Emit(
 		Kind:       Awaiting,
 		Prompt:     req.Prompt,
 		Ungrounded: arc.Stage == adh.StageCritic && !ground.HasGrounding(),
+		Withheld:   ground.Withheld,
 	}, nil
 }
 
