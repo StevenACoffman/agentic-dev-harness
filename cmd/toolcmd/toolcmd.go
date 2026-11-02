@@ -29,6 +29,12 @@ const (
 	codeRegistry = 10 // registry-level problem: invalid, unknown id, or uninstalled binary
 )
 
+// doctorWarning is one hazard in one tool's command.
+type doctorWarning struct {
+	Tool    string `json:"tool"`
+	Warning string `json:"warning"`
+}
+
 // Config holds the configuration for the tool command.
 type Config struct {
 	*root.Config
@@ -110,14 +116,39 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool registry invalid: %s\n", verr)
 		return root.ExitError(codeRegistry)
 	}
+	warnings := doctorWarnings(reg)
 	if cfg.JSONL {
-		if err := cfg.EmitOK(map[string]any{"tools": len(reg.Tools), "valid": true}); err != nil {
+		if err := cfg.EmitOK(map[string]any{
+			"tools": len(reg.Tools), "valid": true, "warnings": warnings,
+		}); err != nil {
 			return fmt.Errorf("tool: %w", err)
 		}
 		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d tools declared, registry valid\n", len(reg.Tools))
+	for _, w := range warnings {
+		_, _ = fmt.Fprintf(
+			cfg.Stdout,
+			"warning: tool %s %s; a human should confirm it is intended\n",
+			w.Tool,
+			w.Warning,
+		)
+	}
 	return nil
+}
+
+// doctorWarnings lists, by tool, every hazard toolreg.Hazards finds in its command. They
+// never change doctor's verdict: a registry may bootstrap a toolchain on purpose, so only
+// a human can say which matters. Empty rather than nil so --jsonl always carries the field.
+func doctorWarnings(reg toolreg.Registry) []doctorWarning {
+	out := []doctorWarning{}
+	for i := range reg.Tools {
+		tool := &reg.Tools[i]
+		for _, why := range toolreg.Hazards(tool.Run) {
+			out = append(out, doctorWarning{Tool: tool.ID, Warning: why})
+		}
+	}
+	return out
 }
 
 // run invokes the declared tool named by args[0] and translates its result. It

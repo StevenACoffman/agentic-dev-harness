@@ -68,7 +68,7 @@ var payloadKeys = map[string][]string{
 	"oracle selftest":   {"passed"},
 	"sleep run":         {"reason", "staged"},
 	"sleep status":      {"common_patterns", "staged"},
-	"tool doctor":       {"tools", "valid"},
+	"tool doctor":       {"tools", "valid", "warnings"},
 	"worker show":       {"epoch", "models"},
 
 	// Reachable only with state, and unasserted until the seeded run existed. Five of
