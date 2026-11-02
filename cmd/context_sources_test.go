@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
@@ -125,4 +126,32 @@ func TestContextLintUnverifiedClaim(t *testing.T) {
 	}
 	writeClaimUnit(t, "rule", "real quoted", "docs/src.md")
 	mustRun(t, "context", "lint")
+}
+
+// TestContextLintReportsHiddenCharacters: a unit whose content carries hidden codepoints
+// fails lint, naming the class — the same test grounding uses to withhold it.
+func TestContextLintReportsHiddenCharacters(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(contextstore.DefaultStoreDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	unit := `{"id":"rule","kind":"base-rule","labels":["x"],"content_path":"rule.md"}`
+	files := map[string]string{
+		"rule.json": unit,
+		"rule.md":   "always\u200b run the tests",
+	}
+	for name, content := range files {
+		path := filepath.Join(contextstore.DefaultStoreDir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := run(t, "context", "--jsonl", "lint")
+	var exit root.ExitError
+	if !errors.As(err, &exit) || int(exit) != 12 {
+		t.Fatalf("lint with hidden characters = %v, want ExitError(12)", err)
+	}
+	if !strings.Contains(out, "hidden_characters") || !strings.Contains(out, "U+200B") {
+		t.Errorf("lint output does not name the hidden codepoint:\n%s", out)
+	}
 }

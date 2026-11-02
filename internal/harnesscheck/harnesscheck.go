@@ -34,6 +34,7 @@ const (
 	KindNoGuards          = "no_guards"          // NFR specs exist and none is a guard (§10.5)
 	KindDanglingCommand   = "dangling_command"   // a unit's prose names a command that does not resolve
 	KindUnclaimedKind     = "unclaimed_kind"     // no declared tool adjudicates a finding kind (§13.2)
+	KindHiddenCharacters  = "hidden_characters"  // a unit's content carries hidden codepoints
 )
 
 // Inputs bundles the loaded harness state Check reasons over.

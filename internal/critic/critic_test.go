@@ -3,6 +3,7 @@ package critic_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -186,5 +187,58 @@ func TestLoadReadsProofManifest(t *testing.T) {
 	}
 	if len(g.Proof) != 1 || g.Proof[0].Path != "proof/oracle.txt" {
 		t.Errorf("Load did not read the proof packet: %+v", g.Proof)
+	}
+}
+
+func TestWithholdHidden(t *testing.T) {
+	t.Parallel()
+	units := []contextstore.Unit{{ID: "clean"}, {ID: "poisoned"}, {ID: "unread"}, {ID: "emoji"}}
+	contents := map[string]string{
+		"clean":    "run the tests first",
+		"poisoned": "run the tests\u200b first\u202e",
+		// A zero-width joiner inside an emoji sequence is legitimate text (skillet/hidden).
+		"emoji": "ship it \U0001F468\u200d\U0001F469",
+	}
+	kept, withheld := critic.WithholdHidden(units, contents)
+	var keptIDs []string
+	for i := range kept {
+		keptIDs = append(keptIDs, kept[i].ID)
+	}
+	if want := []string{"clean", "unread", "emoji"}; !reflect.DeepEqual(keptIDs, want) {
+		t.Errorf("kept = %v, want %v", keptIDs, want)
+	}
+	want := []critic.Withheld{
+		{
+			ID:     "poisoned",
+			Reason: "content carries hidden codepoints: bidi-override U+202E \u00d71, zero-width U+200B \u00d71",
+		},
+	}
+	if !reflect.DeepEqual(withheld, want) {
+		t.Errorf("withheld = %+v, want %+v", withheld, want)
+	}
+}
+
+func TestForStageWithholdsAPoisonedUnit(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"u-good.json": `{"id":"u-good","kind":"runbook","labels":["auth"],"content_path":"good.md"}`,
+		"u-bad.json":  `{"id":"u-bad","kind":"runbook","labels":["auth"],"content_path":"bad.md"}`,
+		"good.md":     "rotate keys yearly",
+		"bad.md":      "rotate keys yearly\U000E0041\U000E0042",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	arc := &adh.Arc{ID: "arc-0001", Stage: adh.StageCritic, Labels: []string{"auth"}}
+	g, gap, err := critic.ForStage(arc, dir, &critic.Inputs{AcceptanceBar: "bar"})
+	if err != nil || gap {
+		t.Fatalf("ForStage = gap %v, err %v", gap, err)
+	}
+	if len(g.Context) != 1 || g.Context[0].ID != "u-good" {
+		t.Errorf("routed %+v, want only u-good", g.Context)
+	}
+	if len(g.Withheld) != 1 || g.Withheld[0].ID != "u-bad" {
+		t.Errorf("withheld %+v, want u-bad", g.Withheld)
 	}
 }

@@ -19,6 +19,8 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -338,10 +340,22 @@ func (cfg *Config) lintProblems(
 			continue
 		}
 		// The content the routing preview promises must exist and stay in the store.
-		if _, err := contextstore.Content(storeDir, unit); err != nil {
+		body, err := contextstore.Content(storeDir, unit)
+		if err != nil {
 			problems = append(problems, harnesscheck.Problem{
 				Kind: harnesscheck.KindDanglingSource, Ref: unit.ID,
 				Detail: "unit " + unit.ID + ": content_path does not resolve: " + err.Error(),
+			})
+			continue
+		}
+		// The same test grounding applies (critic.WithholdHidden), so lint names every
+		// unit a stage will not be offered, and why.
+		_, withheld := critic.WithholdHidden([]contextstore.Unit{*unit},
+			map[string]string{unit.ID: body})
+		for _, w := range withheld {
+			problems = append(problems, harnesscheck.Problem{
+				Kind: harnesscheck.KindHiddenCharacters, Ref: unit.ID,
+				Detail: "unit " + unit.ID + ": " + w.Reason,
 			})
 		}
 	}
@@ -439,6 +453,9 @@ func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Dura
 // unrunnable=unconfirmed rule the Evaluation stage uses). A unit whose integrity
 // names a tool the registry does not declare is a store misconfiguration (EINVALID).
 func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args []string) error {
+	if err := execconfig.Require(cfg.repoDir(), execconfig.ToolsFile); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
 	reg, err := toolreg.LoadRepo(cfg.repoDir())
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
@@ -463,7 +480,7 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 			)}
 		}
 		start := time.Now()
-		code, ran := shell.Runner{}.Run(ctx, tool.Run, cfg.repoDir())
+		code, ran := shell.Runner{}.Exec(ctx, tool.Invocation(), cfg.repoDir(), nil, nil)
 		cfg.logIntegrityRun(tool.ID, code, ran, time.Since(start))
 		result := integrityResult{Unit: unit.ID, Tool: tool.ID, Status: "ok"}
 		switch {

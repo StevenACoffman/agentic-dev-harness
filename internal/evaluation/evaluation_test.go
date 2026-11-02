@@ -12,6 +12,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
 )
@@ -34,11 +35,15 @@ func (f fakeAdjudicator) Adjudicate(
 	return true, finding.Kind == f.failKind, nil
 }
 
-func (f fakeRunner) RunCheck(_ context.Context, _, _ string) (passed, ran bool) {
+func (f fakeRunner) RunCheck(_ context.Context, _ shell.Command, _ string) (passed, ran bool) {
 	return f.passed, f.ran
 }
 
-func (f fakeRunner) Measure(_ context.Context, _, _ string) (value float64, ran bool) {
+func (f fakeRunner) Measure(
+	_ context.Context,
+	_ shell.Command,
+	_ string,
+) (value float64, ran bool) {
 	return f.value, f.measured
 }
 

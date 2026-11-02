@@ -85,6 +85,14 @@ func (cfg *Config) exec(_ context.Context, _ []string) error {
 	_, _ = fmt.Fprintf(cfg.Stdout,
 		"initialized .adh: config %s, %d context unit(s), tools %s, loops %s\n",
 		wroteWord(wrote), units, wroteWord(wroteTools), wroteWord(wroteLoops))
+	if wroteTools || wroteLoops {
+		// adh runs these only as committed (execconfig), so say so now rather than
+		// leaving the first `tool run` or `eval` to explain it.
+		_, _ = fmt.Fprintln(
+			cfg.Stdout,
+			"review and commit .adh/tools.json and .adh/loops.json; adh runs them only as committed",
+		)
+	}
 	return nil
 }
 

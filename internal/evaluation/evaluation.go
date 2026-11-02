@@ -20,6 +20,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/device"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
@@ -101,15 +102,16 @@ type RepoAdjudicator struct {
 // (§19.2), not an error, and an unstartable check is unconfirmed, not a failure of
 // the Evaluation stage. The command is repository-owned config, never model input.
 type CheckRunner interface {
-	RunCheck(ctx context.Context, command, dir string) (passed, ran bool)
+	RunCheck(ctx context.Context, command shell.Command, dir string) (passed, ran bool)
 	// Measure runs a Meter tool and returns the numeric value it emits (§10.5), so an
 	// NFR finding can gate on a declarative Fail threshold rather than an exit code.
 	// ran is false when the command could not start or emitted no parseable number.
-	Measure(ctx context.Context, command, dir string) (value float64, ran bool)
+	Measure(ctx context.Context, command shell.Command, dir string) (value float64, ran bool)
 }
 
-// ShellRunner runs a check as `sh -c <command>` in dir through the shared
-// internal/shell edge. RepoAdjudicator holds it behind CheckRunner so tests inject
+// ShellRunner runs a check in dir through the shared internal/shell edge: as
+// `sh -c <run>` for a script tool, directly for an argument-list tool. RepoAdjudicator holds it
+// behind CheckRunner so tests inject
 // a fake.
 type ShellRunner struct{}
 
@@ -130,7 +132,13 @@ func NewRepoAdjudicator(
 // with no registry file adjudicates NFR findings as unrunnable, not an error, so
 // the common case needs no setup. It is the one call the `eval`, `run`, and `step`
 // shells make.
+//
+// It refuses a tool registry that differs from HEAD (execconfig): adjudication runs the
+// registry's commands, and an arc's own worker could otherwise have written them.
 func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
+	if err := execconfig.Require(repoDir, execconfig.ToolsFile); err != nil {
+		return RepoAdjudicator{}, &adh.Error{Op: "evaluation.RepoAdjudicatorFor", Err: err}
+	}
 	checks, err := loadChecks(repoDir)
 	if err != nil {
 		return RepoAdjudicator{}, err
@@ -156,10 +164,15 @@ func loadChecks(repoDir string) (toolreg.Registry, error) {
 	return reg, nil
 }
 
-// RunCheck runs command via the shell in dir. A clean exit passes; a non-zero exit
-// ran-and-failed; a command that could not start (not found, canceled) did not run.
-func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, ran bool) {
-	code, ran := shell.Runner{}.Run(ctx, command, dir)
+// RunCheck runs command in dir (through the shell only for a script command). A clean
+// exit passes; a non-zero exit ran-and-failed; a command that could not start (not found, canceled)
+// did not run.
+func (ShellRunner) RunCheck(
+	ctx context.Context,
+	command shell.Command,
+	dir string,
+) (passed, ran bool) {
+	code, ran := shell.Runner{}.Exec(ctx, command, dir, nil, nil)
 	return code == 0, ran
 }
 
@@ -169,9 +182,13 @@ func (ShellRunner) RunCheck(ctx context.Context, command, dir string) (passed, r
 // only a command that could not start (not found) or emits no parseable number is
 // unmeasurable (ran=false), leaving the NFR finding unconfirmed rather than a false
 // gate (§19.2).
-func (ShellRunner) Measure(ctx context.Context, command, dir string) (value float64, ran bool) {
+func (ShellRunner) Measure(
+	ctx context.Context,
+	command shell.Command,
+	dir string,
+) (value float64, ran bool) {
 	var out bytes.Buffer
-	code, started := shell.Runner{}.RunIO(ctx, command, dir, &out, nil)
+	code, started := shell.Runner{}.Exec(ctx, command, dir, &out, nil)
 	if shell.NotRun(code, started) {
 		return 0, false
 	}
@@ -523,7 +540,7 @@ func (a *RepoAdjudicator) runDeclaredTool(
 		return critic.Adjudicated{}, false
 	}
 	start := time.Now()
-	passed, ranCheck := a.runner.RunCheck(ctx, tool.Run, a.repoRoot())
+	passed, ranCheck := a.runner.RunCheck(ctx, tool.Invocation(), a.repoRoot())
 	// A registered tool that could not start is the trustworthy refusal: the
 	// repository declared this check and the environment cannot perform it, which is
 	// evidence about the repository rather than about the finding that named it.
@@ -592,7 +609,7 @@ func (a *RepoAdjudicator) adjudicateSpec(ctx context.Context, spec *nfr.Spec) cr
 		// tool was never registered, so it cannot be the tool-failed refusal either.
 		return critic.Adjudicated{Unrunnable: adh.UnrunnableUnknownRef}
 	}
-	value, measured := a.runner.Measure(ctx, tool.Run, a.repoRoot())
+	value, measured := a.runner.Measure(ctx, tool.Invocation(), a.repoRoot())
 	if !measured {
 		// A registered meter that produced no measurement: the same refusal a
 		// registered tool that could not start is.

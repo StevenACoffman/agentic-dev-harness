@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
@@ -27,6 +29,12 @@ import (
 const (
 	codeRegistry = 10 // registry-level problem: invalid, unknown id, or uninstalled binary
 )
+
+// doctorWarning is one hazard in one tool's command.
+type doctorWarning struct {
+	Tool    string `json:"tool"`
+	Warning string `json:"warning"`
+}
 
 // Config holds the configuration for the tool command.
 type Config struct {
@@ -109,14 +117,52 @@ func (cfg *Config) doctor(reg toolreg.Registry) error {
 		_, _ = fmt.Fprintf(cfg.Stderr, "tool registry invalid: %s\n", verr)
 		return root.ExitError(codeRegistry)
 	}
+	warnings := doctorWarnings(reg, exec.LookPath)
 	if cfg.JSONL {
-		if err := cfg.EmitOK(map[string]any{"tools": len(reg.Tools), "valid": true}); err != nil {
+		if err := cfg.EmitOK(map[string]any{
+			"tools": len(reg.Tools), "valid": true, "warnings": warnings,
+		}); err != nil {
 			return fmt.Errorf("tool: %w", err)
 		}
 		return nil
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "%d tools declared, registry valid\n", len(reg.Tools))
+	for _, w := range warnings {
+		_, _ = fmt.Fprintf(
+			cfg.Stdout,
+			"warning: tool %s %s; a human should confirm it is intended\n",
+			w.Tool,
+			w.Warning,
+		)
+	}
 	return nil
+}
+
+// doctorWarnings lists, by tool, every hazard toolreg.Hazards finds in a script command
+// and every argument-list command lookPath cannot resolve. They never change doctor's
+// verdict: a registry may bootstrap a toolchain on purpose, and a tool may be optional
+// (its if_absent says what then), so only a human can say which matters. Empty rather
+// than nil so --jsonl always carries the field.
+//
+// lookPath is exec.LookPath in production; it is a parameter so a test need not depend
+// on what the machine running it has installed.
+func doctorWarnings(reg toolreg.Registry, lookPath func(string) (string, error)) []doctorWarning {
+	out := []doctorWarning{}
+	for i := range reg.Tools {
+		tool := &reg.Tools[i]
+		for _, why := range toolreg.Hazards(tool.Run) {
+			out = append(out, doctorWarning{Tool: tool.ID, Warning: why})
+		}
+		if tool.Command == "" {
+			continue
+		}
+		if _, err := lookPath(tool.Command); err != nil {
+			out = append(out, doctorWarning{
+				Tool: tool.ID, Warning: fmt.Sprintf("runs %q, which is not on PATH", tool.Command),
+			})
+		}
+	}
+	return out
 }
 
 // run invokes the declared tool named by args[0] and translates its result. It
@@ -129,6 +175,11 @@ func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string)
 		return root.MissingOperandError{Scope: "tool run", Kind: root.OperandTool}
 	}
 	id := args[0]
+	// Refused here, at the run, rather than at load: list and doctor only display the
+	// registry, and a check made earlier would leave a window for a later edit.
+	if err := execconfig.Require(cfg.repoDir(), execconfig.ToolsFile); err != nil {
+		return fmt.Errorf("tool run: %w", err)
+	}
 	tool, ok := reg.FindByID(id)
 	if !ok {
 		return cfg.reportRunProblem(codeRegistry, "unknown_tool",
@@ -145,7 +196,7 @@ func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string)
 // is a registry-level problem carrying the repair hint.
 func (cfg *Config) runStreamed(ctx context.Context, tool *toolreg.Tool) error {
 	start := time.Now()
-	exit, ran := shell.Runner{}.RunIO(ctx, tool.Run, cfg.repoDir(), cfg.Stdout, cfg.Stderr)
+	exit, ran := shell.Runner{}.Exec(ctx, tool.Invocation(), cfg.repoDir(), cfg.Stdout, cfg.Stderr)
 	cfg.logRun(tool.ID, exit, ran, time.Since(start))
 	if shell.NotRun(exit, ran) {
 		return cfg.reportRunProblem(codeRegistry, "tool_unavailable", unavailableMessage(tool))
@@ -161,7 +212,7 @@ func (cfg *Config) runStreamed(ctx context.Context, tool *toolreg.Tool) error {
 func (cfg *Config) runCaptured(ctx context.Context, tool *toolreg.Tool) error {
 	var stdout, stderr bytes.Buffer
 	start := time.Now()
-	exit, ran := shell.Runner{}.RunIO(ctx, tool.Run, cfg.repoDir(), &stdout, &stderr)
+	exit, ran := shell.Runner{}.Exec(ctx, tool.Invocation(), cfg.repoDir(), &stdout, &stderr)
 	cfg.logRun(tool.ID, exit, ran, time.Since(start))
 	if shell.NotRun(exit, ran) {
 		return cfg.reportRunProblem(codeRegistry, "tool_unavailable", unavailableMessage(tool))
@@ -176,7 +227,7 @@ func (cfg *Config) runCaptured(ctx context.Context, tool *toolreg.Tool) error {
 		Reason: reason,
 		Data: map[string]any{
 			"id":     tool.ID,
-			"run":    tool.Run,
+			"run":    tool.Invocation().String(),
 			"exit":   exit,
 			"stdout": stdout.String(),
 			"stderr": stderr.String(),

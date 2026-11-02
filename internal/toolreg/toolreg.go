@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 )
 
 // DefaultRegistryFile is the conventional repo path the tool registry lives under
@@ -32,8 +33,16 @@ const DefaultRegistryFile = ".adh/tools.json"
 // the same space, which would be the duplicate-classification mistake refused elsewhere
 // in this family and would have no principle for who may add a member.
 type Tool struct {
-	ID         string    `json:"id"`
-	Run        string    `json:"run"`
+	ID string `json:"id"`
+
+	// Run is the command as a shell script (`sh -c`). Command plus Args is the same
+	// thing with no shell: Command is executed directly with Args as its arguments.
+	// Exactly one form is declared. Run stays for compatibility; the argument-list form
+	// is preferred because it has no pipes or substitutions to hide anything in, and
+	// `tool doctor` can resolve Command on $PATH before an arc starts.
+	Run        string    `json:"run,omitempty"`
+	Command    string    `json:"command,omitempty"`
+	Args       []string  `json:"args,omitempty"`
 	Result     string    `json:"result,omitempty"`
 	Verifies   string    `json:"verifies"`
 	RepairHint string    `json:"repair_hint,omitempty"`
@@ -56,8 +65,9 @@ type Registry struct {
 	Tools []Tool `json:"tools"`
 }
 
-// Validate checks that every tool has an ID, a Run command, and a Verifies
-// description, and that IDs are unique. It returns EINVALID on the first defect.
+// Validate checks that every tool has an ID, exactly one command form (Run, or Command
+// with optional Args), and a Verifies description, and that IDs are unique. It returns EINVALID on
+// the first defect.
 func (r Registry) Validate() error {
 	seen := make(map[string]bool, len(r.Tools))
 	for i := range r.Tools {
@@ -65,10 +75,10 @@ func (r Registry) Validate() error {
 		switch {
 		case tool.ID == "":
 			return &adh.Error{Code: adh.EINVALID, Message: "tool with empty id"}
-		case tool.Run == "":
+		case commandFormProblem(tool) != "":
 			return &adh.Error{
 				Code:    adh.EINVALID,
-				Message: "tool " + tool.ID + " has no run command",
+				Message: "tool " + tool.ID + " " + commandFormProblem(tool),
 			}
 		case tool.Verifies == "":
 			return &adh.Error{
@@ -196,4 +206,26 @@ func LoadRepo(repoDir string) (Registry, error) {
 		return Registry{}, nil
 	}
 	return Load(path)
+}
+
+// Invocation returns the tool's command in the form shell.Runner.Exec runs.
+func (t *Tool) Invocation() shell.Command {
+	if t.Command != "" {
+		return shell.Command{Argv: append([]string{t.Command}, t.Args...)}
+	}
+	return shell.Command{Script: t.Run}
+}
+
+// commandFormProblem says why tool's command declaration is malformed, or "" when it
+// declares exactly one form.
+func commandFormProblem(tool *Tool) string {
+	switch {
+	case tool.Run == "" && tool.Command == "":
+		return "has no run command"
+	case tool.Run != "" && tool.Command != "":
+		return "declares both run and command; use one"
+	case tool.Command == "" && len(tool.Args) > 0:
+		return "declares args without a command"
+	}
+	return ""
 }

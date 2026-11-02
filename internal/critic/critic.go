@@ -7,10 +7,14 @@
 package critic
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/skillet/finding"
+	"github.com/StevenACoffman/skillet/hidden"
 	"github.com/StevenACoffman/skillet/proof"
 )
 
@@ -42,6 +46,19 @@ type Grounding struct {
 	// this one can start where that one stopped. See Inputs.PriorGaps for why this
 	// does not contaminate a cold review.
 	PriorGaps []finding.Unexamined
+
+	// Withheld is the context units kept out of routing because their content carries
+	// hidden codepoints (skillet/hidden). A stage told to read such a unit would obey
+	// text no reviewer saw, so it is not offered; it is recorded so the shell can say
+	// which units were withheld and why, rather than leaving a smaller working set
+	// unexplained.
+	Withheld []Withheld
+}
+
+// Withheld is one context unit kept out of a stage's grounding, and why.
+type Withheld struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 // Inputs are the grounding facts the shell computes and hands to the pure core:
@@ -110,32 +127,73 @@ func (g *Grounding) HasGrounding() bool {
 
 // loadInputs reads the raw grounding inputs from disk: the context store under
 // storeDir and the proof packet at arc.Proof when set. A missing store yields no
-// units (not an error); an unreadable proof manifest propagates.
-func loadInputs(arc *adh.Arc, storeDir string) ([]contextstore.Unit, *proof.Packet, error) {
+// units (not an error); an unreadable proof manifest propagates. Units whose content
+// carries hidden codepoints are returned separately as withheld (see WithholdHidden).
+func loadInputs(
+	arc *adh.Arc, storeDir string,
+) ([]contextstore.Unit, []Withheld, *proof.Packet, error) {
 	const op = "critic.loadInputs"
 	units, err := contextstore.LoadFresh(storeDir)
 	if err != nil {
-		return nil, nil, &adh.Error{Op: op, Err: err}
+		return nil, nil, nil, &adh.Error{Op: op, Err: err}
 	}
+	contents := make(map[string]string, len(units))
+	for i := range units {
+		// An unreadable content path is `context lint`'s dangling-source defect, not
+		// this one; the unit routes as before and lint reports it.
+		if body, readErr := contextstore.Content(storeDir, &units[i]); readErr == nil {
+			contents[units[i].ID] = body
+		}
+	}
+	units, withheld := WithholdHidden(units, contents)
 	var pkt *proof.Packet
 	if arc.Proof != "" {
 		loaded, loadErr := proof.Load(arc.Proof)
 		if loadErr != nil {
-			return nil, nil, &adh.Error{Op: op, Err: loadErr}
+			return nil, nil, nil, &adh.Error{Op: op, Err: loadErr}
 		}
 		pkt = &loaded
 	}
-	return units, pkt, nil
+	return units, withheld, pkt, nil
+}
+
+// WithholdHidden partitions units into those whose content (by unit ID) is free of
+// hidden codepoints and those withheld because it is not, with a reason naming the
+// classes found.
+//
+// Requires: contents maps unit IDs to their content; a unit absent from it is kept.
+// Ensures:  kept and withheld partition units, each in input order; it is pure.
+func WithholdHidden(
+	units []contextstore.Unit, contents map[string]string,
+) (kept []contextstore.Unit, withheld []Withheld) {
+	for i := range units {
+		summaries := hidden.ByClass(hidden.Scan(contents[units[i].ID]))
+		if len(summaries) == 0 {
+			kept = append(kept, units[i])
+			continue
+		}
+		parts := make([]string, 0, len(summaries))
+		for _, s := range summaries {
+			parts = append(parts, fmt.Sprintf("%s %s ×%d", s.Class, s.Rune, s.Count))
+		}
+		withheld = append(withheld, Withheld{
+			ID:     units[i].ID,
+			Reason: "content carries hidden codepoints: " + strings.Join(parts, ", "),
+		})
+	}
+	return kept, withheld
 }
 
 // Load assembles the critic's working set. in carries the shell-supplied bar and
 // diff, passed through to Ground.
 func Load(arc *adh.Arc, storeDir string, in *Inputs) (Grounding, error) {
-	units, pkt, err := loadInputs(arc, storeDir)
+	units, withheld, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return Grounding{}, err
 	}
-	return Ground(arc, units, pkt, in), nil
+	g := Ground(arc, units, pkt, in)
+	g.Withheld = withheld
+	return g, nil
 }
 
 // ForStage returns the working set a stage acts against and whether the arc is a
@@ -148,11 +206,12 @@ func Load(arc *adh.Arc, storeDir string, in *Inputs) (Grounding, error) {
 // back on its own priors; callers surface it as exit 12 (§10). An empty or absent
 // store, or an arc that declared no footprint, is simply ungrounded, not a gap.
 func ForStage(arc *adh.Arc, storeDir string, in *Inputs) (*Grounding, bool, error) {
-	units, pkt, err := loadInputs(arc, storeDir)
+	units, withheld, pkt, err := loadInputs(arc, storeDir)
 	if err != nil {
 		return nil, false, err
 	}
 	g := Ground(arc, units, pkt, in)
+	g.Withheld = withheld
 	gap := false
 	if arc.Stage == adh.StageCritic {
 		declared := len(arc.Labels) > 0 || len(arc.Paths) > 0

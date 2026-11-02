@@ -2695,3 +2695,32 @@ rather than in any one repo's habits.
   now closed under the argument-reachable payload item above.
 - **The relay test (above) is unchanged and large.** Its scoping note already records what
   transfers from gnosis and what does not.
+
+## The `stbenjam` and Agent Plugins Review, `adh` Half (2026-11-02)
+
+Recommendations A1–A5 of `agent-orange/write/stbenjam_improvements.md`; A6 (read Pi
+sessions in `adh sessions`) is deferred per decision D13. Built against skillet's
+`hidden` package, so it needs the skillet release that carries it.
+
+- [x] **A1 — execute only committed config.** `internal/execconfig` compares
+  `.adh/tools.json`, `.adh/loops.json` and `.adh/prompts/*.tmpl` with `HEAD` (via the new
+  `vcs.HeadContent`) and refuses a modified or untracked file with ECONFLICT, at the run:
+  `tool run`, `context verify`, adjudication, `loop run`/`tick`, and every stage render.
+  `worktree.ChangedCodePaths` keeps executable config under `.adh/` for the critic;
+  `approve` prints uncommitted changes to executable config, with the diff, before the
+  phrase. `adh init` now tells the human to commit what it scaffolded.
+- [x] **A3 — `tool doctor` warnings.** `toolreg.Hazards` names download-and-execute,
+  `$(curl …)`, `eval` of an expansion, base64 into a shell, and dangerous variable
+  assignments. Warnings never change doctor's verdict; `--jsonl` carries `warnings`.
+- [x] **A5 — argument-list tools.** `command` plus `args` beside `run` (exactly one),
+  executed with no shell through `shell.Command`/`Runner.Exec`; `tool doctor` resolves
+  `command` with `exec.LookPath`. The "no model-driven injection path" comment in
+  `internal/shell` now says what actually makes the command trustworthy (execconfig).
+- [x] **A2 — hidden characters in context.** `critic.WithholdHidden` keeps a unit whose
+  content carries hidden codepoints out of grounding, recorded as `Grounding.Withheld` and
+  reported by `step` and `run`; `context lint` reports it as `hidden_characters`.
+- [x] **A4 — optional stbenjam hygiene tool.** Documented in SPEC-ADDITIONS §13.3 as an
+  example registry entry (pinned `skillsaw==0.22.0`, five rules, its own id), not a default.
+- [ ] **A6 — Pi sessions.** Deferred (D13).
+- [ ] **Open:** prompt-override guarding reads `.` like `prompt.Default` does, not `--repo`;
+  the two should move together if `prompt.Default` ever takes a repository root.

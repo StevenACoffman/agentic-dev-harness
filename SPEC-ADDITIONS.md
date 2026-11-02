@@ -369,6 +369,61 @@ trustworthy.
 **Exit code 10** — a required tool is unavailable or returned an uninterpretable
 result.
 
+### 13.3 Command Forms, Committed Config, and Doctor Warnings
+
+A tool declares its command in exactly one of two forms. `run` is a shell script, run as
+`sh -c`; `command` with optional `args` is executed directly with no shell, so there are
+no pipes or substitutions to hide anything in, and `tool doctor` resolves `command` on
+`$PATH` before an arc starts. `run` stays for compatibility; prefer the argument list.
+
+```json
+{"id": "go-tests", "verifies": "unit tests pass", "command": "go", "args": ["test", "./..."]}
+```
+
+**adh executes only committed config.** An arc's worker can edit the working tree, and
+`.adh/tools.json`, `.adh/loops.json` and `.adh/prompts/*.tmpl` run or instruct with the
+maintainer's authority. So `tool run`, `context verify`, adjudication, `loop run`/`tick`
+and every stage render compare those files with `HEAD` first and refuse (ECONFLICT) a
+file that is modified or untracked, naming it, until a human commits it. The critic's
+grounding no longer hides these files with the rest of `.adh/` state, and `approve`
+prints any uncommitted change to executable config — the files above plus
+`.claude/settings*.json`, `.claude/hooks/`, `.mcp.json`, `CLAUDE.md` and `AGENTS.md` —
+with its diff before the human types the phrase. Outside a git repository there is no
+`HEAD` and nothing is compared.
+
+**`tool doctor` warns, and never fails, on hazards in a `run` script:** a download piped
+into a shell, `$(curl …)`, `eval` of an expansion, base64 decoded into a shell, and
+assignments to variables that change what every child process loads or trusts
+(`LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `NODE_OPTIONS`, `BASH_ENV`, `GIT_SSH_COMMAND`,
+`*_PROXY`, the CA-bundle variables). A registry may bootstrap a toolchain on purpose, so
+the warning routes the decision to a human; `--jsonl` carries them as `warnings`.
+
+**An optional hygiene tool.** stbenjam/skillsaw (a Python linter for agent configuration;
+unrelated to the family's Go `skillsaw`) covers hook, settings and MCP risks adh does not
+model. It can be registered under its own id with a pinned version, so it never shadows the
+Go tool. This is an example, not a default:
+
+```json
+{
+  "id": "agent-config-hygiene",
+  "verifies": "no invisible unicode, hidden instructions, dangerous hooks or settings, or prohibited MCP servers in agent configuration",
+  "command": "uvx",
+  "args": [
+    "--from", "skillsaw==0.22.0", "skillsaw", "lint", "--format", "json",
+    "--rule", "security-invisible-unicode",
+    "--rule", "security-hidden-instructions",
+    "--rule", "hooks-dangerous",
+    "--rule", "claude-settings-dangerous",
+    "--rule", "mcp-prohibited"
+  ],
+  "repair_hint": "install uv (https://docs.astral.sh/uv/); uvx fetches the pinned linter",
+  "if_absent": "review .claude/settings*.json, hooks and .mcp.json by hand before approving"
+}
+```
+
+`claude-settings-dangerous` is that rule's canonical id (`settings-dangerous` is its
+alias). `uvx skillsaw` without `--from skillsaw==…` would install whatever is current.
+
 ______________________________________________________________________
 
 ## 14. Worker Requalification

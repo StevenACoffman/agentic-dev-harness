@@ -7,6 +7,7 @@ package approve
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/authority"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/worktree"
 )
 
 // Config holds the configuration for the approve command.
@@ -74,6 +76,7 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 			),
 		}
 	}
+	cfg.showExecutableConfig()
 	required := authority.RequiredApprovalPhrase(id)
 	if !authority.GateSatisfied(required, cfg.Phrase, cfg.DryRun) {
 		msg := "gate not satisfied: pass --phrase " + required + " to approve"
@@ -99,4 +102,29 @@ func (cfg *Config) exec(_ context.Context, args []string) error {
 	}
 	_, _ = fmt.Fprintf(cfg.Stdout, "approved %s\n", id)
 	return nil
+}
+
+// showExecutableConfig puts any uncommitted change to executable config in front of the
+// human about to approve (execconfig). The critic sees these changes too, but a gate is
+// where a human decides, and a changed tool registry or CLAUDE.md is exactly what they
+// should not approve unseen. To stderr, so --jsonl stdout stays one clean envelope.
+func (cfg *Config) showExecutableConfig() {
+	paths, diff := worktree.ExecutableConfigChanges(cfg.repoDir())
+	if len(paths) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(cfg.Stderr,
+		"executable config changed in the working tree (adh runs it only once committed): %s\n",
+		strings.Join(paths, ", "))
+	if diff != "" {
+		_, _ = fmt.Fprint(cfg.Stderr, diff)
+	}
+}
+
+// repoDir is the repository root — the --repo global, or the current directory.
+func (cfg *Config) repoDir() string {
+	if cfg.Repo != "" {
+		return cfg.Repo
+	}
+	return "."
 }

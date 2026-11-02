@@ -21,6 +21,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
@@ -94,6 +95,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	}
 	if err := cfg.requalifyGate(&conf); err != nil {
 		return err
+	}
+	// Templates are model instructions, so an uncommitted override is refused.
+	if err := execconfig.RequirePrompts("."); err != nil {
+		return fmt.Errorf("run: %w", err)
 	}
 	renderer, err := prompt.Default()
 	if err != nil {
@@ -301,6 +306,11 @@ func (cfg *Config) emitRelay(
 		_, _ = fmt.Fprintln(cfg.Stderr,
 			"run: the critic is ungrounded — no routed context and no proof packet; "+
 				"this review runs on the model's own priors (§19.1)")
+	}
+	for _, w := range out.Withheld {
+		_, _ = fmt.Fprintf(cfg.Stderr,
+			"run: withheld context unit %s from grounding: %s (see `adh context lint`)\n",
+			w.ID, w.Reason)
 	}
 	return cfg.reportAwaiting(arc, out.Prompt)
 }
