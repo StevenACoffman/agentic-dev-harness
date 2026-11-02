@@ -2,6 +2,7 @@ package toolreg_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
@@ -72,5 +73,56 @@ func TestHazards(t *testing.T) {
 				t.Errorf("Hazards(%q) = %q, want %q", tc.run, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateCommandForms(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		tool    toolreg.Tool
+		wantErr string
+	}{
+		"run form": {tool: toolreg.Tool{ID: "a", Verifies: "v", Run: "go test ./..."}},
+		"argv form": {
+			tool: toolreg.Tool{ID: "a", Verifies: "v", Command: "go", Args: []string{"test"}},
+		},
+		"argv without args": {tool: toolreg.Tool{ID: "a", Verifies: "v", Command: "make"}},
+		"neither": {
+			tool:    toolreg.Tool{ID: "a", Verifies: "v"},
+			wantErr: "has no run command",
+		},
+		"both": {
+			tool:    toolreg.Tool{ID: "a", Verifies: "v", Run: "x", Command: "y"},
+			wantErr: "declares both run and command",
+		},
+		"args without command": {
+			tool:    toolreg.Tool{ID: "a", Verifies: "v", Run: "x", Args: []string{"y"}},
+			wantErr: "declares args without a command",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := toolreg.Registry{Tools: []toolreg.Tool{tc.tool}}.Validate()
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Errorf("Validate = %v, want nil", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Errorf("Validate = %v, want an error containing %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestInvocation(t *testing.T) {
+	t.Parallel()
+	script := toolreg.Tool{Run: "go test ./... | tee log"}
+	if got := script.Invocation(); got.Script != script.Run || got.Argv != nil {
+		t.Errorf("script Invocation = %+v", got)
+	}
+	argv := toolreg.Tool{Command: "go", Args: []string{"test", "./..."}}
+	if got := argv.Invocation(); !reflect.DeepEqual(got.Argv, []string{"go", "test", "./..."}) ||
+		got.Script != "" {
+		t.Errorf("argv Invocation = %+v", got)
 	}
 }

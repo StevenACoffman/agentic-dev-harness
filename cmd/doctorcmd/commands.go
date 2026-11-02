@@ -74,7 +74,7 @@ func commandProblems(
 func declaredTools(tools toolreg.Registry) map[string]bool {
 	out := make(map[string]bool, len(tools.Tools))
 	for i := range tools.Tools {
-		name, _, _ := strings.Cut(tools.Tools[i].Run, " ")
+		name, _, _ := strings.Cut(tools.Tools[i].Invocation().String(), " ")
 		out[name] = true
 	}
 	return out

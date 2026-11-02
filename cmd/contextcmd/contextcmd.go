@@ -467,7 +467,7 @@ func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args [
 			)}
 		}
 		start := time.Now()
-		code, ran := shell.Runner{}.Run(ctx, tool.Run, cfg.repoDir())
+		code, ran := shell.Runner{}.Exec(ctx, tool.Invocation(), cfg.repoDir(), nil, nil)
 		cfg.logIntegrityRun(tool.ID, code, ran, time.Since(start))
 		result := integrityResult{Unit: unit.ID, Tool: tool.ID, Status: "ok"}
 		switch {

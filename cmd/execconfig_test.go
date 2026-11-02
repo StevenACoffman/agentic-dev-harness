@@ -112,3 +112,25 @@ func TestToolDoctorWarnsButPasses(t *testing.T) {
 		t.Errorf("doctor warned about an ordinary command:\n%s", out)
 	}
 }
+
+func TestToolArgvFormRunsWithoutAShell(t *testing.T) {
+	committedRepo(t, map[string]string{
+		".adh/tools.json": `{"tools":[` +
+			`{"id":"echo","verifies":"argv runs","command":"echo","args":["$(touch pwned)"]},` +
+			`{"id":"gone","verifies":"absent","command":"adh-no-such-binary"}]}` + "\n",
+	})
+	out := mustRun(t, "tool", "run", "echo")
+	if !strings.Contains(out, "$(touch pwned)") {
+		t.Errorf("argv was not passed literally: %q", out)
+	}
+	if _, err := os.Stat("pwned"); err == nil {
+		t.Error("a substitution in args was executed by a shell")
+	}
+	doctor := mustRun(t, "tool", "doctor")
+	if !strings.Contains(
+		doctor,
+		`warning: tool gone runs "adh-no-such-binary", which is not on PATH`,
+	) {
+		t.Errorf("doctor did not resolve the argv command:\n%s", doctor)
+	}
+}
