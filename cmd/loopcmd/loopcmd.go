@@ -13,6 +13,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	looplib "github.com/StevenACoffman/agentic-dev-harness/internal/loop"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -169,6 +170,9 @@ func (cfg *Config) tickOne(
 	ctx context.Context,
 	loop *looplib.Loop,
 ) (arcID, message string, err error) {
+	if err := execconfig.Require(cfg.repoDir(), execconfig.LoopsFile); err != nil {
+		return "", "", fmt.Errorf("loop: %w", err)
+	}
 	if !cfg.sensor.Sense(ctx, loop.Sensor, cfg.repoDir()) {
 		return "", "invariant holds", nil
 	}

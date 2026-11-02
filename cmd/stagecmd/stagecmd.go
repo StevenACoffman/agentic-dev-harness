@@ -14,6 +14,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/stage"
@@ -106,6 +107,10 @@ func (c *stageCmd) exec(ctx context.Context, args []string) error {
 	}
 	conf, err := config.Load(c.ConfigGetenv())
 	if err != nil {
+		return fmt.Errorf("%s: %w", c.name, err)
+	}
+	// Templates are model instructions, so an uncommitted override is refused.
+	if err := execconfig.RequirePrompts("."); err != nil {
 		return fmt.Errorf("%s: %w", c.name, err)
 	}
 	renderer, err := prompt.Default()

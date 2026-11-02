@@ -16,6 +16,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/cmd/root"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolreg"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/toolrun"
@@ -129,6 +130,11 @@ func (cfg *Config) run(ctx context.Context, reg toolreg.Registry, args []string)
 		return root.MissingOperandError{Scope: "tool run", Kind: root.OperandTool}
 	}
 	id := args[0]
+	// Refused here, at the run, rather than at load: list and doctor only display the
+	// registry, and a check made earlier would leave a window for a later edit.
+	if err := execconfig.Require(cfg.repoDir(), execconfig.ToolsFile); err != nil {
+		return fmt.Errorf("tool run: %w", err)
+	}
 	tool, ok := reg.FindByID(id)
 	if !ok {
 		return cfg.reportRunProblem(codeRegistry, "unknown_tool",

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -127,10 +128,21 @@ func TestRelayJourneyWithAScriptedAnswerer(t *testing.T) {
 	t.Chdir(t.TempDir())
 	// Execution grounds from a diff, so the arc needs a real repository to walk past
 	// strategy.
-	if _, err := vcs.Init("."); err != nil {
+	repo, err := vcs.Init(".")
+	if err != nil {
 		t.Fatalf("git init: %v", err)
 	}
 	mustRun(t, "init")
+	// adh runs its tool registry only as committed, so commit what init scaffolded, as
+	// init tells a human to.
+	when := time.Date(2026, time.November, 2, 0, 0, 0, 0, time.UTC)
+	if _, err := repo.Commit(
+		"adh init",
+		vcs.Signature{Name: "t", Email: "t@example.test"},
+		when,
+	); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
 	id := strings.TrimSpace(mustRun(t, "arc", "new", "widen the column"))
 
 	strategyPrompt := relayOneStage(t, id)

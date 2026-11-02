@@ -20,6 +20,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/device"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/failures"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/oracle"
@@ -130,7 +131,13 @@ func NewRepoAdjudicator(
 // with no registry file adjudicates NFR findings as unrunnable, not an error, so
 // the common case needs no setup. It is the one call the `eval`, `run`, and `step`
 // shells make.
+//
+// It refuses a tool registry that differs from HEAD (execconfig): adjudication runs the
+// registry's commands, and an arc's own worker could otherwise have written them.
 func RepoAdjudicatorFor(repoDir string) (RepoAdjudicator, error) {
+	if err := execconfig.Require(repoDir, execconfig.ToolsFile); err != nil {
+		return RepoAdjudicator{}, &adh.Error{Op: "evaluation.RepoAdjudicatorFor", Err: err}
+	}
 	checks, err := loadChecks(repoDir)
 	if err != nil {
 		return RepoAdjudicator{}, err

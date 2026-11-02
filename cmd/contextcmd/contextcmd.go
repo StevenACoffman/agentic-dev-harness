@@ -19,6 +19,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/config"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/harnesscheck"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/shell"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/state"
@@ -439,6 +440,9 @@ func (cfg *Config) logIntegrityRun(id string, code int, ran bool, took time.Dura
 // unrunnable=unconfirmed rule the Evaluation stage uses). A unit whose integrity
 // names a tool the registry does not declare is a store misconfiguration (EINVALID).
 func (cfg *Config) verify(ctx context.Context, units []contextstore.Unit, args []string) error {
+	if err := execconfig.Require(cfg.repoDir(), execconfig.ToolsFile); err != nil {
+		return fmt.Errorf("context: %w", err)
+	}
 	reg, err := toolreg.LoadRepo(cfg.repoDir())
 	if err != nil {
 		return fmt.Errorf("context: %w", err)

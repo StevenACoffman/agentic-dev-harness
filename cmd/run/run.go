@@ -21,6 +21,7 @@ import (
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/critic"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/evaluation"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/model"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/nfr"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/prompt"
@@ -94,6 +95,10 @@ func (cfg *Config) exec(ctx context.Context, args []string) error {
 	}
 	if err := cfg.requalifyGate(&conf); err != nil {
 		return err
+	}
+	// Templates are model instructions, so an uncommitted override is refused.
+	if err := execconfig.RequirePrompts("."); err != nil {
+		return fmt.Errorf("run: %w", err)
 	}
 	renderer, err := prompt.Default()
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/StevenACoffman/agentic-dev-harness/internal/adh"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/contextstore"
+	"github.com/StevenACoffman/agentic-dev-harness/internal/execconfig"
 	"github.com/StevenACoffman/agentic-dev-harness/internal/vcs"
 )
 
@@ -40,9 +41,13 @@ func Diff(repoDir string, paths []string) string {
 	return diff
 }
 
-// ChangedCodePaths reports the working tree's changed paths under repoDir,
-// excluding the harness's own .adh/ state. The bool is false when there is no git
-// repo — the read is best-effort and never fatal.
+// ChangedCodePaths reports the working tree's changed paths under repoDir, excluding
+// the harness's own .adh/ state (arcs, ledgers, logs). The bool is false when there is
+// no git repo — the read is best-effort and never fatal.
+//
+// Executable config under .adh/ (the tool and loop registries, prompt templates) is not
+// state and is kept: it runs with the maintainer's authority, so a change to it is the
+// change a critic most needs to see.
 func ChangedCodePaths(repoDir string) ([]string, bool) {
 	repo, err := vcs.Open(repoDir)
 	if err != nil {
@@ -54,7 +59,7 @@ func ChangedCodePaths(repoDir string) ([]string, bool) {
 	}
 	paths := make([]string, 0, len(status.Changed))
 	for _, path := range status.Changed {
-		if strings.HasPrefix(path, ".adh/") {
+		if strings.HasPrefix(path, ".adh/") && !execconfig.Executable(path) {
 			continue
 		}
 		paths = append(paths, path)
@@ -78,4 +83,21 @@ func CaptureFootprint(repoDir string, arc *adh.Arc) {
 			arc.Labels = append(arc.Labels, label)
 		}
 	}
+}
+
+// ExecutableConfigChanges reports the working tree's changed executable config
+// (execconfig.Executable) and its unified diff, for the approval gate to show a human
+// before they approve. Best-effort like the rest of this package: outside a git repo it
+// reports nothing.
+func ExecutableConfigChanges(repoDir string) (paths []string, diff string) {
+	changed, ok := ChangedCodePaths(repoDir)
+	if !ok {
+		return nil, ""
+	}
+	for _, path := range changed {
+		if execconfig.Executable(path) {
+			paths = append(paths, path)
+		}
+	}
+	return paths, Diff(repoDir, paths)
 }
