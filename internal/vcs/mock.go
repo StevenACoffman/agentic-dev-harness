@@ -8,8 +8,9 @@ import "time"
 type Mock struct {
 	Branch  string
 	Changed []string
-	Patch   string // scripted Diff output
-	SHA     string // scripted HeadSHA output
+	Patch   string            // scripted Diff output
+	SHA     string            // scripted HeadSHA output
+	Head    map[string]string // scripted HeadContent: committed content by path
 	commits int
 }
 
@@ -68,4 +69,11 @@ func (m *Mock) Commit(_ string, _ Signature, _ time.Time) (string, error) {
 	m.commits++
 	m.Changed = nil
 	return "mockhash" + string(rune('0'+m.commits%10)), nil
+}
+
+// HeadContent returns the scripted committed content of path; a path absent from Head
+// is untracked.
+func (m *Mock) HeadContent(path string) (content string, tracked bool, err error) {
+	content, tracked = m.Head[path]
+	return content, tracked, nil
 }

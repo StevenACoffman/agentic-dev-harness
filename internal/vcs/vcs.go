@@ -205,6 +205,17 @@ func (g *Git) Diff(paths []string) (string, error) {
 	return b.String(), nil
 }
 
+// HeadContent returns path's content as committed at HEAD, and whether HEAD tracks it
+// at all. Before the first commit nothing is tracked. path is repository-relative,
+// slash-separated.
+func (g *Git) HeadContent(path string) (content string, tracked bool, err error) {
+	head, err := g.headTree()
+	if err != nil {
+		return "", false, err
+	}
+	return headEntry(head, path)
+}
+
 // Revert restores the given repository-relative paths to their committed HEAD
 // state, discarding uncommitted work under them (SPEC §2.3 reject/revert). A path
 // tracked in HEAD is rewritten to its committed content; a path new to HEAD is

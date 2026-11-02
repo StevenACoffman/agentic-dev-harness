@@ -17,6 +17,9 @@ var (
 	_ repo = (*vcs.Git)(nil)
 	_ repo = (*vcs.Mock)(nil)
 
+	_ headReader = (*vcs.Git)(nil)
+	_ headReader = (*vcs.Mock)(nil)
+
 	who = vcs.Signature{Name: "adh", Email: "adh@example.test"}
 	at  = time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
 )
@@ -31,6 +34,12 @@ type repo interface {
 	Diff(paths []string) (string, error)
 	Revert(paths []string) error
 	HeadSHA() (string, error)
+}
+
+// headReader is the narrower surface execconfig needs, asserted separately so neither
+// interface grows past what one consumer uses.
+type headReader interface {
+	HeadContent(path string) (string, bool, error)
 }
 
 func TestGitLifecycle(t *testing.T) {
@@ -282,5 +291,47 @@ func TestHeadSHAAfterCommit(t *testing.T) {
 	// starts with it.
 	if len(sha) != 40 || !strings.HasPrefix(sha, hash) {
 		t.Errorf("HeadSHA = %q, want a 40-char hash prefixed by %q", sha, hash)
+	}
+}
+
+func TestHeadContent(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := vcs.Init(dir)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	// Before the first commit nothing is tracked.
+	if _, tracked, err := repo.HeadContent("a.txt"); err != nil || tracked {
+		t.Fatalf("HeadContent before commit = tracked %v, err %v; want untracked", tracked, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("committed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Commit("seed", who, at); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	// The working copy changes; HeadContent still reports what HEAD holds.
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]struct {
+		path        string
+		wantContent string
+		wantTracked bool
+	}{
+		"committed file": {path: "a.txt", wantContent: "committed\n", wantTracked: true},
+		"absent file":    {path: "b.txt"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			content, tracked, err := repo.HeadContent(tc.path)
+			if err != nil {
+				t.Fatalf("HeadContent: %v", err)
+			}
+			if content != tc.wantContent || tracked != tc.wantTracked {
+				t.Errorf("HeadContent(%q) = %q, %v; want %q, %v",
+					tc.path, content, tracked, tc.wantContent, tc.wantTracked)
+			}
+		})
 	}
 }
